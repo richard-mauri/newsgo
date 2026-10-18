@@ -1,0 +1,8 @@
+report.json
+.cloudflared/
+newsgo.log
+*.test
+.DS_Store
+
+dist/
+*.log

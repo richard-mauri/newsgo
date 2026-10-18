@@ -1,0 +1,7 @@
+# NewsGo v0.2.2 — personal subscriptions
+
+Run `go test ./...` and `go run ./cmd/newsgo`, then open http://127.0.0.1:8084/. Select **Manage feeds +**. Enter the feed name, public RSS/Atom/JSON Feed URL, and category; NewsGo validates that feed before saving. Use the suggestion buttons for NASA News, NASA Science, NASA JPL, NOAA News, or Ars Technica Science (these are candidates: availability may vary). Up to eight personal feeds are stored in Safari's localStorage for this NewsGo origin and browser profile. They do not sync across browsers and are lost if site data is cleared. Export/Import subscriptions as JSON to transfer them.
+
+Personal headlines appear in a separate **My sources** section above the default dashboard. Headlines use the same named ScraperGo tab as the default dashboard. Feeds are fetched by NewsGo, rather than the browser, to avoid CORS; the server caches personal URL results for 10 minutes and the client refreshes every 15 minutes. Invalid, inaccessible, or malformed feeds are rejected when added. Default sources and the FeedCheck command are unchanged.
+
+Security: the personal API accepts up to eight feed definitions, limits request size to 8 KiB, has request timeouts and a 4 MiB feed response limit, disables proxies, and resolves/dials only public IP addresses even across redirects. Do not expose an unrestricted feed-fetch endpoint without adding production rate limiting and authentication/abuse prevention. NewsGo still binds to 127.0.0.1 by default.
