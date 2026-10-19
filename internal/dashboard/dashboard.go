@@ -150,6 +150,10 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(data)
 		return
 	}
+	if r.URL.Path == "/api/discover" {
+		s.serveDiscover(w, r)
+		return
+	}
 	if r.URL.Path == "/api/personal" {
 		s.servePersonal(w, r)
 		return
@@ -157,7 +161,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/personal.js" {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-store")
 		fmt.Fprint(w, personalJS)
 		return
 	}
@@ -241,14 +245,14 @@ var page = template.Must(template.New("index").Funcs(template.FuncMap{"add": fun
 @media(max-width:540px){main{padding:0 16px 50px}.topbar-inner{padding:15px 16px}.tagline{display:none}.intro{display:block}.time{text-align:left;margin-top:12px}.filters{gap:12px}.filters label{flex:1;min-width:130px}.filters select{width:100%;min-width:0}.feature-grid{grid-template-columns:1fr}.feature:first-child{grid-column:auto}.feature{min-height:200px}.item{padding:18px 0}}
 
 .personal-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}.personal-tools button,.personal-form button,.personal-row button{cursor:pointer;background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px 13px;font:inherit}.personal-form{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.personal-form input,.personal-form select{flex:1;min-width:170px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:9px;padding:10px;font:inherit}.personal-panel{padding:18px;border:1px solid var(--line);border-radius:15px;background:var(--panel);margin:14px 0 25px}.personal-row{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:10px 0;gap:10px}.personal-row small{color:var(--muted);overflow-wrap:anywhere}.personal-status{color:var(--muted);font-size:.86rem}.personal-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}.personal-suggestion{margin:7px 8px 7px 0}.personal-hidden{display:none}.personal-panel h2{margin:0 0 9px}.personal-panel p{color:var(--muted)}@media(max-width:720px){.personal-list{grid-template-columns:1fr}}
-</style><script defer src="/personal.js"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span></div><div class="header-right"><div class="tagline">NEWS DISCOVERY FOR SCRAPERGO · V0.2.4</div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
+</style><script defer src="/personal.js?v=0.2.7"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span></div><div class="header-right"><div class="tagline">NEWS DISCOVERY FOR SCRAPERGO · V0.2.7</div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p>{{.Total}} cached headlines from trusted feeds.</p></div><div class="time">{{if .Updated}}Updated {{.Updated}}{{else}}Fetching headlines…{{end}}</div></div>
 <form class="filters" method="get" action="/"><label>Publisher<select name="source"><option value="">All sources</option>{{range .Sources}}<option value="{{.}}" {{if eq . $.SelectedSource}}selected{{end}}>{{.}}</option>{{end}}</select></label><label>Section<select name="category"><option value="">All categories</option>{{range .Categories}}<option value="{{.}}" {{if eq . $.SelectedCategory}}selected{{end}}>{{.}}</option>{{end}}</select></label><button class="filter-btn" type="submit">Apply filters</button><a class="clear" href="/">Reset</a></form>
 <div class="personal-tools"><strong>Personal news feeds <span id="personal-count"></span></strong><button type="button" id="manage-personal">Manage feeds +</button></div>
 <section id="personal-panel" class="personal-panel personal-hidden" aria-label="Manage personal feeds"><h2>My news sources</h2><p>Subscriptions are saved in this browser only. They aren't shared with other visitors.</p>
-<form id="personal-form" class="personal-form"><input id="personal-name" maxlength="70" placeholder="Source name" required><input id="personal-url" type="url" maxlength="2048" placeholder="https://example.com/rss" required><select id="personal-category"><option>World</option><option>Business</option><option>Technology</option><option>Science</option><option>Local</option><option>Other</option></select><button>Add & validate</button></form>
+<form id="discover-form" class="personal-form"><input id="discover-url" type="url" maxlength="2048" placeholder="Paste a news website address, e.g. https://www.foxsports.com/college-football" aria-label="News website URL" required><button id="discover-button" type="button">Find feeds</button></form><div id="discover-results" aria-live="polite"></div><details><summary>Advanced: add an RSS feed manually</summary><form id="personal-form" class="personal-form"><input id="personal-name" maxlength="70" placeholder="Source name" required><input id="personal-url" type="url" maxlength="2048" placeholder="https://example.com/rss" required><select id="personal-category"><option>World</option><option>Business</option><option>Technology</option><option>Science</option><option>Local</option><option>Other</option></select><button>Add RSS feed</button></form></details>
 <div><small>Suggested additions:</small><div id="personal-suggestions"></div></div><div id="personal-sources"></div>
-<button id="personal-export" type="button">Export subscriptions</button> <button id="personal-import" type="button">Import subscriptions</button><input id="personal-file" type="file" accept="application/json,.json" hidden><p class="personal-status" id="personal-message" role="status"></p></section>
+<button id="personal-export" type="button">Export subscriptions</button> <button id="personal-import" type="button">Import subscriptions</button><input id="personal-file" type="file" accept="application/json,.json" hidden><p class="personal-status" id="personal-message" role="status">Feed discovery is loading…</p></section>
 <section id="personal-feed" class="personal-hidden" aria-label="Personal headlines"><div class="section-label">My sources</div><p class="personal-status" id="personal-loading"></p><div class="personal-list" id="personal-articles"></div></section>
 {{range .Errors}}<div class="notice">Feed unavailable: {{.}}</div>{{end}}
 {{if not .Articles}}<div class="notice">No headlines match the selected filters, or feeds have not loaded yet.</div>{{else}}

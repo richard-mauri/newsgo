@@ -28,11 +28,17 @@ async function refresh(){const section=el('personal-feed'), list=el('personal-ar
 function add(f){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}if(feeds.length>=8){message('Maximum 8 personal feeds for this version.');return}
  message('Validating feed…');
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f]})}).then(async res=>{if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data[0].error)throw Error(data[0].error);feeds.push(f);save();renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>message('Feed not added: '+err.message))}
+async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
+ try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
+ data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);row.append(info,button('Add feed',()=>add(f)));out.append(row)});message(data.feeds.length+' feed(s) found. Select Add feed to subscribe.');
+ }catch(err){message('Discovery: '+err.message)}}
+el('discover-button').addEventListener('click',discoverFeeds);
+el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
 el('manage-personal').addEventListener('click',()=>el('personal-panel').classList.toggle('personal-hidden'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
 const sug=el('personal-suggestions');suggestions.forEach(s=>sug.append(button('+ '+s.name,()=>add(s),'personal-suggestion')));
 el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(feeds,null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-personal-feeds.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 el('personal-import').addEventListener('click',()=>el('personal-file').click());
 el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());if(!Array.isArray(data)||data.length>8||!data.every(valid))throw Error('Invalid feed list');feeds=data;save();renderManager();refresh();message('Subscriptions imported.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
-renderManager();refresh();setInterval(refresh,15*60*1000);
+message('Paste a website address and click Find feeds.');renderManager();refresh();setInterval(refresh,15*60*1000);
 })();`
