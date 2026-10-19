@@ -12,7 +12,7 @@ func TestSubscriptionFirstNavigation(t *testing.T) {
     for _, old := range []string{`id="view-news"`, `id="clear-reading"`, `id="read-category"`, `id="back-subscriptions"`, `Back to My Subscriptions`, `Unregister`} {
        if strings.Contains(html,old) { t.Errorf("obsolete control: %s",old) }
     }
-    for _, js := range []string{`newsgo.personalFeeds.v1`, `newsgo.includedSubscriptions.v1`, `saveIncluded()`, `chooseIncluded(name)`, `button('Unsubscribe'`, `button('Read Articles'`} {
+    for _, js := range []string{`newsgo.subscriptions.v2`, `newsgo.personalFeeds.v1`, `newsgo.includedSubscriptions.v1`, `saveSubscriptions(`, `chooseIncluded(name)`, `button('Unsubscribe'`, `button('Read Articles'`} {
        if !strings.Contains(personalJS,js) { t.Errorf("missing subscription logic: %s",js) }
     }
 }

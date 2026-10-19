@@ -24,7 +24,7 @@ func TestReadableDiscoveryPresentation(t *testing.T) {
 }
 func TestVersionedDiscoveryScript(t *testing.T) {
 	s := page.Tree.Root.String()
-	if !strings.Contains(s, `/personal.js?v=0.2.20`) {
+	if !strings.Contains(s, `/personal.js?v=0.2.23`) {
 		t.Fatal("script query version missing")
 	}
 }

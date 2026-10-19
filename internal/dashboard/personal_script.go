@@ -2,11 +2,57 @@ package dashboard
 
 const personalJS = `(function(){
 'use strict';
-const key='newsgo.personalFeeds.v1';
-const includedKey='newsgo.includedSubscriptions.v1';
+const key='newsgo.subscriptions.v2';
+const legacyPersonalKey='newsgo.personalFeeds.v1';
+const legacyIncludedKey='newsgo.includedSubscriptions.v1';
 const includedNames=Array.from(document.querySelectorAll('[data-included-source]'),b=>b.dataset.includedSource);
-let included=[];try{const stored=JSON.parse(localStorage.getItem(includedKey)||'[]');if(Array.isArray(stored))included=stored.filter(n=>typeof n==='string'&&includedNames.includes(n))}catch(e){}
-function saveIncluded(){try{localStorage.setItem(includedKey,JSON.stringify(included))}catch(e){message('Browser storage is unavailable.')}}
+const feedIdentity=u=>{try{const x=new URL(u);x.hash='';return 'feed:'+x.href}catch(_){return 'feed:'+u}};
+const sharedRecord=name=>({id:'shared:'+name,kind:'shared',name});
+const feedRecord=f=>({id:feedIdentity(f.url),kind:'feed',name:f.name,url:f.url,category:f.category||'Other'});
+const recordValid=r=>r&&typeof r.id==='string'&&typeof r.name==='string'&&r.name.length>0&&r.name.length<=140&&
+ (r.kind==='shared'||(r.kind==='feed'&&typeof r.url==='string'&&/^https?:\/\/[^\s/]+/i.test(r.url)&&r.url.length<=2048));
+let registry=[], storageError='';
+function loadSubscriptions(){
+ try{
+  const current=localStorage.getItem(key);
+  if(current!==null){
+   const value=JSON.parse(current);
+   if(!Array.isArray(value))throw Error('Subscription registry has an invalid format.');
+   if(value.some(r=>!recordValid(r)))throw Error('Subscription registry contains invalid entries; no data was discarded.');
+   registry=value;
+   return;
+  }
+  const oldFeeds=JSON.parse(localStorage.getItem(legacyPersonalKey)||'[]');
+  const oldIncluded=JSON.parse(localStorage.getItem(legacyIncludedKey)||'[]');
+  if(!Array.isArray(oldFeeds)||!Array.isArray(oldIncluded))throw Error('Legacy subscription data is invalid.');
+  const proposed=[
+   ...oldIncluded.filter(n=>typeof n==='string').map(sharedRecord),
+   ...oldFeeds.map(feedRecord)
+  ];
+  if(proposed.some(r=>!recordValid(r)))throw Error('Legacy records require review; migration was not performed.');
+  const unique=new Map(proposed.map(r=>[r.id,r]));
+  const migrated=[...unique.values()];
+  localStorage.setItem(key,JSON.stringify(migrated)); // Migration commits only after a successful write.
+  registry=migrated; // Both legacy records remain available for recovery.
+ }catch(e){storageError='Subscription storage: '+e.message+' Existing records were left unchanged.'}
+}
+loadSubscriptions();
+let included=[], feeds=[];
+function syncDerived(){
+ included=registry.filter(r=>r.kind==='shared').map(r=>r.name);
+ feeds=registry.filter(r=>r.kind==='feed').map(r=>({name:r.name,url:r.url,category:r.category||'Other'}));
+}
+syncDerived();
+function saveSubscriptions(next){
+ try{
+  const serialized=JSON.stringify(next);
+  localStorage.setItem(key,serialized);
+  registry=next;syncDerived();return true;
+ }catch(e){message('Could not save subscriptions. No changes were applied: '+e.message);return false}
+}
+function hasSubscription(id){return registry.some(r=>r.id===id)}
+function subscribeRecord(record){if(hasSubscription(record.id))return true;return saveSubscriptions([...registry,record])}
+function unsubscribeRecord(id){return saveSubscriptions(registry.filter(r=>r.id!==id))}
 const suggestions=[
 {name:'NASA News',category:'Science',url:'https://www.nasa.gov/news-release/feed/'},
 {name:'NASA Science',category:'Science',url:'https://science.nasa.gov/feed/'},
@@ -17,9 +63,7 @@ const suggestions=[
 const el=id=>document.getElementById(id);
 const valid=f=>f&&typeof f.name==='string'&&f.name.trim().length>0&&f.name.length<=70&&typeof f.category==='string'&&f.category.length<=40&&typeof f.url==='string'&&f.url.length<=2048&&/^https?:\/\/[^\s/]+/i.test(f.url);
 let selectedSource='';
-let feeds=[];
-try{const raw=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(raw)) feeds=raw.filter(valid).slice(0,8)}catch(e){}
-function save(){try{localStorage.setItem(key,JSON.stringify(feeds));return true}catch(e){message('Browser storage is unavailable; changes will not survive a restart.');return false}}
+
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',handler);return b}
 let searchTimer, searchSeq=0;
@@ -47,6 +91,10 @@ async function searchCatalog(){
 }
 function queueSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(searchCatalog,350)}
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following})}
+function chooseAllSubscriptions(){
+ el('read-source').value='';selectedSource='';renderReading();showView('news');
+ el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
+}
 function chooseSource(url){
  selectedSource=url;el('read-source').value='personal:'+url;renderReading();showView('news');
  el('reading-title').scrollIntoView({block:'start',behavior:'smooth'});
@@ -57,6 +105,39 @@ function renderSourceSelector(){
  if(selectedSource&&!feeds.some(f=>f.url===selectedSource))selectedSource='';
  const select=el('read-source');if(select.value.startsWith('personal:')&&!feeds.some(f=>'personal:'+f.url===select.value))select.value='';
 }
+// Shared headlines are server-ranked across all publishers. When viewing one
+// publisher, promote its earliest latest-headline rows into the lead slots.
+function arrangeSharedLeads(source){
+ const root=el('shared-headlines');
+ const lead=root.querySelector('.feature-grid');
+ const latest=root.querySelector('.latest');
+ if(!lead||!latest)return;
+ lead.querySelectorAll('.subscription-promoted-lead').forEach(a=>a.remove());
+ const originals=Array.from(lead.querySelectorAll('article[data-source]'));
+ const rows=Array.from(latest.querySelectorAll('article[data-source]'));
+ const matches=a=>source==='shared:'+a.dataset.source;
+ originals.forEach(a=>{a.hidden=!matches(a)});
+ rows.forEach(a=>{a.hidden=!matches(a)});
+ let spaces=Math.max(0,3-originals.filter(matches).length);
+ for(const row of rows){
+  if(!spaces||!matches(row))continue;
+  const card=document.createElement('article');
+  card.className='feature subscription-promoted-lead';
+  card.dataset.source=row.dataset.source;
+  card.dataset.category=row.dataset.category;
+  const body=document.createElement('div');
+  const img=row.querySelector('img.article-thumb');
+  if(img)body.append(img.cloneNode(true));
+  const itemBody=row.querySelector('.item-body');
+  if(itemBody){
+   const copy=itemBody.cloneNode(true);
+   const original=copy.querySelector('.original');
+   if(original)original.textContent='Original publisher ↗';
+   while(copy.firstChild)body.append(copy.firstChild);
+  }
+  card.append(body);lead.append(card);row.hidden=true;spaces--;
+ }
+}
 function renderReading(){
  const source=el('read-source').value;
  selectedSource=source.startsWith('personal:')?source.slice(9):'';
@@ -64,9 +145,8 @@ function renderReading(){
  const showShared=source.startsWith('shared:');
  el('personal-feed').classList.toggle('personal-hidden',!feeds.length||!showPersonal);
  el('shared-headlines').classList.toggle('personal-hidden',!showShared);
- document.querySelectorAll('#shared-headlines article[data-source]').forEach(a=>{
-  a.hidden=!!((source&&source!=='shared:'+a.dataset.source));
- });
+ arrangeSharedLeads(source);
+ el('all-subscriptions').hidden=!source;
  el('reading-title').hidden=!source;
  el('reading-title').textContent=source?(source.startsWith('shared:')?source.slice(7):feeds.find(f=>'personal:'+f.url===source)?.name||'Selected subscription'):'';
  el('personal-section-label').hidden=!!source;
@@ -74,22 +154,49 @@ function renderReading(){
 }
 let allPersonalArticles=[], personalErrors=[];
 function renderPersonalArticles(){
- const list=el('personal-articles');list.replaceChildren();
+ const lead=el('personal-lead-stories'),list=el('personal-articles');
+ lead.replaceChildren();list.replaceChildren();
  const sources=new Set(feeds.filter(f=>!selectedSource||f.url===selectedSource).map(f=>f.name));
  const articles=allPersonalArticles.filter(a=>sources.has(a.source));
  const seen=new Set();articles.sort((a,b)=>new Date(b.published)-new Date(a.published));
- articles.forEach(a=>{if(seen.has(a.url))return;seen.add(a.url);const row=document.createElement('article');row.className='item';const body=document.createElement('div');body.className='item-body';const meta=document.createElement('div');meta.className='source';meta.textContent=a.source+' · '+a.category;const title=document.createElement('a');title.className='story-title';title.href=a.open;title.target='newsgo-scrapergo';title.textContent=a.title;const sub=document.createElement('div');sub.className='story-meta';sub.textContent=a.date+'  ';const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent='Original ↗';original.className='original';sub.append(original);body.append(meta,title,sub);row.append(body);if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){const img=document.createElement('img');img.className='article-thumb';img.src=a.image;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove());row.append(img)}list.append(row)});
+ let count=0;
+ articles.forEach(a=>{
+  if(seen.has(a.url))return;seen.add(a.url);
+  const featured=count++<3;
+  const row=document.createElement('article');row.className=featured?'feature':'item';
+  const body=document.createElement('div');body.className='item-body';
+  const meta=document.createElement('div');meta.className='source';meta.textContent=a.source+' · '+a.category;
+  const title=document.createElement('a');title.className='story-title';title.href=a.open;title.target='newsgo-scrapergo';title.textContent=a.title;
+  const sub=document.createElement('div');sub.className='story-meta';sub.textContent=a.date+'  ';
+  const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
+  sub.append(original);body.append(meta,title,sub);
+  if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
+   const img=document.createElement('img');img.className='article-thumb';img.src=a.image;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove());
+   if(featured)body.prepend(img);else row.append(img);
+  }
+  if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
+ });
+ const hasArticles=count>0;
+ el('personal-lead-section').hidden=!hasArticles;
+ el('personal-latest-section').hidden=!hasArticles;
  const selected=feeds.find(f=>f.url===selectedSource);
- el('personal-loading').textContent=seen.size+' headlines'+(selected?' from '+selected.name:' from your followed sources')+(personalErrors.length?' · '+personalErrors.join('; '):'');
+ if(!el('personal-loading').classList.contains('is-refreshing'))
+  el('personal-loading').textContent=seen.size+' headlines'+(selected?' from '+selected.name:' from your followed sources')+(personalErrors.length?' · '+personalErrors.join('; '):'');
 }
+
 function renderManager(){
  renderSourceSelector();
- const total=feeds.length+included.length;el('personal-count').textContent='('+total+')';el('subscription-count').textContent='('+total+')';
- el('subscriptions-empty').textContent=feeds.length+included.length?'':'No subscriptions yet. Choose Find Subscriptions to add one.';
+ const total=registry.length;el('personal-count').textContent='('+total+')';el('subscription-count').textContent='('+total+')';
+ el('subscriptions-empty').textContent=registry.length?'':'No subscriptions yet. Choose Find Subscriptions to add one.';
  const root=el('personal-sources');root.replaceChildren();
- included.forEach(name=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('strong');info.textContent=name;const actions=document.createElement('div');actions.className='subscription-actions';actions.append(button('Read Articles',()=>chooseIncluded(name)),button('Unsubscribe',()=>{included=included.filter(n=>n!==name);if(el('read-source').value==='shared:'+name)el('read-source').value='';saveIncluded();renderManager();}));row.append(info,actions);root.append(row)});
+ const allRow=document.createElement('div');allRow.className='personal-row';
+ const allInfo=document.createElement('strong');allInfo.textContent='All Subscriptions';
+ allRow.append(allInfo,button('Read All Articles',chooseAllSubscriptions));root.append(allRow);
+ included.forEach(name=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('strong');info.textContent=name;const actions=document.createElement('div');actions.className='subscription-actions';actions.append(button('Read Articles',()=>chooseIncluded(name)),button('Unsubscribe',()=>{if(!unsubscribeRecord('shared:'+name))return;
+ if(el('read-source').value==='shared:'+name)el('read-source').value='';renderManager();}));row.append(info,actions);root.append(row)});
  document.querySelectorAll('.read-included').forEach(b=>{const subscribed=included.includes(b.dataset.includedSource);b.textContent=subscribed?'Subscribed':'Subscribe';b.disabled=subscribed});
- feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const actions=document.createElement('div');actions.className='subscription-actions';actions.append(button('Read Articles',()=>chooseSource(f.url)),button('Unsubscribe',()=>{feeds.splice(i,1);if(selectedSource===f.url)selectedSource='';save();renderManager();refresh();message('Unsubscribeed '+f.name+'.')}));row.append(info,actions);root.append(row)});
+ feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const actions=document.createElement('div');actions.className='subscription-actions';actions.append(button('Read Articles',()=>chooseSource(f.url)),button('Unsubscribe',()=>{if(!unsubscribeRecord(feedIdentity(f.url)))return;
+ if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));row.append(info,actions);root.append(row)});
  syncFollowButtons();renderReading();
 }
 function showView(view){
@@ -98,15 +205,48 @@ function showView(view){
  el('news-content').classList.toggle('personal-hidden',view!=='news');
  [['manage-personal','discover'],['view-subscriptions','subscriptions']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
-async function refresh(){const section=el('personal-feed');renderReading();if(!feeds.length){allPersonalArticles=[];renderPersonalArticles();return}
- el('personal-loading').textContent='Refreshing personal feeds…';
- try{const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds})});if(!res.ok)throw new Error('HTTP '+res.status);const data=await res.json();allPersonalArticles=[];personalErrors=[];data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});renderPersonalArticles();
- }catch(e){el('personal-loading').textContent='Could not fetch personal feeds: '+e.message}}
+let refreshSequence=0;
+async function refresh(){
+ const sequence=++refreshSequence;
+ const loading=el('personal-loading');
+ renderReading();
+ if(!feeds.length){loading.classList.remove('is-refreshing');allPersonalArticles=[];personalErrors=[];renderPersonalArticles();return}
+ const snapshot=feeds.slice();
+ loading.classList.add('is-refreshing');
+ const sharedCount=included.length;
+ const context=sharedCount?' ('+sharedCount+' shared publication'+(sharedCount===1?'':'s')+' already loaded)':'';
+ loading.textContent='Refreshing '+snapshot.length+' subscribed web feed'+(snapshot.length===1?'':'s')+'…'+context;
+ try{
+  let data=[];
+  let completed=0;
+  for(let offset=0;offset<snapshot.length;offset+=8){
+   const batch=snapshot.slice(offset,offset+8);
+   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch})});
+   if(sequence!==refreshSequence)return;
+   if(!res.ok)throw new Error('HTTP '+res.status);
+   data.push(...await res.json());
+   if(sequence!==refreshSequence)return;
+   completed+=batch.length;
+   if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
+  }
+  if(sequence!==refreshSequence)return;
+  allPersonalArticles=[];personalErrors=[];
+  data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
+  loading.classList.remove('is-refreshing');
+  renderPersonalArticles();
+  const succeeded=data.filter(group=>!group.error).length;
+  loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.length+' articles received';
+ }catch(e){
+  if(sequence!==refreshSequence)return;
+  loading.classList.remove('is-refreshing');
+  loading.textContent='Could not refresh feeds: '+e.message;
+ }
+}
 
-function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}if(feeds.length>=8){message('Maximum 8 personal feeds for this version.');return}
+function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f]})}).then(async res=>{if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data[0].error)throw Error(data[0].error);feeds.push(f);save();renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f]})}).then(async res=>{if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(data[0].error)throw Error(data[0].error);if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);row.append(info,button('Subscribe',()=>add(f)));out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
@@ -117,15 +257,21 @@ el('catalog-search').addEventListener('input',queueSearch);
 el('manage-personal').addEventListener('click',()=>showView('discover'));
 
 function chooseIncluded(name){el('read-source').value='shared:'+name;renderReading();showView('news');el('reading-title').scrollIntoView({block:'start',behavior:'smooth'})}
-document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{const name=b.dataset.includedSource;if(!included.includes(name)){included.push(name);saveIncluded();renderManager();message('Subscribed to '+name+'.')} }));
+document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{const name=b.dataset.includedSource;if(!hasSubscription('shared:'+name)&&subscribeRecord(sharedRecord(name))){renderManager();message('Subscribed to '+name+'.')} }));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
+el('all-subscriptions').addEventListener('click',chooseAllSubscriptions);
 el('close-discovery').addEventListener('click',()=>showView('news'));
 el('close-subscriptions').addEventListener('click',()=>showView('news'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
 const sug=el('personal-suggestions');suggestions.forEach(s=>sug.append(button('+ '+s.name,()=>add(s),'personal-suggestion')));
-el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(feeds,null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-personal-feeds.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
+el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(registry,null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-subscriptions-v2.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 el('personal-import').addEventListener('click',()=>el('personal-file').click());
-el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());if(!Array.isArray(data)||data.length>8||!data.every(valid))throw Error('Invalid feed list');feeds=data;save();renderManager();refresh();message('Subscriptions imported.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
-message('Search by topic or publisher to discover subscriptions.');renderManager();showView('news');searchCatalog();refresh();setInterval(refresh,15*60*1000);
+el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());if(!Array.isArray(data))throw Error('Invalid subscription list');
+ const migrated=data.map(r=>r&&r.kind?r:feedRecord(r));
+ if(migrated.some(r=>!recordValid(r)))throw Error('Invalid subscription entry');
+ const unique=[...new Map(migrated.map(r=>[r.id,r])).values()];
+ if(!saveSubscriptions(unique))return;
+ renderManager();refresh();message('Subscriptions imported.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
+message(storageError||'Search by topic or publisher to discover subscriptions.');renderManager();showView('news');searchCatalog();refresh();setInterval(refresh,15*60*1000);
 document.querySelectorAll('#shared-headlines img.article-thumb').forEach(img=>img.addEventListener('error',()=>img.remove()));
 })();`
