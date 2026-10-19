@@ -115,7 +115,9 @@ function arrangeSharedLeads(source){
  lead.querySelectorAll('.subscription-promoted-lead').forEach(a=>a.remove());
  const originals=Array.from(lead.querySelectorAll('article[data-source]'));
  const rows=Array.from(latest.querySelectorAll('article[data-source]'));
- const matches=a=>source==='shared:'+a.dataset.source;
+ // When showing all subscriptions, include only selected shared publishers.
+ // Single-publication views continue to use the same lead-promotion algorithm.
+ const matches=a=>source?source==='shared:'+a.dataset.source:included.includes(a.dataset.source);
  originals.forEach(a=>{a.hidden=!matches(a)});
  rows.forEach(a=>{a.hidden=!matches(a)});
  let spaces=Math.max(0,3-originals.filter(matches).length);
@@ -141,10 +143,12 @@ function arrangeSharedLeads(source){
 function renderReading(){
  const source=el('read-source').value;
  selectedSource=source.startsWith('personal:')?source.slice(9):'';
- const showPersonal=!source.startsWith('shared:');
- const showShared=source.startsWith('shared:');
- el('personal-feed').classList.toggle('personal-hidden',!feeds.length||!showPersonal);
+ // An empty selection means all subscribed publications, not an empty view.
+ const showPersonal=source.startsWith('personal:')||(source===''&&feeds.length>0);
+ const showShared=source.startsWith('shared:')||(source===''&&included.length>0);
+ el('personal-feed').classList.toggle('personal-hidden',!showPersonal);
  el('shared-headlines').classList.toggle('personal-hidden',!showShared);
+ el('subscriptions-empty-notice').hidden=source!==''||registry.length>0;
  arrangeSharedLeads(source);
  el('all-subscriptions').hidden=!source;
  el('reading-title').hidden=!source;

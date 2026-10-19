@@ -1,105 +1,66 @@
 # NewsGo — RSS News Aggregator
 
-**Current version:** v0.2.23 (release candidate; staged locally, not yet committed or pushed). **Last pushed baseline:** v0.2.20.
-**Repository:** https://github.com/richard-mauri/newsgo
-**Service:** https://newsgo.themauris.org
+**Current development candidate:** v0.2.24 (not yet tested on the user's Mac or committed). **Last documented pushed baseline:** v0.2.20; local v0.2.23 changes were previously reported pending commit. Verify `git status` before replacing any locally modified files.
+
+**Repository:** https://github.com/richard-mauri/newsgo  
+**Service:** https://newsgo.themauris.org  
 **Local directory:** `~/projects/newsgo` · **Port:** `8084`
 
 ## Purpose and architecture
 
-NewsGo is a self-hosted Go RSS news aggregator with a browser dashboard. It aggregates shared server-side cached publications and individually requested RSS subscriptions, presenting article thumbnails, headlines and links. The companion **ScraperGo** application displays full article content; it is a separate project and release lifecycle.
+NewsGo is a lightweight self-hosted Go RSS news aggregator with article thumbnails and a Safari-compatible browser dashboard. The companion ScraperGo application opens the full articles and follows a separate release lifecycle. NewsGo uses server-cached publications plus individually requested RSS feeds; the different retrieval mechanisms are implementation details, not separate user-facing subscription systems.
 
-The application runs on an Intel MacBook Air, with public access through a Cloudflare tunnel. The project is organized around `cmd/newsgo`, `internal/dashboard` (HTML and JavaScript presentation, subscription UX), and `internal/feeds` (feed processing). Diagnostics are available under `cmd/feedcheck` and `cmd/discoverycheck`.
+Source layout: `cmd/newsgo`, `internal/dashboard` (HTML, JavaScript, subscription UX), `internal/feeds`. Diagnostic tools: `cmd/feedcheck` and `cmd/discoverycheck`. Go standard library is preferred. The existing `go.mod` specifies Go 1.27.1. The app runs on a 2020 Intel MacBook Air behind Cloudflare Tunnel.
 
-## Build and local development
+## v0.2.24 — Read All Articles correction
+
+The v0.2.23 **Read All Articles** action cleared the selected publication but then hid the server-cached article section unconditionally; if no separately fetched RSS subscriptions existed, *both* article sections were hidden. This affected fresh Safari Dock instances with only built-in publisher subscriptions. The article markup was present in the DOM, but CSS hid its parent container.
+
+v0.2.24 corrects the selection logic. When no specific source is selected, NewsGo displays articles from subscribed server-cached publishers and subscribed individually fetched RSS feeds; unsubscribed server publishers are filtered out. Selecting an individual publication still scopes the article view to that publication. The existing per-publication lead promotion and personal RSS lead/latest grouping are retained. With zero subscriptions, the page provides a Find Subscriptions prompt.
+
+The two feed retrieval and rendering sections remain separate internally; this patch does **not** create one globally timestamp-sorted mixed-source timeline. The goal is to fix the known defect without expanding the scope of the change.
+
+The v0.2.22 browser subscription registry at `localStorage['newsgo.subscriptions.v2']` is untouched, including its v1 migration and import/export. Do not clear website data to deploy this patch, as that would discard local subscriptions. Built-in feeds remain suggestions in Find Subscriptions; personal and built-in subscriptions behave identically for read, unsubscribe, and Read All.
+
+## Regression tests and handoff
+
+The first v0.2.24 patch failed six older tests because those tests searched for exact v0.2.23 version strings or the old shared-only selection behavior. This corrected patch updates the six test assertions to v0.2.24 and preserves the original checks for discovery, navigation, lead promotion, initial hidden state, and Tanner. These are compatibility checks, not a substitute for browser tests.
+
+## Handoff: minimal ZIP patch
+
+This ZIP contains only:
+
+- `internal/dashboard/personal_script.go`
+- `internal/dashboard/dashboard.go`
+- `internal/dashboard/combined_subscriptions_v024_test.go`
+- Six updated existing regression tests (`browse_test.go`, `catalog_test.go`, `discovery_presentation_test.go`, `shared_lead_selection_test.go`, `startup_view_test.go`, `tanner_test.go`) so their expectations track v0.2.24
+- `README.md`
+
+No backend feed code, `.git`, `go.mod`, tunnel settings, shell scripts, or ScraperGo files are included. The two Go source files were derived directly from the user's uploaded v0.2.23 files, not from an assumed older GitHub baseline.
+
+After protecting any local changes, install and verify on the Mac:
 
 ```sh
 cd ~/projects/newsgo
+git status
+unzip -l ~/Downloads/newsgo-v0.2.24-patch.zip
+unzip -o ~/Downloads/newsgo-v0.2.24-patch.zip
+gofmt -w internal/dashboard/*.go
 go test ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
 
-`go.mod` requests Go **1.27.1**. `devbuild.sh` creates macOS Intel and Apple Silicon builds and checksums; see `./devbuild.sh --help` for release options. Avoid changing `newsgo.sh`, Cloudflare configuration, or unrelated files as part of ordinary UI patches. Local UI behavior must also be checked in Safari after a rebuild and reload.
+First verify with a fresh Dock app with two built-in publisher subscriptions: the **Read All Articles** view must show only those publishers, and individual Read Articles must continue working. Also test two RSS feeds, mixed built-in/RSS subscriptions, no subscriptions, unsubscribe behavior, thumbnails, refresh status, and the regular Safari version. Confirm local v0.2.24 code is actually running before evaluating Dock behavior. Existing Safari and Dock web apps have separate local storage.
 
-## Current behavior and implementation decisions
+Once verified, inspect `git status`, `git diff --check`, `git diff --cached --stat`, and `git diff --cached --check` before committing and pushing. Do not tag until after push. Keep the rollback copy or the last good git commit available. **A test-source contract check is not a substitute for a full browser regression test.**
 
-### Unified subscriptions (v0.2.22)
+## Earlier development decisions
 
-There is **one authoritative browser subscription registry** under Safari `localStorage` key `newsgo.subscriptions.v2`. Built-in publications are suggestions under Find Subscriptions, not a distinct category of subscribed content. Existing records from `newsgo.personalFeeds.v1` and `newsgo.includedSubscriptions.v1` are migrated on first use; those earlier keys remain as backups. Once v2 is present it is authoritative: do not re-import stale unsubscribed entries on subsequent loads. Export uses v2; import validates before replacing the registry. The browser registry is scoped to the site origin. Do **not** redesign this already verified system.
+- **v0.2.20:** Last documented pushed baseline (verify repository before release).
+- **v0.2.21:** Generic article-level image fallback for cached publishers; up to eight recent missing images per publisher, shared 12-second deadline, four-hour positive/negative cache.
+- **v0.2.22:** One authoritative subscription registry, valid import/export and legacy migration; avoid redesigning storage.
+- **v0.2.23:** Per-publication lead selection, Lead Stories and Latest Headlines for RSS subscriptions, refresh spinner and progress status, All Subscriptions navigation; pending local commit at earlier handoff.
+- **v0.2.24:** Combined reading view works for built-in-only, RSS-only, and mixed subscriptions, preserving existing infrastructure.
 
-Shared subscriptions are supplied through existing server-side cached feeds; individually discovered RSS subscriptions can require separate browser-initiated fetches. The personal-feed backend accepts batches of at most eight. Subscription totals and individually fetched feed totals therefore need not match.
-
-### Articles and navigation (v0.2.23)
-
-The landing page shows a combined article view. Selecting a single publication scopes the articles to that publication. **All Subscriptions** in the subscription pane and **← All Subscriptions** near an individual publication heading restore the combined view without adding a subscription or requiring a feed reload. The subscribed-publications count excludes this navigation option.
-
-Both shared and individually fetched feeds use **The Lead Stories** (up to three selected articles) followed by **Latest Headlines**. On a publication-specific view, leading articles must be selected from *that publication*, not merely hidden from a global first-three set. Decorative `01`, `02`, `03` lead-story numbering was removed. The personal RSS path must not revert to a flat list.
-
-### Refresh status (v0.2.23)
-
-When individually fetched RSS feeds are refreshed, show a visible animated busy indicator and an accurate status; distinguish individually fetched feeds from already loaded shared publications. Count only real completed fetch operations, not projected or simulated progress. Indicate successes, failures and partial failures, retain previously loaded headlines on refresh errors when possible, prevent overlapping responses from overwriting newer ones, support an accessible live status and reduced-motion users. **Do not** display a bare `0 of 4` that looks inconsistent with six subscriptions.
-
-### Thumbnail recovery (v0.2.21)
-
-Shared built-in feeds, including Guardian Business, use the same article-level Open Graph / Twitter image fallback as individually fetched feeds. Feed-supplied images are preferred. Image metadata lookup is bounded to eight recent image-less articles per built-in publisher per 15-minute refresh, up to eight concurrent lookups under a twelve-second shared deadline. Positive and negative results are cached four hours. The approach is generic, not Guardian-specific, and some publishers will still lack thumbnails.
-
-## Development history
-
-- **v0.2.20** — Last known committed base at the October 19 handoff; subscriptions, discovery and thumbnails.
-- **v0.2.21** — Generic thumbnail fallback for shared publications; user confirmed Guardian Business improvement.
-- **v0.2.22** — Unified subscription registry with legacy migration and export/import; Safari persistence verified across restarts.
-- **v0.2.23 (pending commit)** — Busy spinner and meaningful refresh progress; publication-specific lead selection; unified Lead Stories / Latest Headlines for personal RSS feeds; removal of decorative story numbers; visible return to All Subscriptions. User visually confirmed navigation and refresh indicator. Full final test pass and commit/tag still require local confirmation.
-
-## Verification and release procedure
-
-From the final local working tree run `go test ./...`, inspect `git status`, review staged files using `git diff --cached --stat` and `git diff --cached --check`, and exercise shared feeds, personal feeds, navigation, thumbnails and refresh in Safari. Do not infer a test pass from a test file or a syntax-only check. Once verified, commit and push before tagging a release. The README's baseline status must be updated in the same source regeneration or release patch.
-
-The usual delivery is a **minimal ZIP patch** with paths relative to `~/projects/newsgo`. Every regeneration that modifies source must also include a freshly updated `README.md`. Preserve existing user modifications; avoid distributing outdated copies of concurrently edited files. Do not overwrite scripts, tunnel settings or ScraperGo source without explicit request.
-
-## Next-development handoff
-
-Treat the user’s local files as authoritative whenever `git status` shows uncommitted development beyond GitHub. At this handoff, the user intends to commit v0.2.23; do not assume the commit, tag, or final `go test ./...` completed until confirmed. Subsequent development should begin from the actual committed or uploaded v0.2.23 source, normally advancing to v0.2.24. Keep regressions out of subscription storage, thumbnails, article grouping and All Subscriptions navigation.
-
----
-
-## Earlier README history (preserved)
-
-The original README text below documents the initial FeedCheck milestone and its early diagnostics; its installation directions are **historical**, not the current NewsGo installation procedure.
-
-# NewsGo v0.1.0 — FeedCheck
-
-A standalone Go feed preflight utility. No third-party modules, Docker, or database are required. Supports RSS 2.0, Atom, RSS 1.0 (RDF), and JSON Feed. The initial ten feed URLs are candidates, **not yet verified**. Run the checker from your Mac to measure actual availability.
-
-## Install into your existing repository
-
-You have already created `~/projects/newsgo` and initialized `go.mod` with `github.com/richard-mauri/newsgo`. Extract the patch contents directly into that folder. The ZIP deliberately excludes `go.mod` and `.git`.
-
-```sh
-cd ~/projects/newsgo
-unzip -o ~/Downloads/newsgo-v0.1.0-feedcheck.zip
-go test ./...
-go run ./cmd/feedcheck
-```
-
-The program prints feed status and metadata coverage, and writes `report.json` with per-feed HTTP status, format, item count, timestamps, and errors. `report.json` is local output, not part of the distributed ZIP. Use `-feeds custom.json`, `-out custom-report.json`, `-timeout 20s`, and `-parallel 2` as needed.
-
-Statuses: `healthy` (at least one headline and link, newest known story <=72 hours old), `stale`, `undated`, `empty`, `poor_metadata`, `invalid_feed`, `http_error`, `error`. A successful feed fetch says nothing about ScraperGo article extraction: publisher access restrictions must be separately tested later.
-
-## Scope
-
-FeedCheck is the first milestone, not a running web server. It does not crawl arbitrary URLs, bypass paywalls, or modify ScraperGo. Next milestones are cached aggregation and an HTML dashboard opening articles via the existing ScraperGo URL interface.
-
-## v0.1.1 — RSS link recovery and optional ScraperGo sampling
-
-Some RSS publishers supply article links as a permalink `<guid>` instead of a normal `<link>`, or use an `href` attribute. FeedCheck now recognizes both formats generically, without publisher-specific logic. A GUID explicitly marked `isPermaLink="false"` is not interpreted as an article URL. FeedCheck continues to report missing links when no legitimate HTTP(S) URL exists.
-
-Optionally ask your **running local** ScraperGo service to extract at most two articles per feed:
-
-```sh
-go run ./cmd/feedcheck -scrapergo http://127.0.0.1:8083 -samples 2
-```
-
-The tool makes POST requests to ScraperGo's existing `/api/read` endpoint and reports `readable`, `restricted`, or `other` for each sample in `report.json`, with a terminal summary. Publisher denial and subscription/registration notices are *restricted* rather than failed extraction. `other` includes network and format errors. This is diagnostic information, not a source eligibility decision. Sample tests make additional network requests to publishers via ScraperGo; they are **off by default**. Use `-samples 1` for minimal traffic. No settings, database, tunnel, or service code changes are required.
-
-**Limitations:** a successful response must contain a nonempty article title to count as readable; this does not guarantee a complete clean extraction. Sampling is not a ranking score or comprehensive site certification. FeedCheck refetches a feed once to obtain sample URLs when `-scrapergo` is enabled. Avoid pointing the option to an untrusted service because it receives article URLs.
+Historical README text in GitHub remains available at https://github.com/richard-mauri/newsgo/blob/main/README.md. This refreshed README replaces the long early FeedCheck transcript with the current operational handoff and architecture.
