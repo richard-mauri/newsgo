@@ -1,0 +1,1 @@
+NewsGo v0.2.19: removes first-16 metadata lookups; increases bounded enrichment window to 18s and concurrency 8; removes latest headline numerals; places image beside headline. Some article hosts may block metadata or images. Publisher RSS counts are not changed.

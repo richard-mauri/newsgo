@@ -44,7 +44,7 @@ func TestPersonalAPIValidationAndMarkup(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
-	if !strings.Contains(w.Body.String(), "/personal.js") || !strings.Contains(w.Body.String(), "Manage feeds") {
+	if !strings.Contains(w.Body.String(), "/personal.js") || !strings.Contains(w.Body.String(), "Find Subscriptions") {
 		t.Fatal("personal UI missing")
 	}
 	w = httptest.NewRecorder()

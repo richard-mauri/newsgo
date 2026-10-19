@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/richard-mauri/newsgo/internal/feeds"
+	"html"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +32,7 @@ type personalArticle struct {
 	Category  string `json:"category"`
 	Date      string `json:"date"`
 	Published string `json:"published"`
+	Image     string `json:"image,omitempty"`
 }
 
 // Personal feed fetching uses a dedicated transport to prevent SSRF, including DNS rebinding and redirects.
@@ -97,11 +101,23 @@ type cacheEntry struct {
 	at       time.Time
 }
 
+// A successful fetch is reusable for ten minutes. Transient failures retry soon,
+// and canceled requests are never cached.
+func personalCacheTTL(entry cacheEntry) time.Duration {
+	if entry.err != "" {
+		return 20 * time.Second
+	}
+	return 10 * time.Minute
+}
+
 func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, string) {
+	if err := ctx.Err(); err != nil {
+		return nil, "Request canceled"
+	}
 	personalCache.Lock()
 	cached, ok := personalCache.entries[source.URL]
 	personalCache.Unlock()
-	if ok && time.Since(cached.at) < 10*time.Minute {
+	if ok && time.Since(cached.at) < personalCacheTTL(cached) {
 		return cached.articles, cached.err
 	}
 	select {
@@ -114,13 +130,21 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, s
 	personalCache.Lock()
 	cached, ok = personalCache.entries[source.URL]
 	personalCache.Unlock()
-	if ok && time.Since(cached.at) < 10*time.Minute {
+	if ok && time.Since(cached.at) < personalCacheTTL(cached) {
 		return cached.articles, cached.err
 	}
 	a, err := feeds.FetchArticles(ctx, safeFeedClient(), source)
+	if err == nil {
+		enrichArticleImages(ctx, a)
+	}
 	msg := ""
 	if err != nil {
 		msg = err.Error()
+	}
+	// Do not poison the shared cache with a canceled browser request. A
+	// timed-out feed request may be retried, but cannot mask later success.
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		return a, msg
 	}
 	personalCache.Lock()
 	if len(personalCache.entries) >= 64 {
@@ -168,7 +192,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 				if !a.Published.IsZero() {
 					date = a.Published.Local().Format("Jan 2, 3:04 PM")
 				}
-				res.Articles = append(res.Articles, personalArticle{a.Title, a.URL, s.reader + "/?url=" + url.QueryEscape(a.URL), src.Name, src.Category, date, a.Published.Format(time.RFC3339)})
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, Published: a.Published.Format(time.RFC3339), Image: a.Image})
 			}
 			if msg == "" && len(res.Articles) == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -180,4 +204,86 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_ = json.NewEncoder(w).Encode(results)
+}
+
+// Metadata-only fallback for feeds that omit thumbnails. Never fetch full images.
+// Keep page requests bounded; the feed remains usable if metadata is unavailable.
+var articleMetaRE = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
+var metaAttrRE = regexp.MustCompile(`(?is)\b(property|name|content)\s*=\s*["']([^"']+)["']`)
+
+func articlePageImage(ctx context.Context, client *http.Client, raw string) string {
+	if !safeURL(raw) {
+		return ""
+	}
+	c, cancel := context.WithTimeout(ctx, 2500*time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(c, "GET", raw, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "NewsGo/0.2 (article thumbnail metadata)")
+	req.Header.Set("Accept", "text/html")
+	resp, err := client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+		return ""
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+	if err != nil {
+		return ""
+	}
+	base := resp.Request.URL
+	for _, tag := range articleMetaRE.FindAllString(string(b), -1) {
+		attrs := map[string]string{}
+		for _, m := range metaAttrRE.FindAllStringSubmatch(tag, -1) {
+			attrs[strings.ToLower(m[1])] = html.UnescapeString(m[2])
+		}
+		kind := strings.ToLower(attrs["property"])
+		if kind == "" {
+			kind = strings.ToLower(attrs["name"])
+		}
+		if kind != "og:image" && kind != "og:image:url" && kind != "twitter:image" && kind != "twitter:image:src" {
+			continue
+		}
+		u, e := url.Parse(strings.TrimSpace(attrs["content"]))
+		if e != nil {
+			continue
+		}
+		resolved := base.ResolveReference(u).String()
+		if strings.HasPrefix(resolved, "https://") && safeURL(resolved) {
+			return resolved
+		}
+	}
+	return ""
+}
+func enrichArticleImages(ctx context.Context, articles []feeds.Article) {
+	// Inspect every image-less article, not just the first few.
+	// Keep total enrichment time bounded and do not fetch image bytes.
+	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
+	defer cancel()
+	client := safeFeedClient()
+	slots := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i := range articles {
+		if articles[i].Image != "" || !safeURL(articles[i].URL) {
+			continue
+		}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+				return
+			}
+			if img := articlePageImage(ctx, client, articles[i].URL); img != "" {
+				articles[i].Image = img
+			}
+		}(i)
+	}
+	wg.Wait()
 }

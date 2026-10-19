@@ -16,6 +16,7 @@ type Article struct {
 	Source    string
 	Category  string
 	Published time.Time
+	Image     string
 }
 
 // FetchArticles reuses FeedCheck's parser and conservative 4 MiB response limit.
@@ -53,7 +54,7 @@ func FetchArticles(ctx context.Context, client *http.Client, src Source) ([]Arti
 		if strings.TrimSpace(e.title) == "" || !ValidURL(e.link) {
 			continue
 		}
-		out = append(out, Article{strings.TrimSpace(e.title), strings.TrimSpace(e.link), src.Name, src.Category, e.date})
+		out = append(out, Article{Title: strings.TrimSpace(e.title), URL: strings.TrimSpace(e.link), Source: src.Name, Category: src.Category, Published: e.date, Image: e.image})
 	}
 	return out, nil
 }
