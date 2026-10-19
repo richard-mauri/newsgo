@@ -24,7 +24,7 @@ var sharedThumbnailCache = struct {
 // Work is bounded independently of the number of feed articles, and only the
 // most recent image-less articles per publisher are probed during a refresh.
 func enrichSharedImages(ctx context.Context, articles []feeds.Article, lookup func(context.Context, string) string) {
-	const perPublisher = 8
+	const perPublisher = 45
 	const maxConcurrent = 8
 	counts := map[string]int{}
 	type job struct {

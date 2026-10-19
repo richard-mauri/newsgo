@@ -1,66 +1,67 @@
 # NewsGo — RSS News Aggregator
 
-**Current development candidate:** v0.2.24 (not yet tested on the user's Mac or committed). **Last documented pushed baseline:** v0.2.20; local v0.2.23 changes were previously reported pending commit. Verify `git status` before replacing any locally modified files.
+**Current development candidate:** v0.2.25 (Go tests pass on the user’s Mac; Guardian thumbnail coverage verified after generic fallback limit adjustment; release not yet tagged). **Last confirmed pushed and tagged baseline:** v0.2.24, commit `199f191503300a27fa7196d63fc01c2838197daf`.
 
 **Repository:** https://github.com/richard-mauri/newsgo  
 **Service:** https://newsgo.themauris.org  
 **Local directory:** `~/projects/newsgo` · **Port:** `8084`
 
-## Purpose and architecture
+## Purpose and design
 
-NewsGo is a lightweight self-hosted Go RSS news aggregator with article thumbnails and a Safari-compatible browser dashboard. The companion ScraperGo application opens the full articles and follows a separate release lifecycle. NewsGo uses server-cached publications plus individually requested RSS feeds; the different retrieval mechanisms are implementation details, not separate user-facing subscription systems.
+NewsGo is a self-hosted Go RSS news aggregator integrated with the separate ScraperGo reader. Cached server-side publishers and user-added RSS feeds remain different *retrieval* paths, but a single subscription registry and unified reading navigation provide one subscription experience. The browser-local registry is `newsgo.subscriptions.v2`; legacy migration, import/export and all saved subscriptions are preserved. Each Safari tab or Dock web app may maintain separate website data.
 
-Source layout: `cmd/newsgo`, `internal/dashboard` (HTML, JavaScript, subscription UX), `internal/feeds`. Diagnostic tools: `cmd/feedcheck` and `cmd/discoverycheck`. Go standard library is preferred. The existing `go.mod` specifies Go 1.27.1. The app runs on a 2020 Intel MacBook Air behind Cloudflare Tunnel.
+The app uses Go standard-library code. Project areas: `cmd/newsgo`, `internal/dashboard`, `internal/feeds`. Diagnostic tools: `cmd/feedcheck` and `cmd/discoverycheck`. Do not modify ScraperGo, Cloudflare Tunnel, `newsgo.sh`, or `devbuild.sh` as part of a dashboard cleanup.
 
-## v0.2.24 — Read All Articles correction
+## v0.2.25 — Focused frontend cleanup
 
-The v0.2.23 **Read All Articles** action cleared the selected publication but then hid the server-cached article section unconditionally; if no separately fetched RSS subscriptions existed, *both* article sections were hidden. This affected fresh Safari Dock instances with only built-in publisher subscriptions. The article markup was present in the DOM, but CSS hid its parent container.
+The v0.2.24 fix for **Read All Articles** remains intact. This release extracts a small common `readingSelection()` model from repeated conditional logic in `renderReading()` and `arrangeSharedLeads()`. It identifies the active source, subscribed server publisher eligibility, and visibility for both article groups. Per-publisher promoted lead stories continue working; individually fetched RSS feeds retain their existing Lead Stories and Latest Headlines layout. It preserves both fetch mechanisms, the browser subscription registry, and the interface. The thumbnail fallback limit is changed separately below. This is **not** a global chronological merge of cached and separately fetched RSS stories.
 
-v0.2.24 corrects the selection logic. When no specific source is selected, NewsGo displays articles from subscribed server-cached publishers and subscribed individually fetched RSS feeds; unsubscribed server publishers are filtered out. Selecting an individual publication still scopes the article view to that publication. The existing per-publication lead promotion and personal RSS lead/latest grouping are retained. With zero subscriptions, the page provides a Find Subscriptions prompt.
+Existing string-contract tests were updated for the factored selection helper and for the bumped script cache-busting version. Do not treat these static source checks as substitutes for actual browser tests.
 
-The two feed retrieval and rendering sections remain separate internally; this patch does **not** create one globally timestamp-sorted mixed-source timeline. The goal is to fix the known defect without expanding the scope of the change.
+## Local verification and release handoff
 
-The v0.2.22 browser subscription registry at `localStorage['newsgo.subscriptions.v2']` is untouched, including its v1 migration and import/export. Do not clear website data to deploy this patch, as that would discard local subscriptions. Built-in feeds remain suggestions in Find Subscriptions; personal and built-in subscriptions behave identically for read, unsubscribe, and Read All.
-
-## Regression tests and handoff
-
-The first v0.2.24 patch failed six older tests because those tests searched for exact v0.2.23 version strings or the old shared-only selection behavior. This corrected patch updates the six test assertions to v0.2.24 and preserves the original checks for discovery, navigation, lead promotion, initial hidden state, and Tanner. These are compatibility checks, not a substitute for browser tests.
-
-## Handoff: minimal ZIP patch
-
-This ZIP contains only:
-
-- `internal/dashboard/personal_script.go`
-- `internal/dashboard/dashboard.go`
-- `internal/dashboard/combined_subscriptions_v024_test.go`
-- Six updated existing regression tests (`browse_test.go`, `catalog_test.go`, `discovery_presentation_test.go`, `shared_lead_selection_test.go`, `startup_view_test.go`, `tanner_test.go`) so their expectations track v0.2.24
-- `README.md`
-
-No backend feed code, `.git`, `go.mod`, tunnel settings, shell scripts, or ScraperGo files are included. The two Go source files were derived directly from the user's uploaded v0.2.23 files, not from an assumed older GitHub baseline.
-
-After protecting any local changes, install and verify on the Mac:
+The working tree contains the v0.2.25 subscription-selection cleanup and eager-loading adjustment, plus the separate generic thumbnail fallback change to 45 probes per publisher and its regression test. The last confirmed pushed and tagged baseline is v0.2.24. Before changing files, inspect `git status` and preserve local modifications.
 
 ```sh
 cd ~/projects/newsgo
 git status
-unzip -l ~/Downloads/newsgo-v0.2.24-patch.zip
-unzip -o ~/Downloads/newsgo-v0.2.24-patch.zip
-gofmt -w internal/dashboard/*.go
 go test ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
 
-First verify with a fresh Dock app with two built-in publisher subscriptions: the **Read All Articles** view must show only those publishers, and individual Read Articles must continue working. Also test two RSS feeds, mixed built-in/RSS subscriptions, no subscriptions, unsubscribe behavior, thumbnails, refresh status, and the regular Safari version. Confirm local v0.2.24 code is actually running before evaluating Dock behavior. Existing Safari and Dock web apps have separate local storage.
+Browser-check in regular Safari and a NewsGo Dock app: **Read All Articles** with only two server-cached subscriptions, with only personal RSS feeds, and mixed; read a single publisher and return to All Subscriptions; ensure no unrelated publishers appear. Check article cards, thumbnails, source labels, refresh indicator, unsubscribe, and persistent subscription counts. Do **not** clear website data during installation.
 
-Once verified, inspect `git status`, `git diff --check`, `git diff --cached --stat`, and `git diff --cached --check` before committing and pushing. Do not tag until after push. Keep the rollback copy or the last good git commit available. **A test-source contract check is not a substitute for a full browser regression test.**
+After all tests and local checks pass, inspect `git diff --check`, `git status`, stage only intended files, review `git diff --cached --stat` and `git diff --cached --check`, commit, push, and only then tag v0.2.25. Roll back to the annotated `v0.2.24` tag if necessary.
 
-## Earlier development decisions
+## Prior releases
 
-- **v0.2.20:** Last documented pushed baseline (verify repository before release).
-- **v0.2.21:** Generic article-level image fallback for cached publishers; up to eight recent missing images per publisher, shared 12-second deadline, four-hour positive/negative cache.
-- **v0.2.22:** One authoritative subscription registry, valid import/export and legacy migration; avoid redesigning storage.
-- **v0.2.23:** Per-publication lead selection, Lead Stories and Latest Headlines for RSS subscriptions, refresh spinner and progress status, All Subscriptions navigation; pending local commit at earlier handoff.
-- **v0.2.24:** Combined reading view works for built-in-only, RSS-only, and mixed subscriptions, preserving existing infrastructure.
+- **v0.2.21:** Generic thumbnail metadata fallback for server-cached feeds.
+- **v0.2.22:** Unified authoritative local subscription registry with migration and import/export.
+- **v0.2.23:** Refresher status, source-scoped leads, article sections, navigation.
+- **v0.2.24:** Fixed Read All Articles for cached-only, RSS-only, and mixed subscriptions. Tagged at commit `199f191`.
+- **v0.2.25:** Factored common selection logic; eagerly loads all provided thumbnail URLs; increases generic shared thumbnail fallback from 8 to 45 candidate articles per publisher per refresh. No subscription storage change.
 
-Historical README text in GitHub remains available at https://github.com/richard-mauri/newsgo/blob/main/README.md. This refreshed README replaces the long early FeedCheck transcript with the current operational handoff and architecture.
+
+## v0.2.25 corrected test handoff
+
+The first v0.2.25 ZIP mistakenly added `combined_subscriptions_v025_test.go` with a test name already defined by `combined_subscriptions_v024_test.go`. This corrected ZIP does **not** add a duplicate test file. Instead, it updates the existing v0.2.24 regression test to verify the v0.2.25 `readingSelection()` helper. The implementation files are unchanged from the original v0.2.25 candidate.
+
+If the previous v0.2.25 ZIP was extracted and the duplicate test file still exists, remove only `internal/dashboard/combined_subscriptions_v025_test.go` before running `go test ./...`. The full suite must pass on the Mac before rebuilding or pushing.
+
+
+## v0.2.25 thumbnail loading adjustment (October 19, 2026)
+
+All available article thumbnails are now requested using `loading="eager"` for server-rendered cached-publication cards and `img.loading='eager'` for dynamically created RSS cards. This is not a publisher-specific exception. Image extraction rules, metadata lookup implementation, caches, article selection, subscriptions and CSS layout are unchanged; the generic fallback lookup budget is increased as described below. Articles without an image URL still have no thumbnail. Eager loading may increase page load, memory and bandwidth on long lists; verify performance in Safari and standalone Dock web app.
+
+## v0.2.25 generic thumbnail fallback adjustment (October 19, 2026)
+
+In `internal/dashboard/shared_images.go`, `enrichSharedImages()` now uses `perPublisher = 45` rather than `8`. The independent `maxConcurrent = 8` setting remains unchanged. The fallback fetches article-page Open Graph or Twitter image metadata only when the feed did not provide a usable image URL. The limit is **per publisher per shared-feed refresh**, not a guaranteed number of successful images. It applies uniformly to all publishers, with no Guardian-specific branches.
+
+The generic fallback retains its **12-second overall deadline**, **2.5-second per-article request timeout**, and **four-hour cache for both successful and unsuccessful lookups**. Enlarging the budget can increase metadata requests, and the deadline can still limit how many finish. No image bytes are fetched by this server-side metadata lookup. Browser eager loading is independent: it only changes when existing thumbnail URLs are requested.
+
+`internal/dashboard/shared_images_test.go` now constructs 45 image-less articles and verifies that the fallback can dispatch 45 bounded lookups. The user reported `go test ./...` passing after this change and confirmed all Guardian thumbnails appeared in NewsGo, compared with 8 present and 37 missing before the budget increase. This is a local observation, not a guarantee that every article on every feed will have metadata.
+
+## Development and release notes
+
+The previous v0.2.25 handoff briefly included a duplicate `combined_subscriptions_v025_test.go` test; the corrected candidate updates `combined_subscriptions_v024_test.go` instead. If the obsolete duplicate file remains in the local tree, remove that file only. Do not clear Safari/Dock website data or localStorage. The current README update is standalone; no ZIP needs to be reapplied. Run `git diff --check`, inspect `git status` and `git diff`, verify Safari/Dock application behavior, then stage only intended files, commit, push, and tag v0.2.25 after the push.

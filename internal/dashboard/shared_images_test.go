@@ -29,14 +29,14 @@ func TestSharedThumbnailPerPublisherBudget(t *testing.T) {
 	sharedThumbnailCache.Lock()
 	sharedThumbnailCache.entries = map[string]sharedThumbnailEntry{}
 	sharedThumbnailCache.Unlock()
-	a := make([]feeds.Article, 25)
+	a := make([]feeds.Article, 45)
 	for i := range a {
 		a[i] = feeds.Article{Source: "The Publisher", URL: "https://example.com/a" + string(rune('A'+i))}
 	}
 	var calls atomic.Int64
 	enrichSharedImages(context.Background(), a, func(context.Context, string) string { calls.Add(1); return "" })
-	if calls.Load() != 8 {
-		t.Fatalf("expected 8 bounded lookups; got %d", calls.Load())
+	if calls.Load() != 45 {
+		t.Fatalf("expected 45 bounded lookups; got %d", calls.Load())
 	}
 	sharedThumbnailCache.Lock()
 	for _, v := range sharedThumbnailCache.entries {

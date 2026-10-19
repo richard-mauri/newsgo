@@ -105,9 +105,23 @@ function renderSourceSelector(){
  if(selectedSource&&!feeds.some(f=>f.url===selectedSource))selectedSource='';
  const select=el('read-source');if(select.value.startsWith('personal:')&&!feeds.some(f=>'personal:'+f.url===select.value))select.value='';
 }
+// One selection model controls both cached-publisher and fetched-RSS views.
+// Keep data retrieval separate, but do not give the two subscription types
+// different navigation semantics.
+function readingSelection(source){
+ const all=source==='';
+ const sharedName=source.startsWith('shared:')?source.slice(7):'';
+ const feedURL=source.startsWith('personal:')?source.slice(9):'';
+ const visibleShared=name=>sharedName?name===sharedName:(all&&included.includes(name));
+ return {
+  source,all,sharedName,feedURL,visibleShared,
+  showShared:!!sharedName||(all&&included.length>0),
+  showPersonal:!!feedURL||(all&&feeds.length>0)
+ };
+}
 // Shared headlines are server-ranked across all publishers. When viewing one
 // publisher, promote its earliest latest-headline rows into the lead slots.
-function arrangeSharedLeads(source){
+function arrangeSharedLeads(selection){
  const root=el('shared-headlines');
  const lead=root.querySelector('.feature-grid');
  const latest=root.querySelector('.latest');
@@ -115,9 +129,7 @@ function arrangeSharedLeads(source){
  lead.querySelectorAll('.subscription-promoted-lead').forEach(a=>a.remove());
  const originals=Array.from(lead.querySelectorAll('article[data-source]'));
  const rows=Array.from(latest.querySelectorAll('article[data-source]'));
- // When showing all subscriptions, include only selected shared publishers.
- // Single-publication views continue to use the same lead-promotion algorithm.
- const matches=a=>source?source==='shared:'+a.dataset.source:included.includes(a.dataset.source);
+ const matches=a=>selection.visibleShared(a.dataset.source);
  originals.forEach(a=>{a.hidden=!matches(a)});
  rows.forEach(a=>{a.hidden=!matches(a)});
  let spaces=Math.max(0,3-originals.filter(matches).length);
@@ -141,19 +153,17 @@ function arrangeSharedLeads(source){
  }
 }
 function renderReading(){
- const source=el('read-source').value;
- selectedSource=source.startsWith('personal:')?source.slice(9):'';
- // An empty selection means all subscribed publications, not an empty view.
- const showPersonal=source.startsWith('personal:')||(source===''&&feeds.length>0);
- const showShared=source.startsWith('shared:')||(source===''&&included.length>0);
- el('personal-feed').classList.toggle('personal-hidden',!showPersonal);
- el('shared-headlines').classList.toggle('personal-hidden',!showShared);
- el('subscriptions-empty-notice').hidden=source!==''||registry.length>0;
- arrangeSharedLeads(source);
- el('all-subscriptions').hidden=!source;
- el('reading-title').hidden=!source;
- el('reading-title').textContent=source?(source.startsWith('shared:')?source.slice(7):feeds.find(f=>'personal:'+f.url===source)?.name||'Selected subscription'):'';
- el('personal-section-label').hidden=!!source;
+ const selection=readingSelection(el('read-source').value);
+ selectedSource=selection.feedURL;
+ el('personal-feed').classList.toggle('personal-hidden',!selection.showPersonal);
+ el('shared-headlines').classList.toggle('personal-hidden',!selection.showShared);
+ el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0;
+ arrangeSharedLeads(selection);
+ el('all-subscriptions').hidden=selection.all;
+ el('reading-title').hidden=selection.all;
+ el('reading-title').textContent=selection.sharedName||(
+  selection.feedURL?(feeds.find(f=>f.url===selection.feedURL)?.name||'Selected subscription'):'');
+ el('personal-section-label').hidden=!selection.all;
  renderPersonalArticles();
 }
 let allPersonalArticles=[], personalErrors=[];
@@ -175,7 +185,7 @@ function renderPersonalArticles(){
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
   sub.append(original);body.append(meta,title,sub);
   if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
-   const img=document.createElement('img');img.className='article-thumb';img.src=a.image;img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove());
+   const img=document.createElement('img');img.className='article-thumb';img.src=a.image;img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove());
    if(featured)body.prepend(img);else row.append(img);
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
