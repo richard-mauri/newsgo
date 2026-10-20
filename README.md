@@ -1,60 +1,45 @@
-# ScraperGo — Clean Web Article Reader
+# NewsGo — RSS Feed Dashboard
 
-**Read web articles without the surrounding clutter.** ScraperGo is a self-hosted web reader that retrieves available article HTML and presents the main story in a simplified layout.
+NewsGo is a lightweight, self-hosted news aggregator built in Go. It collects headlines from configured RSS feeds, presents them in a local browser dashboard and offers an easy path to open an article in **ScraperGo**, a separate clean-article reader.
 
-**Public reader:** <https://scrapergo.themauris.org/>  
-**Source:** <https://github.com/richard-mauri/scrapergo>
+**Source:** https://github.com/richard-mauri/newsgo  
+**Local dashboard (documented default):** http://127.0.0.1:8084/
 
-> **For AI coding agents and future chat sessions:** Read [`AGENTS.md`](AGENTS.md) before changing code or proposing development/Git commands. `AGENTS.md` contains the development workflow, current chat handoff, regression history, patch conventions, and mandatory checks. This README is written primarily for readers and people learning what the project does.
+> **For AI coding agents and future development chats:** Read [AGENTS.md](AGENTS.md) for current project status, source-baseline verification, test/patch workflow, Git safeguards and the development handoff. This README is for NewsGo users and general project context.
 
-## What it does
+## What NewsGo does
 
-ScraperGo aims to retain the parts of a web article that matter while removing unrelated navigation, advertising, and promotional material. Depending on the publisher's HTML, the reading view can include the headline, author, paragraphs, article images, captions, section headings, and hyperlinks.
+NewsGo gathers headlines from RSS news sources, orders available stories by publication date and presents a browsing dashboard. It deduplicates the same article URL and may retain previously fetched headlines when an individual feed has a temporary retrieval failure.
 
-The application also offers a **TXT download** of the extracted article. This is useful for saving readable text and checking whether an article's paragraphs were actually captured.
+It supports source filtering and personal feed configuration through the project's `feeds.json` file. Some built-in/shared publisher headlines are intentionally not shown on initial load and appear only after selecting the corresponding built-in publisher; personal-subscription headlines follow their own configured behavior. Exact options depend on the running build.
 
-ScraperGo is not a browser emulator or a subscription bypass. It cannot guarantee access to articles requiring logins, subscriptions, JavaScript-only rendering, or publishers that reject automated requests. Availability and completeness depend on the HTML actually returned by the publisher.
+Click an article headline to open it in [ScraperGo](https://scrapergo.themauris.org/), which attempts to show its publicly available article text in a simplified reader. The **Original** link opens the publisher's own page. NewsGo and ScraperGo are separate applications: an RSS feed is not the same as a full publisher article.
 
-## Using the reader
+## Running locally
 
-Open <https://scrapergo.themauris.org/> and enter the web address of an article. ScraperGo retrieves the publicly available document and displays a simplified reading view.
+NewsGo is a Go application. In the documented Mac setup, from the local repository:
 
-If the result is incomplete or formatted incorrectly, compare it with the original publisher page. The **TXT download** helps narrow down the problem: content missing in both the TXT file and reading view may have been lost during retrieval or extraction; content present in TXT but missing on-screen points more directly to presentation.
+```sh
+cd ~/projects/newsgo
+go run ./cmd/newsgo
+```
 
-Publisher images and links are preserved where possible, but their positions and styles may differ from the original website.
+Then open http://127.0.0.1:8084/ in Safari. The separate FeedCheck command can be started with `go run ./cmd/feedcheck` when checking source feeds. The project also contains a `discoverycheck` command and established build/start scripts for its normal hosted setup.
 
-## Reading quality and known limitations
+The dashboard may briefly be empty while initial feeds are fetched asynchronously. Upstream RSS hosts can be slow, unavailable or rate-limit requests; a missing headline does not necessarily mean NewsGo is malfunctioning.
 
-Websites structure articles in different ways. Some put editorial paragraphs inside containers shared with advertisements; some use complex photo galleries or custom heading markup. ScraperGo attempts to identify the complete article without including unrelated page elements, but extraction can still be imperfect.
+## Feed configuration and operations
 
-As of the **locally verified v0.2.55 development build (October 20, 2026)**, ScraperGo successfully recovered the full text and previously missing showroom photographs in a long Ars Technica article that had been truncated in earlier builds. The user confirmed this improvement. **Formatting fidelity remains incomplete**: for example, a large bold section heading, “The shopping experience,” is currently displayed like an ordinary paragraph. Heading and emphasis preservation is an active improvement area.
+Configured feeds are kept in `feeds.json`. Preserve existing subscriptions when upgrading. The dashboard caches a limited number of stories in memory, so a service restart triggers fresh fetching. The established local server uses loopback by default and is not intended as an unauthenticated public service.
 
-That local development status does **not** imply v0.2.55 has been pushed, tagged, or publicly deployed; consult the repository's releases for published versions.
+NewsGo's operational Mac setup uses an application binary and its **own Cloudflare Tunnel**, independent of ScraperGo's tunnel. Tunnel availability and URL configuration depend on the server setup; use the existing project scripts rather than copying procedures from another application.
 
-## Where ScraperGo runs
+## Relationship to ScraperGo
 
-The application is written in **Go** and serves its reading interface over HTTP. In the established local setup, it listens at:
+[ScraperGo](https://github.com/richard-mauri/scrapergo) retrieves available web-article HTML and attempts to preserve the story's paragraphs, photographs, headings and links. It is separate from NewsGo. Publisher access controls, JavaScript-only content and feed-summary limitations can prevent either application from showing all article text.
 
-`http://localhost:8083/`
+## Data limitations and security
 
-The public HTTPS endpoint is:
+RSS data and publication timestamps come from external providers; content, availability and accuracy vary. Neither NewsGo nor ScraperGo bypasses paywalls. If you expose the dashboard beyond localhost, protect it with appropriate access controls.
 
-<https://scrapergo.themauris.org/>
-
-The public address uses the existing Cloudflare Tunnel. The tunnel is a routing mechanism and should not, by itself, be treated as an authentication system.
-
-This repository has existing scripts for building and running the service (`devbuild.sh` and `scrapergo.sh`). Coding agents and maintainers should use the development and operational instructions in [`AGENTS.md`](AGENTS.md) rather than relying on ad hoc setup or release commands.
-
-## Relationship to NewsGo
-
-[NewsGo](https://github.com/richard-mauri/newsgo) is a separate RSS/news aggregation project. ScraperGo can provide a cleaner view of articles discovered through NewsGo, but ScraperGo itself is not an RSS reader. The two projects have separate codebases and development processes.
-
-## Security and publisher access
-
-ScraperGo processes web URLs with request restrictions and publisher-access handling. It is designed to display content made available by the publisher, not to circumvent paywalls or account requirements. Publisher copyright and usage terms still apply to the source articles and their photographs.
-
-## Reporting a problem
-
-The most useful details are the **article URL**, the **ScraperGo version shown in the interface**, what is **missing or incorrectly formatted**, and whether it also appears in the downloaded **TXT** file. A comparison with the original article is helpful for issues involving images, captions, section headings, or missing ending paragraphs.
-
-For engineering diagnostics, previously verified regressions, development patch procedures, Git checks, and cross-chat continuity, see [`AGENTS.md`](AGENTS.md).
+For engineering history, development changes and cross-chat continuity, consult [AGENTS.md](AGENTS.md). Historical `NEWSGO-*.md` files may describe older milestones and should not be mistaken for the current software version.
