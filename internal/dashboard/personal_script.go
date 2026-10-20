@@ -5,7 +5,8 @@ const personalJS = `(function(){
 const key='newsgo.subscriptions.v2';
 const legacyPersonalKey='newsgo.personalFeeds.v1';
 const legacyIncludedKey='newsgo.includedSubscriptions.v1';
-const includedNames=Array.from(document.querySelectorAll('[data-included-source]'),b=>b.dataset.includedSource);
+const catalog=Array.from(document.querySelectorAll('[data-included-source]'),b=>({name:b.dataset.includedSource,url:b.dataset.feedUrl,category:b.dataset.category||'Other'}));
+const catalogByName=new Map(catalog.map(f=>[f.name,f]));
 const feedIdentity=u=>{try{const x=new URL(u);x.hash='';return 'feed:'+x.href}catch(_){return 'feed:'+u}};
 const sharedRecord=name=>({id:'shared:'+name,kind:'shared',name});
 const feedRecord=f=>({id:feedIdentity(f.url),kind:'feed',name:f.name,url:f.url,category:f.category||'Other'});
@@ -30,10 +31,6 @@ function saveExclusions(list){
 }
 function excludeDomain(value){const domain=exclusionDomain(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedDomains.includes(domain))saveExclusions([...excludedDomains,domain]);else message(domain+' is already excluded.')}
 function toggleDomain(value){const domain=exclusionDomain(value);if(!domain){message('Could not identify a website domain.');return}if(excludedDomains.includes(domain))saveExclusions(excludedDomains.filter(x=>x!==domain));else excludeDomain(domain)}
-function publisherForSource(name){
- const a=[...document.querySelectorAll('#shared-headlines article[data-source]')].find(x=>x.dataset.source===name);
- return a?exclusionDomain(a.querySelector('a.original')?.href||''):'';
-}
 function publisherForFeed(feed){return exclusionDomain(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
 function excludeButton(domain){const d=exclusionDomain(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
@@ -44,15 +41,8 @@ function renderExclusionManager(){
  if(!excludedDomains.length){root.textContent='No sites excluded.';return}
  excludedDomains.slice().sort().forEach(d=>{const row=document.createElement('div');row.className='personal-row';const label=document.createElement('strong');label.textContent=d;row.append(label,button('Allow site',()=>toggleDomain(d)));root.append(row)})
 }
-function filterSharedHeadlines(){document.querySelectorAll('#shared-headlines article[data-source]').forEach(a=>{
- const url=a.querySelector('a.original')?.href||'';a.dataset.excluded=excludedURL(url)?'true':'false';
- if(a.dataset.excluded==='true')a.hidden=true;
- if(!a.querySelector('.exclude-site')){const b=excludeButton(url);if(b)a.append(b)}
- const b=a.querySelector('.exclude-site');if(b)b.textContent=excludedURL(url)?'Allow this site':'Exclude this site';
- })}
 function selectedPublisherExcluded(){
  const value=el('read-source').value;
- if(value.startsWith('shared:')){const domain=publisherForSource(value.slice(7));return !!domain&&excludedURL(domain)}
  if(value.startsWith('personal:')){const source=feeds.find(f=>f.url===value.slice(9));return !!source&&excludedURL(publisherForFeed(source))}
  return false;
 }
@@ -64,14 +54,16 @@ function refreshExclusionViews(){
 }
 readExclusions();
 let registry=[], storageError='';
+const unifiedKey='newsgo.subscriptions.unified.v1';
 function loadSubscriptions(){
  try{
-  const current=localStorage.getItem(key);
+  const current=localStorage.getItem(unifiedKey)||localStorage.getItem(key);
   if(current!==null){
    const value=JSON.parse(current);
    if(!Array.isArray(value))throw Error('Subscription registry has an invalid format.');
    if(value.some(r=>!recordValid(r)))throw Error('Subscription registry contains invalid entries; no data was discarded.');
-   registry=value;
+   registry=convertLegacy(value);
+   localStorage.setItem(unifiedKey,JSON.stringify(registry));
    return;
   }
   const oldFeeds=JSON.parse(localStorage.getItem(legacyPersonalKey)||'[]');
@@ -85,20 +77,31 @@ function loadSubscriptions(){
   const unique=new Map(proposed.map(r=>[r.id,r]));
   const migrated=[...unique.values()];
   localStorage.setItem(key,JSON.stringify(migrated)); // Migration commits only after a successful write.
-  registry=migrated; // Both legacy records remain available for recovery.
+  registry=convertLegacy(migrated);
+  localStorage.setItem(unifiedKey,JSON.stringify(registry));
  }catch(e){storageError='Subscription storage: '+e.message+' Existing records were left unchanged.'}
+}
+// Catalog publisher subscriptions migrate to identical feed records. Unknown
+// legacy publishers are preserved for review instead of being discarded.
+function convertLegacy(records){
+ const converted=records.map(r=>{
+  if(r.kind!=='shared')return r;
+  const src=catalogByName.get(r.name);
+  return src&&src.url?feedRecord(src):r;
+ });
+ return [...new Map(converted.map(r=>[r.id,r])).values()];
 }
 loadSubscriptions();
 let included=[], feeds=[];
 function syncDerived(){
- included=registry.filter(r=>r.kind==='shared').map(r=>r.name);
+ included=registry.filter(r=>r.kind==='shared').map(r=>r.name); // unresolved legacy records only
  feeds=registry.filter(r=>r.kind==='feed').map(r=>({name:r.name,url:r.url,category:r.category||'Other'}));
 }
 syncDerived();
 function saveSubscriptions(next){
  try{
   const serialized=JSON.stringify(next);
-  localStorage.setItem(key,serialized);
+  localStorage.setItem(unifiedKey,serialized);
   registry=next;syncDerived();return true;
  }catch(e){message('Could not save subscriptions. No changes were applied: '+e.message);return false}
 }
@@ -159,53 +162,12 @@ function renderSourceSelector(){
  if(selectedSource&&!feeds.some(f=>f.url===selectedSource))selectedSource='';
  const select=el('read-source');if(select.value.startsWith('personal:')&&!feeds.some(f=>'personal:'+f.url===select.value))select.value='';
 }
-// One selection model controls both cached-publisher and fetched-RSS views.
-// Keep data retrieval separate, but do not give the two subscription types
-// different navigation semantics.
+// Every visible article is fetched from a subscribed feed. The server catalog
+// is discovery metadata only; it never supplies unsolicited headlines.
 function readingSelection(source){
  const all=source==='';
- const sharedName=source.startsWith('shared:')?source.slice(7):'';
  const feedURL=source.startsWith('personal:')?source.slice(9):'';
- const visibleShared=name=>sharedName?name===sharedName:(all&&included.includes(name));
- return {
-  source,all,sharedName,feedURL,visibleShared,
-  showShared:!!sharedName||(all&&included.length>0),
-  showPersonal:!!feedURL||(all&&feeds.length>0)
- };
-}
-// Shared headlines are server-ranked across all publishers. When viewing one
-// publisher, promote its earliest latest-headline rows into the lead slots.
-function arrangeSharedLeads(selection){
- const root=el('shared-headlines');
- const lead=root.querySelector('.feature-grid');
- const latest=root.querySelector('.latest');
- if(!lead||!latest)return;
- lead.querySelectorAll('.subscription-promoted-lead').forEach(a=>a.remove());
- const originals=Array.from(lead.querySelectorAll('article[data-source]'));
- const rows=Array.from(latest.querySelectorAll('article[data-source]'));
- const matches=a=>selection.visibleShared(a.dataset.source);
- const eligible=a=>matches(a)&&!excludedURL(a.querySelector('a.original')?.href||'');
- originals.forEach(a=>{a.hidden=!eligible(a)});
- rows.forEach(a=>{a.hidden=!eligible(a)});
- let spaces=Math.max(0,3-originals.filter(eligible).length);
- for(const row of rows){
-  if(!spaces||!eligible(row))continue;
-  const card=document.createElement('article');
-  card.className='feature subscription-promoted-lead';
-  card.dataset.source=row.dataset.source;
-  card.dataset.category=row.dataset.category;
-  const body=document.createElement('div');
-  const img=row.querySelector('img.article-thumb');
-  if(img)body.append(img.cloneNode(true));
-  const itemBody=row.querySelector('.item-body');
-  if(itemBody){
-   const copy=itemBody.cloneNode(true);
-   const original=copy.querySelector('.original');
-   if(original)original.textContent='Original publisher ↗';
-   while(copy.firstChild)body.append(copy.firstChild);
-  }
-  card.append(body);const eb=excludeButton(row.querySelector('a.original')?.href||'');if(eb)card.append(eb);lead.append(card);row.hidden=true;spaces--;
- }
+ return {source,all,feedURL,showPersonal:true};
 }
 function renderReading(){
  // Also guard saved/selector-driven navigation to excluded publishers.
@@ -213,15 +175,11 @@ function renderReading(){
  const selection=readingSelection(el('read-source').value);
  selectedSource=selection.feedURL;
  el('personal-feed').classList.toggle('personal-hidden',!selection.showPersonal);
- el('shared-headlines').classList.toggle('personal-hidden',!selection.showShared);
  el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0;
- arrangeSharedLeads(selection);
- filterSharedHeadlines();
  el('all-subscriptions').hidden=selection.all;
  el('reading-title').hidden=selection.all;
- el('reading-title').textContent=selection.sharedName||(
-  selection.feedURL?(feeds.find(f=>f.url===selection.feedURL)?.name||'Selected subscription'):'');
- el('personal-section-label').hidden=!selection.all;
+ el('reading-title').textContent=selection.feedURL?(feeds.find(f=>f.url===selection.feedURL)?.name||'Selected subscription'):'';
+ el('personal-section-label').hidden=true;
  renderPersonalArticles();
 }
 let allPersonalArticles=[], personalErrors=[];
@@ -253,7 +211,7 @@ function renderPersonalArticles(){
  el('personal-latest-section').hidden=!hasArticles;
  const selected=feeds.find(f=>f.url===selectedSource);
  if(!el('personal-loading').classList.contains('is-refreshing'))
-  el('personal-loading').textContent=seen.size+' headlines'+(selected?' from '+selected.name:' from your followed sources')+(personalErrors.length?' · '+personalErrors.join('; '):'');
+  el('personal-loading').textContent=seen.size+' headlines'+(selected?' from '+selected.name:' from your subscriptions')+(personalErrors.length?' · '+personalErrors.join('; '):'');
 }
 
 function renderManager(){
@@ -264,9 +222,20 @@ function renderManager(){
  const allRow=document.createElement('div');allRow.className='personal-row';
  const allInfo=document.createElement('strong');allInfo.textContent='All Subscriptions';
  allRow.append(allInfo,button('Read All Articles',chooseAllSubscriptions));root.append(allRow);
- included.forEach(name=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('strong');info.textContent=name;const domain=publisherForSource(name);if(domain&&excludedURL(domain))info.textContent+=' · Excluded';const actions=document.createElement('div');actions.className='subscription-actions';if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseIncluded(name)));actions.append(button('Unsubscribe',()=>{if(!unsubscribeRecord('shared:'+name))return;
- if(el('read-source').value==='shared:'+name)el('read-source').value='';renderManager();}));const exclude=excludeButton(domain);if(exclude)actions.append(exclude);row.append(info,actions);root.append(row)});
- document.querySelectorAll('.read-included').forEach(b=>{const subscribed=included.includes(b.dataset.includedSource);b.textContent=subscribed?'Subscribed':'Subscribe';b.disabled=subscribed;const box=b.closest('.included-card');if(box){const domain=publisherForSource(b.dataset.includedSource);box.dataset.excluded=domain&&excludedURL(domain)?'true':'false';let badge=box.querySelector('.exclusion-label');if(!badge){badge=document.createElement('small');badge.className='exclusion-label';box.insertBefore(badge,b)}badge.textContent=domain?statusLabel(domain):'';let action=box.querySelector('.exclude-site');if(domain&&!action){action=excludeButton(domain);box.append(action)}if(action)action.textContent=excludedURL(domain)?'Allow this site':'Exclude this site'}});
+ // Legacy subscription records that could not be mapped remain visible
+ // with a clear explanation and an unsubscribe option; do not lose them.
+ included.forEach(name=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('strong');info.textContent=name+' · Feed unavailable — select a feed in Find Subscriptions';row.append(info,button('Unsubscribe',()=>{if(unsubscribeRecord('shared:'+name)){renderManager();refresh()}}));root.append(row)});
+ document.querySelectorAll('.read-included').forEach(b=>{
+  const followed=feeds.some(f=>f.url===b.dataset.feedUrl);
+  b.textContent=followed?'Subscribed':'Subscribe';b.disabled=followed;
+  const box=b.closest('.included-card');if(!box)return;
+  const domain=exclusionDomain(b.dataset.feedUrl);
+  box.dataset.excluded=excludedURL(domain)?'true':'false';
+  let badge=box.querySelector('.exclusion-label');if(!badge){badge=document.createElement('small');badge.className='exclusion-label';box.insertBefore(badge,b)}
+  badge.textContent=statusLabel(domain);
+  let action=box.querySelector('.exclude-site');if(!action){action=excludeButton(domain);if(action)box.append(action)}
+  if(action)action.textContent=excludedURL(domain)?'Allow this site':'Exclude this site';
+ });
  feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);const actions=document.createElement('div');actions.className='subscription-actions';if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseSource(f.url)));actions.append(button('Unsubscribe',()=>{if(!unsubscribeRecord(feedIdentity(f.url)))return;
  if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));const exclude=excludeButton(domain);if(exclude)actions.append(exclude);row.append(info,actions);root.append(row)});
  syncFollowButtons();renderReading();
@@ -286,8 +255,7 @@ async function refresh(){
  if(!feeds.length){loading.classList.remove('is-refreshing');allPersonalArticles=[];personalErrors=[];renderPersonalArticles();return}
  const snapshot=feeds.slice();
  loading.classList.add('is-refreshing');
- const sharedCount=included.length;
- const context=sharedCount?' ('+sharedCount+' shared publication'+(sharedCount===1?'':'s')+' already loaded)':'';
+ const context='';
  loading.textContent='Refreshing '+snapshot.length+' subscribed web feed'+(snapshot.length===1?'':'s')+'…'+context;
  try{
   let data=[];
@@ -308,7 +276,7 @@ async function refresh(){
   loading.classList.remove('is-refreshing');
   renderPersonalArticles();
   const succeeded=data.filter(group=>!group.error).length;
-  loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.length+' articles received';
+  loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.filter(a=>!excludedURL(a.url)).length+' visible headlines';
  }catch(e){
   if(sequence!==refreshSequence)return;
   loading.classList.remove('is-refreshing');
@@ -329,8 +297,11 @@ el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFee
 el('catalog-search').addEventListener('input',queueSearch);
 el('manage-personal').addEventListener('click',()=>showView('discover'));
 
-function chooseIncluded(name){const domain=publisherForSource(name);if(domain&&excludedURL(domain)){chooseAllSubscriptions();return}el('read-source').value='shared:'+name;renderReading();showView('news');el('reading-title').scrollIntoView({block:'start',behavior:'smooth'})}
-document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{const name=b.dataset.includedSource;if(!hasSubscription('shared:'+name)&&subscribeRecord(sharedRecord(name))){renderManager();message('Subscribed to '+name+'.')} }));
+function chooseIncluded(name){const f=catalogByName.get(name);if(f)chooseSource(f.url)}
+document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{
+ const f=catalogByName.get(b.dataset.includedSource);
+ if(f)add(f,b);
+}));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
 el('all-subscriptions').addEventListener('click',chooseAllSubscriptions);
 el('close-discovery').addEventListener('click',()=>showView('news'));
@@ -341,7 +312,7 @@ el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.st
 el('personal-import').addEventListener('click',()=>el('personal-file').click());
 el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());const records=Array.isArray(data)?data:data&&data.format==='newsgo-preferences-v3'?data.subscriptions:null;if(!Array.isArray(records))throw Error('Invalid subscription list');
    const importedExclusions=Array.isArray(data)?null:data.excludedDomains;if(importedExclusions!==null&&(!Array.isArray(importedExclusions)||importedExclusions.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)))throw Error('Invalid exclusion list');
-   const migrated=records.map(r=>r&&r.kind?r:feedRecord(r));
+   const migrated=convertLegacy(records.map(r=>r&&r.kind?r:feedRecord(r)));
  if(migrated.some(r=>!recordValid(r)))throw Error('Invalid subscription entry');
  const unique=[...new Map(migrated.map(r=>[r.id,r])).values()];
  if(!saveSubscriptions(unique))return;
@@ -352,5 +323,5 @@ el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preven
 el('manage-exclusions').addEventListener('click',()=>showView('exclusions'));
 el('close-exclusions').addEventListener('click',()=>showView('news'));
 message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');searchCatalog();refresh();setInterval(refresh,15*60*1000);
-document.querySelectorAll('#shared-headlines img.article-thumb').forEach(img=>img.addEventListener('error',()=>img.remove()));
+
 })();`

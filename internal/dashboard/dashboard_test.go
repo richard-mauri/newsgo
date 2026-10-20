@@ -12,41 +12,29 @@ import (
 	"github.com/richard-mauri/newsgo/internal/feeds"
 )
 
-func TestRefreshAndFiltering(t *testing.T) {
+func TestCatalogDoesNotAutoRenderUnsubscribedHeadlines(t *testing.T) {
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `<rss><channel><item><title>Alpha &amp; beta</title><link>https://example.org/article</link><pubDate>Sun, 18 Oct 2026 18:00:00 GMT</pubDate></item></channel></rss>`)
+		fmt.Fprint(w, `<rss><channel><item><title>Unsubscribed article</title><link>https://example.org/a</link></item></channel></rss>`)
 	}))
 	defer feed.Close()
-	s, err := New([]feeds.Source{{Name: "One", Category: "World", URL: feed.URL}, {Name: "Two", Category: "Tech", URL: feed.URL + "/other"}}, "http://127.0.0.1:8083", &http.Client{Timeout: time.Second})
+	s, err := New([]feeds.Source{{Name: "Catalog Source", Category: "World", URL: feed.URL}}, "http://127.0.0.1:8083", &http.Client{Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Even if an obsolete path refreshes the cached collection, the browser
+	// receives catalog metadata only; subscribed feeds populate /api/personal.
 	s.Refresh(context.Background())
-	for _, tc := range []struct {
-		path   string
-		want   string
-		absent string
-	}{{"/", "Alpha &amp; beta", "xyz"}, {"/?source=One", "Alpha &amp; beta", "No headlines match"}, {"/?category=Tech", "No headlines match", "Alpha &amp; beta"}, {"/health", "ok", "Alpha"}} {
-		// The duplicate URL is retained once, from the first configured source.
-		w := httptest.NewRecorder()
-		s.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
-		if !strings.Contains(w.Body.String(), tc.want) {
-			t.Fatalf("%s missing %q: %s", tc.path, tc.want, w.Body.String())
-		}
-		if strings.Contains(w.Body.String(), tc.absent) {
-			t.Fatalf("%s contains %q", tc.path, tc.absent)
-		}
-	}
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
-	if strings.Count(w.Body.String(), "class=\"story-title\"") != 1 {
-		t.Fatalf("expected deduplicated entry: %s", w.Body.String())
+	body := w.Body.String()
+	if strings.Contains(body, "Unsubscribed article") || strings.Contains(body, `id="shared-headlines"`) {
+		t.Fatal("unsubscribed articles rendered into dashboard")
 	}
-	if !strings.Contains(w.Body.String(), "target=\"newsgo-scrapergo\"") {
-		t.Fatal("article link missing reusable ScraperGo tab target")
+	if !strings.Contains(body, `data-feed-url="`+feed.URL+`"`) {
+		t.Fatal("catalog feed URL missing")
 	}
-	if !strings.Contains(w.Body.String(), "?url=https%3A%2F%2Fexample.org%2Farticle") {
-		t.Fatalf("no encoded reader link: %s", w.Body.String())
+	if !strings.Contains(body, `id="personal-articles"`) {
+		t.Fatal("unified article collection missing")
 	}
 }
 func TestReaderURLValidation(t *testing.T) {

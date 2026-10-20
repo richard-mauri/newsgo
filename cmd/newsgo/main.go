@@ -43,7 +43,8 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go app.Run(ctx, *interval)
+	// Feed catalog is for discovery only. Browser requests subscribed feeds via /api/personal.
+	_ = interval
 	srv := &http.Server{Addr: *addr, Handler: app, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -51,7 +52,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	log.Printf("NewsGo v0.2.4: http://%s", *addr)
+	log.Printf("NewsGo v0.2.32: http://%s", *addr)
 	if e = srv.ListenAndServe(); e != nil && e != http.ErrServerClosed {
 		log.Fatal(e)
 	}

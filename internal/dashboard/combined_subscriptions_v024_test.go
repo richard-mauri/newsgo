@@ -1,25 +1,19 @@
 package dashboard
 
 import (
-    "strings"
-    "testing"
+	"strings"
+	"testing"
 )
 
-// Verify the consolidated selection model retains built-in and RSS subscriptions
-// without reverting to the v0.2.23 shared-headline visibility bug.
-func TestCombinedSubscriptionsVisibility(t *testing.T) {
-    for _, expected := range []string{
-        "function readingSelection(source)",
-        "const all=source==='';",
-        "all&&included.includes(name)",
-        "showShared:!!sharedName||(all&&included.length>0)",
-        "showPersonal:!!feedURL||(all&&feeds.length>0)",
-        "const matches=a=>selection.visibleShared(a.dataset.source);",
-        "arrangeSharedLeads(selection);",
-        "el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0",
-    } {
-        if !strings.Contains(personalJS, expected) {
-            t.Fatalf("missing combined-view behavior: %s", expected)
-        }
-    }
+func TestUnifiedSubscriptionVisibility(t *testing.T) {
+	for _, s := range []string{"function readingSelection(source)", "showPersonal:true", "function renderPersonalArticles()", "sources.has(a.source)&&!excludedURL(a.url)", "function convertLegacy(records)", "catalogByName.get(r.name)"} {
+		if !strings.Contains(personalJS, s) {
+			t.Errorf("missing unified subscription behavior: %s", s)
+		}
+	}
+	for _, s := range []string{"function arrangeSharedLeads(selection)", "showShared:", "included.includes(name)"} {
+		if strings.Contains(personalJS, s) {
+			t.Errorf("obsolete independent shared headline pipeline: %s", s)
+		}
+	}
 }

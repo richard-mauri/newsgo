@@ -11,9 +11,7 @@ func TestExcludedPublishersHaveNoReadActionOrEmptyReadingView(t *testing.T) {
 		"function selectedPublisherExcluded()",
 		"if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}",
 		"if(selectedPublisherExcluded()){el('read-source').value='';selectedSource=''}",
-		"if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseIncluded(name)))",
 		"if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseSource(f.url)))",
-		"if(domain&&excludedURL(domain)){chooseAllSubscriptions();return}",
 		"if(source&&excludedURL(publisherForFeed(source))){chooseAllSubscriptions();return}",
 	} {
 		if !strings.Contains(personalJS, required) {

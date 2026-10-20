@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-func TestSubscriptionFirstStartupDoesNotFlashSharedHeadlines(t *testing.T) {
-	if !strings.Contains(page.Tree.Root.String(), `id="shared-headlines" class="personal-hidden"`) {
-		t.Fatal("shared headlines must be hidden until subscriptions load")
-	}
-	for _, s := range []string{"showShared:!!sharedName||(all&&included.length>0)", "included.includes(name)"} {
-		if !strings.Contains(personalJS, s) {
-			t.Fatalf("shared headlines must appear only for subscribed publishers: %s", s)
+func TestSubscriptionFirstStartupHasNoUnsolicitedArticles(t *testing.T) {
+	h := page.Tree.Root.String()
+	for _, s := range []string{`id="personal-feed"`, `id="personal-articles"`, `/personal.js?v=0.2.32`} {
+		if !strings.Contains(h, s) {
+			t.Errorf("missing unified startup UI %s", s)
 		}
 	}
-	if !strings.Contains(page.Tree.Root.String(), `/personal.js?v=0.2.31`) {
-		t.Fatal("browser JS URL must be versioned")
+	for _, s := range []string{`id="shared-headlines"`, `{{range $i,$a := .Articles}}`, `cached headlines from trusted feeds`} {
+		if strings.Contains(h, s) {
+			t.Errorf("obsolete automatic headlines: %s", s)
+		}
 	}
 }

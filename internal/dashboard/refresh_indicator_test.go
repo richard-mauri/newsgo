@@ -11,7 +11,7 @@ func TestPersonalRefreshBusyIndicator(t *testing.T) {
 			t.Errorf("missing accessible busy indicator: %s", fragment)
 		}
 	}
-	for _, fragment := range []string{"loading.classList.add('is-refreshing')", "loading.classList.remove('is-refreshing')", "snapshot.slice(offset,offset+8)", "sequence!==refreshSequence", "Could not refresh feeds:", "shared publication", "completed+=batch.length", "const succeeded=data.filter(group=>!group.error).length"} {
+	for _, fragment := range []string{"loading.classList.add('is-refreshing')", "loading.classList.remove('is-refreshing')", "snapshot.slice(offset,offset+8)", "sequence!==refreshSequence", "Could not refresh feeds:", "completed+=batch.length", "const succeeded=data.filter(group=>!group.error).length"} {
 		if !strings.Contains(personalJS, fragment) {
 			t.Errorf("missing refresh state handling: %s", fragment)
 		}

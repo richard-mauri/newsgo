@@ -1,3 +1,15 @@
+## v0.2.32 unified subscription architecture — October 20, 2026
+
+Implementation candidate from the complete user-provided `newsgo-v32-source.zip`, based on local v0.2.31. **Every displayed article now comes from a subscribed feed fetched through `/api/personal`.** The built-in feed catalog is for discovery only; the independent automatic `app.Run` feed refresh is no longer invoked at server startup. Browser `readingSelection` has one feed path. Lead stories, latest headlines, sorting, and exclusion all operate on the same subscribed article array. An empty registry yields an empty briefing with a discovery action.
+
+Migration reads `newsgo.subscriptions.v2` and the older legacy keys without deleting them. Recognized `shared:` publisher records are converted to `feed:` records with the URLs configured in `feeds.json`, then stored in `newsgo.subscriptions.unified.v1`. Unknown legacy shared records are retained and labeled for review rather than discarded. Existing excluded domains remain in their original browser storage. Export/import retains the existing format. No automatic migration is possible for unknown catalog names or feeds that are missing from `feeds.json`.
+
+**Testing:** Full Go suite was executed successfully in the supplied archive with an *isolated, temporary* `go.mod` declaration changed from `go 1.27.1` to `go 1.23.2` because the container lacks the required toolchain and cannot download it. The actual `go.mod` in the distributed patch is unchanged. JavaScript parser check and ZIP audit are separately required before delivery. This is not a verified result on the user's installed Go 1.27.1 or Safari; follow normal `go test ./...`, build, restart, and browser acceptance before Git commit.
+
+**Acceptance:** Existing subscribed catalog publishers remain subscribed after conversion; no unsubscribed publisher's articles appear; manual Find Subscriptions and Subscribe work; no automatic 200+ headlines; excluded sources have no headlines; the summary counts only visible subscribed articles; and new header, script cache-buster, tests, and documentation all display v0.2.32. Do not run tests with any toolchain downgrade in the user's actual project.
+
+**Next step:** Install this development patch, execute `go test ./...`, verify Safari subscription persistence, subscribe/unsubscribe, exclusions, lead stories, and empty-view behavior. Stop if anything fails. Do not push, tag, or release without user approval.
+
 # NewsGo — AI Development Process and Chat Handoff
 
 **Read this file first when coding or resuming NewsGo in a new chat.** `README.md` is the NewsGo user guide, not a ScraperGo document.

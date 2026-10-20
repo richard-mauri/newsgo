@@ -7,7 +7,7 @@ import (
 
 func TestRemoteSearchAndSubscriptionPreservation(t *testing.T) {
 	h := page.Tree.Root.String()
-	for _, s := range []string{`id="catalog-search"`, `id="catalog-list"`, `id="view-subscriptions"`, `/personal.js?v=0.2.31`} {
+	for _, s := range []string{`id="catalog-search"`, `id="catalog-list"`, `id="view-subscriptions"`, `/personal.js?v=0.2.32`} {
 		if !strings.Contains(h, s) {
 			t.Fatalf("missing HTML %s", s)
 		}
