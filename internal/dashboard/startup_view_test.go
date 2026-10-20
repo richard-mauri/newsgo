@@ -14,7 +14,7 @@ func TestSubscriptionFirstStartupDoesNotFlashSharedHeadlines(t *testing.T) {
 			t.Fatalf("shared headlines must appear only for subscribed publishers: %s", s)
 		}
 	}
-	if !strings.Contains(page.Tree.Root.String(), `/personal.js?v=0.2.25`) {
+	if !strings.Contains(page.Tree.Root.String(), `/personal.js?v=0.2.31`) {
 		t.Fatal("browser JS URL must be versioned")
 	}
 }

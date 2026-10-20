@@ -7,7 +7,7 @@ import (
 
 func TestBrowseIncludedAndPublisherOnly(t *testing.T) {
 	h := page.Tree.Root.String()
-	for _, s := range []string{`id="read-source"`, `data-included-source="{{.}}"`, `Browse included sources`, `Subscribe`, `/personal.js?v=0.2.25`} {
+	for _, s := range []string{`id="read-source"`, `data-included-source="{{.}}"`, `Browse included sources`, `Subscribe`, `/personal.js?v=0.2.31`} {
 		if !strings.Contains(h, s) {
 			t.Fatalf("missing browse UI: %s", s)
 		}
