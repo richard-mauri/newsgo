@@ -10,6 +10,10 @@ Headlines open in [ScraperGo](https://scrapergo.themauris.org/), a separate arti
 
 The service is written in Go, uses an RSS/Atom/JSON feed catalog (`feeds.json`) for discoverability, and presents article headlines from the feeds you have subscribed to. Provider access and publication frequencies vary. NewsGo is an aggregator, not a subscription/paywall bypass.
 
-**Development candidate:** v0.2.32 (October 20, 2026). This version changes the article pipeline to one subscription-driven view and migrates recognized earlier publisher subscriptions to feed-backed subscriptions. Existing browser preferences are preserved. Legacy publisher entries without a matching catalog feed remain visible for manual review. Production deployment and live-browser validation have not been confirmed.
+**Development candidate:** v0.2.33 (October 20, 2026). This version changes the article pipeline to one subscription-driven view and migrates recognized earlier publisher subscriptions to feed-backed subscriptions. Existing browser preferences are preserved. Legacy publisher entries without a matching catalog feed remain visible for manual review. Production deployment and live-browser validation have not been confirmed.
 
 **Developers and future AI agents:** See [`AGENTS.md`](AGENTS.md) for the authoritative current engineering handoff, development procedure, version synchronization rules, and Git safeguards.
+
+### v0.2.33 development update
+
+Removed the obsolete server-side catalog headline fetching and image enrichment path. Improved Feedly publisher-name lookup with a prefix fallback when no results are returned, clearer external-feed HTTP error messages, and discovery result card layout. The feed catalog remains a source of discoverable subscriptions, not an automatic headline stream.

@@ -18,11 +18,7 @@ func main() {
 	feedPath := flag.String("feeds", "feeds.json", "feed source JSON file")
 	addr := flag.String("listen", "127.0.0.1:8084", "HTTP listen address")
 	reader := flag.String("scrapergo", "https://scrapergo.themauris.org", "ScraperGo reader base URL")
-	interval := flag.Duration("refresh", 15*time.Minute, "automatic feed refresh interval")
 	flag.Parse()
-	if *interval < time.Minute {
-		log.Fatal("refresh must be at least 1 minute")
-	}
 	b, e := os.ReadFile(*feedPath)
 	if e != nil {
 		log.Fatal(e)
@@ -44,7 +40,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Feed catalog is for discovery only. Browser requests subscribed feeds via /api/personal.
-	_ = interval
 	srv := &http.Server{Addr: *addr, Handler: app, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -52,7 +47,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	log.Printf("NewsGo v0.2.32: http://%s", *addr)
+	log.Printf("NewsGo v0.2.33: http://%s", *addr)
 	if e = srv.ListenAndServe(); e != nil && e != http.ErrServerClosed {
 		log.Fatal(e)
 	}

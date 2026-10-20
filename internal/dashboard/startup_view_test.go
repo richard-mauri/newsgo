@@ -7,7 +7,7 @@ import (
 
 func TestSubscriptionFirstStartupHasNoUnsolicitedArticles(t *testing.T) {
 	h := page.Tree.Root.String()
-	for _, s := range []string{`id="personal-feed"`, `id="personal-articles"`, `/personal.js?v=0.2.32`} {
+	for _, s := range []string{`id="personal-feed"`, `id="personal-articles"`, `/personal.js?v=0.2.33`} {
 		if !strings.Contains(h, s) {
 			t.Errorf("missing unified startup UI %s", s)
 		}

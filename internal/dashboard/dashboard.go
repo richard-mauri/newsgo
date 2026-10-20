@@ -1,17 +1,13 @@
 package dashboard
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/richard-mauri/newsgo/internal/feeds"
 )
@@ -20,16 +16,11 @@ import (
 var tannerPhoto embed.FS
 
 type State struct {
-	mu        sync.RWMutex
-	articles  []feeds.Article
-	errors    map[string]string
-	refreshed time.Time
-	sources   []feeds.Source
-	reader    string
-	client    *http.Client
+	sources []feeds.Source // Discovery catalog only, never fetched automatically.
+	reader  string
 }
 
-func New(sources []feeds.Source, reader string, client *http.Client) (*State, error) {
+func New(sources []feeds.Source, reader string, _ *http.Client) (*State, error) {
 	if err := feeds.ValidateSources(sources); err != nil {
 		return nil, err
 	}
@@ -37,107 +28,11 @@ func New(sources []feeds.Source, reader string, client *http.Client) (*State, er
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
 		return nil, fmt.Errorf("invalid ScraperGo address")
 	}
-	return &State{sources: append([]feeds.Source(nil), sources...), reader: strings.TrimRight(reader, "/"), client: client, errors: map[string]string{}}, nil
-}
-func (s *State) Refresh(ctx context.Context) {
-	type result struct {
-		src      feeds.Source
-		articles []feeds.Article
-		err      error
-	}
-	ch := make(chan result, len(s.sources))
-	sem := make(chan struct{}, 4)
-	var wg sync.WaitGroup
-	for _, src := range s.sources {
-		wg.Add(1)
-		go func(src feeds.Source) {
-			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				ch <- result{src: src, err: ctx.Err()}
-				return
-			}
-			defer func() { <-sem }()
-			a, e := feeds.FetchArticles(ctx, s.client, src)
-			ch <- result{src, a, e}
-		}(src)
-	}
-	wg.Wait()
-	close(ch)
-	s.mu.RLock()
-	old := append([]feeds.Article(nil), s.articles...)
-	s.mu.RUnlock()
-	errors := make(map[string]string)
-	articles := make([]feeds.Article, 0)
-	okSources := map[string]bool{}
-	bySource := map[string]result{}
-	for r := range ch {
-		bySource[r.src.Name] = r
-	}
-	for _, src := range s.sources {
-		r := bySource[src.Name]
-		if r.err != nil {
-			errors[src.Name] = r.err.Error()
-		} else {
-			okSources[src.Name] = true
-			articles = append(articles, r.articles...)
-		}
-	}
-	// Preserve previously retrieved headlines for sources that temporarily fail.
-	for _, a := range old {
-		if !okSources[a.Source] {
-			articles = append(articles, a)
-		}
-	}
-	seen := map[string]bool{}
-	dedup := make([]feeds.Article, 0, len(articles))
-	for _, a := range articles {
-		if seen[a.URL] {
-			continue
-		}
-		seen[a.URL] = true
-		dedup = append(dedup, a)
-	}
-	sort.SliceStable(dedup, func(i, j int) bool { return dedup[i].Published.After(dedup[j].Published) })
-	// Personal feeds already probe article metadata; built-in feeds need the same fallback.
-	imageClient := safeFeedClient()
-	enrichSharedImages(ctx, dedup, func(c context.Context, address string) string {
-		return articlePageImage(c, imageClient, address)
-	})
-	if len(dedup) > 600 {
-		dedup = dedup[:600]
-	}
-	s.mu.Lock()
-	s.articles = dedup
-	s.errors = errors
-	s.refreshed = time.Now()
-	s.mu.Unlock()
-}
-func (s *State) Run(ctx context.Context, interval time.Duration) {
-	s.Refresh(ctx)
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			s.Refresh(ctx)
-		}
-	}
+	return &State{sources: append([]feeds.Source(nil), sources...), reader: strings.TrimRight(reader, "/")}, nil
 }
 
-type viewArticle struct{ Title, Source, Category, Date, Open, Original, Image string }
 type view struct {
-	Articles                         []viewArticle
-	Sources                          []string
-	Catalog                          []feeds.Source
-	Categories                       []string
-	SelectedSource, SelectedCategory string
-	Updated                          string
-	Total                            int
-	Errors                           []string
+	Catalog []feeds.Source
 }
 
 func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -190,48 +85,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	s.mu.RLock()
-	articles := append([]feeds.Article(nil), s.articles...)
-	updated := s.refreshed
-	errs := make(map[string]string, len(s.errors))
-	for k, v := range s.errors {
-		errs[k] = v
-	}
-	s.mu.RUnlock()
-	source := r.URL.Query().Get("source")
-	category := r.URL.Query().Get("category")
-	v := view{SelectedSource: source, SelectedCategory: category, Total: 0, Catalog: append([]feeds.Source(nil), s.sources...)}
-	if !updated.IsZero() {
-		v.Updated = updated.Local().Format("Jan 2, 2006 3:04 PM")
-	}
-	sm := map[string]bool{}
-	cm := map[string]bool{}
-	for _, src := range s.sources {
-		sm[src.Name] = true
-		cm[src.Category] = true
-	}
-	for n := range sm {
-		v.Sources = append(v.Sources, n)
-	}
-	sort.Strings(v.Sources)
-	for c := range cm {
-		v.Categories = append(v.Categories, c)
-	}
-	sort.Strings(v.Categories)
-	for k, e := range errs {
-		v.Errors = append(v.Errors, k+": "+e)
-	}
-	sort.Strings(v.Errors)
-	for _, a := range articles {
-		if source != "" && source != a.Source || category != "" && category != a.Category {
-			continue
-		}
-		date := "Date unavailable"
-		if !a.Published.IsZero() {
-			date = a.Published.Local().Format("Jan 2, 3:04 PM")
-		}
-		v.Articles = append(v.Articles, viewArticle{a.Title, a.Source, a.Category, date, s.reader + "/?url=" + url.QueryEscape(a.URL), a.URL, a.Image})
-	}
+	v := view{Catalog: append([]feeds.Source(nil), s.sources...)}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self'; img-src 'self' https:")
@@ -240,7 +94,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-var page = template.Must(template.New("index").Funcs(template.FuncMap{"add": func(a, b int) int { return a + b }}).Parse(`<!doctype html>
+var page = template.Must(template.New("index").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>NewsGo — Your daily briefing</title>
 <style>
 :root{color-scheme:light dark;--bg:light-dark(#f5f5f0,#0e141a);--panel:light-dark(#fff,#19232b);--text:light-dark(#182631,#eef2f4);--muted:light-dark(#60707b,#a5b3bb);--line:light-dark(#dce2e1,#34434a);--accent:light-dark(#126877,#69c6d3);--soft:light-dark(#e6f3f3,#203c43);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -255,13 +109,19 @@ var page = template.Must(template.New("index").Funcs(template.FuncMap{"add": fun
 @media(max-width:820px){.feature-grid{grid-template-columns:1fr 1fr}.feature:first-child{grid-column:1/-1;min-height:260px}.feature{min-height:235px}.latest{grid-template-columns:1fr}.intro{padding-top:28px}}
 @media(max-width:540px){main{padding:0 16px 50px}.topbar-inner{padding:15px 16px}.tagline{display:none}.intro{display:block}.time{text-align:left;margin-top:12px}.filters{gap:12px}.filters label{flex:1;min-width:130px}.filters select{width:100%;min-width:0}.feature-grid{grid-template-columns:1fr}.feature:first-child{grid-column:auto}.feature{min-height:200px}.item{padding:18px 0}}
 
-.catalog-search{width:100%;padding:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;font:inherit}.catalog-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 15px;margin:14px 0}.catalog-card{padding:13px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px}.catalog-card strong{display:block}.catalog-card small{color:var(--muted)}.catalog-card button{cursor:pointer;background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 13px}.catalog-card button:disabled{opacity:.6;cursor:default}@media(max-width:720px){.catalog-list{grid-template-columns:1fr}}.personal-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}.personal-tools button,.personal-form button,.personal-row button{cursor:pointer;background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px 13px;font:inherit}.personal-form{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.personal-form input,.personal-form select{flex:1;min-width:170px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:9px;padding:10px;font:inherit}.personal-panel{padding:18px;border:1px solid var(--line);border-radius:15px;background:var(--panel);margin:14px 0 25px}.personal-row{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:10px 0;gap:10px}.personal-row small{color:var(--muted);overflow-wrap:anywhere}.personal-status{color:var(--muted);font-size:.86rem}.personal-status.is-refreshing::before{content:"";display:inline-block;width:13px;height:13px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:newsgo-spin .75s linear infinite}@keyframes newsgo-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.personal-status.is-refreshing::before{animation:none;border-right-color:currentColor}}.personal-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}.personal-suggestion{margin:7px 8px 7px 0}.personal-hidden{display:none}.personal-panel h2{margin:0 0 9px}.personal-panel p{color:var(--muted)}@media(max-width:720px){.personal-list{grid-template-columns:1fr}}
+.catalog-search{width:100%;padding:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;font:inherit}.catalog-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 15px;margin:14px 0}.catalog-card{padding:13px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px}/* Keep long publisher names and controls in their own grid tracks. */
+.catalog-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.catalog-card>div:first-child{min-width:0;overflow-wrap:anywhere;grid-row:1 / span 2}
+.catalog-card>button{grid-column:2;min-width:0;max-width:100%;white-space:normal}
+@media(max-width:540px){.catalog-card{grid-template-columns:minmax(0,1fr)}.catalog-card>div:first-child{grid-row:auto}.catalog-card>button{grid-column:1}}
+.personal-row>div:first-child{min-width:0;overflow-wrap:anywhere}.personal-row>button{flex-shrink:0}
+.catalog-card strong{display:block}.catalog-card small{color:var(--muted)}.catalog-card button{cursor:pointer;background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 13px}.catalog-card button:disabled{opacity:.6;cursor:default}@media(max-width:720px){.catalog-list{grid-template-columns:1fr}}.personal-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}.personal-tools button,.personal-form button,.personal-row button{cursor:pointer;background:var(--soft);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px 13px;font:inherit}.personal-form{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.personal-form input,.personal-form select{flex:1;min-width:170px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:9px;padding:10px;font:inherit}.personal-panel{padding:18px;border:1px solid var(--line);border-radius:15px;background:var(--panel);margin:14px 0 25px}.personal-row{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:10px 0;gap:10px}.personal-row small{color:var(--muted);overflow-wrap:anywhere}.personal-status{color:var(--muted);font-size:.86rem}.personal-status.is-refreshing::before{content:"";display:inline-block;width:13px;height:13px;margin-right:8px;vertical-align:-2px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:newsgo-spin .75s linear infinite}@keyframes newsgo-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.personal-status.is-refreshing::before{animation:none;border-right-color:currentColor}}.personal-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px}.personal-suggestion{margin:7px 8px 7px 0}.personal-hidden{display:none}.personal-panel h2{margin:0 0 9px}.personal-panel p{color:var(--muted)}@media(max-width:720px){.personal-list{grid-template-columns:1fr}}
 .included-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.included-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--line);border-radius:10px}.included-card strong{overflow-wrap:anywhere}.included-card button{flex-shrink:0;cursor:pointer;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font:inherit}.browse-included h3{margin:20px 0 4px}.discovery-divider{font-weight:700;margin:22px 0 10px;color:var(--muted)}@media(max-width:720px){.included-list{grid-template-columns:1fr}}.filters{margin:0 0 22px}[hidden]{display:none!important}.filters label{text-transform:none}.news-nav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}.news-nav button,.panel-close{cursor:pointer;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:12px 17px;font:inherit;font-weight:700}.news-nav button[aria-pressed="true"]{background:var(--accent);color:light-dark(#fff,#082028)}.panel-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}.panel-heading h2{margin:0}.panel-heading .panel-close{padding:8px 13px}.subscription-panel{margin:0 0 24px}.subscription-panel .personal-row small{display:block;margin-top:4px}.subscription-panel .personal-row button{flex-shrink:0}.subscription-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.subscription-actions button:first-child{background:var(--accent);color:#082028;font-weight:700}.included-card button:disabled{opacity:.6;cursor:default}.personal-source-filter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:15px 0 8px}.personal-source-filter label{font-size:.86rem;font-weight:700}.personal-source-filter select{font:inherit;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:var(--text);max-width:100%}.selected-publication{margin:0 0 18px;font-size:1.5rem}.reading-navigation{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 18px}.reading-navigation .selected-publication{margin:0}.reading-navigation button{cursor:pointer;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:9px 13px;font:inherit;font-weight:700}.subscription-read{display:block;border:0!important;background:transparent!important;color:var(--accent)!important;padding:0!important;text-align:left;font:inherit!important;font-weight:700!important;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .article-thumb{width:128px;height:88px;object-fit:cover;border-radius:10px;flex-shrink:0;background:transparent}.item .article-thumb{margin-left:auto}.feature .article-thumb{width:128px;height:88px;margin:0 0 14px 0}@media(max-width:540px){.article-thumb{width:96px;height:72px}.feature .article-thumb{width:96px;height:72px}}
 .exclude-site{font-size:12px;padding:5px 9px;white-space:nowrap;margin:4px}.exclusion-label{color:#e9b978;margin-left:8px}.catalog-card[data-excluded=true],.included-card[data-excluded=true]{border-color:#b5864c}
 [hidden]{display:none!important}
-</style><script defer src="/personal.js?v=0.2.32"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span></div><div class="header-right"><div class="tagline">NEWS DISCOVERY FOR SCRAPERGO · V0.2.32</div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
-<div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div><div class="time">{{if .Updated}}Updated {{.Updated}}{{else}}Fetching headlines…{{end}}</div></div>
+</style><script defer src="/personal.js?v=0.2.33"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span></div><div class="header-right"><div class="tagline">NEWS DISCOVERY FOR SCRAPERGO · V0.2.33</div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
+<div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div><div class="time" id="subscription-updated">Waiting for subscribed feeds…</div></div>
 
 <nav class="news-nav" aria-label="NewsGo sections"><button type="button" id="manage-personal" aria-pressed="false">Find Subscriptions</button><button type="button" id="view-subscriptions" aria-pressed="false">My Subscriptions <span id="personal-count">(0)</span></button><button type="button" id="manage-exclusions" aria-pressed="false">Excluded Sites <span id="excluded-count">(0)</span></button></nav>
 <section id="personal-panel" class="personal-panel personal-hidden" aria-label="Manage personal feeds"><div class="panel-heading"><h2>Find Subscriptions</h2><button type="button" class="panel-close" id="close-discovery">Close</button></div><p>Search the web for news feeds by topic or publisher, then choose Subscribe. Your selections stay in this browser.</p><div class="browse-included"><h3>Browse available sources</h3><p>Browse this feed catalog or search for more sources. Nothing appears in your briefing until you subscribe.</p><div class="included-list">{{range .Catalog}}<div class="included-card"><strong>{{.Name}}</strong><button type="button" class="read-included" data-included-source="{{.Name}}" data-feed-url="{{.URL}}" data-category="{{.Category}}">Subscribe</button></div>{{end}}</div></div><div class="discovery-divider">Or search for more subscriptions</div><input class="catalog-search" id="catalog-search" type="search" placeholder="Try sailing, gardening, college football…" aria-label="Search news sources"><div class="catalog-list" id="catalog-list" aria-live="polite"></div><p class="personal-status" id="catalog-message"></p><details><summary>Add a website not listed here</summary>

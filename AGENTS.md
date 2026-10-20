@@ -1,4 +1,12 @@
-## v0.2.32 unified subscription architecture — October 20, 2026
+## v0.2.33 cleanup and discovery fixes — October 20, 2026
+
+The catalog exists for discovery only. `State.Refresh`, `State.Run`, shared-image enrichment, cached built-in articles, and the dead periodic-refresh CLI option were removed. Never reintroduce an automatic catalog headline pipeline. Preserve the v0.2.32 unified subscription registry, migration, exclusions, and reading behavior.
+
+Discovery: Feedly exact-name searches may be empty while a prefix returns results, so an empty complete query is retried with one final rune removed. Results prefer exact and matching publisher names. Publisher feed failures must be shown as upstream errors, not NewsGo server failures. Subscription cards must not overlap on narrow layouts.
+
+Tests required: `go test ./...`, JavaScript syntax, version sync, and regression tests. The direct-unzip patch should be applied to a clean v0.2.32 baseline; never stage or push changes without user approval.
+
+## v0.2.33 unified subscription architecture — October 20, 2026
 
 Implementation candidate from the complete user-provided `newsgo-v32-source.zip`, based on local v0.2.31. **Every displayed article now comes from a subscribed feed fetched through `/api/personal`.** The built-in feed catalog is for discovery only; the independent automatic `app.Run` feed refresh is no longer invoked at server startup. Browser `readingSelection` has one feed path. Lead stories, latest headlines, sorting, and exclusion all operate on the same subscribed article array. An empty registry yields an empty briefing with a discovery action.
 
@@ -6,7 +14,7 @@ Migration reads `newsgo.subscriptions.v2` and the older legacy keys without dele
 
 **Testing:** Full Go suite was executed successfully in the supplied archive with an *isolated, temporary* `go.mod` declaration changed from `go 1.27.1` to `go 1.23.2` because the container lacks the required toolchain and cannot download it. The actual `go.mod` in the distributed patch is unchanged. JavaScript parser check and ZIP audit are separately required before delivery. This is not a verified result on the user's installed Go 1.27.1 or Safari; follow normal `go test ./...`, build, restart, and browser acceptance before Git commit.
 
-**Acceptance:** Existing subscribed catalog publishers remain subscribed after conversion; no unsubscribed publisher's articles appear; manual Find Subscriptions and Subscribe work; no automatic 200+ headlines; excluded sources have no headlines; the summary counts only visible subscribed articles; and new header, script cache-buster, tests, and documentation all display v0.2.32. Do not run tests with any toolchain downgrade in the user's actual project.
+**Acceptance:** Existing subscribed catalog publishers remain subscribed after conversion; no unsubscribed publisher's articles appear; manual Find Subscriptions and Subscribe work; no automatic 200+ headlines; excluded sources have no headlines; the summary counts only visible subscribed articles; and new header, script cache-buster, tests, and documentation all display v0.2.33. Do not run tests with any toolchain downgrade in the user's actual project.
 
 **Next step:** Install this development patch, execute `go test ./...`, verify Safari subscription persistence, subscribe/unsubscribe, exclusions, lead stories, and empty-view behavior. Stop if anything fails. Do not push, tag, or release without user approval.
 
