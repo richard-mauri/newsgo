@@ -1,67 +1,60 @@
-# NewsGo — RSS News Aggregator
+# ScraperGo — Clean Web Article Reader
 
-**Current development candidate:** v0.2.25 (Go tests pass on the user’s Mac; Guardian thumbnail coverage verified after generic fallback limit adjustment; release not yet tagged). **Last confirmed pushed and tagged baseline:** v0.2.24, commit `199f191503300a27fa7196d63fc01c2838197daf`.
+**Read web articles without the surrounding clutter.** ScraperGo is a self-hosted web reader that retrieves available article HTML and presents the main story in a simplified layout.
 
-**Repository:** https://github.com/richard-mauri/newsgo  
-**Service:** https://newsgo.themauris.org  
-**Local directory:** `~/projects/newsgo` · **Port:** `8084`
+**Public reader:** <https://scrapergo.themauris.org/>  
+**Source:** <https://github.com/richard-mauri/scrapergo>
 
-## Purpose and design
+> **For AI coding agents and future chat sessions:** Read [`AGENTS.md`](AGENTS.md) before changing code or proposing development/Git commands. `AGENTS.md` contains the development workflow, current chat handoff, regression history, patch conventions, and mandatory checks. This README is written primarily for readers and people learning what the project does.
 
-NewsGo is a self-hosted Go RSS news aggregator integrated with the separate ScraperGo reader. Cached server-side publishers and user-added RSS feeds remain different *retrieval* paths, but a single subscription registry and unified reading navigation provide one subscription experience. The browser-local registry is `newsgo.subscriptions.v2`; legacy migration, import/export and all saved subscriptions are preserved. Each Safari tab or Dock web app may maintain separate website data.
+## What it does
 
-The app uses Go standard-library code. Project areas: `cmd/newsgo`, `internal/dashboard`, `internal/feeds`. Diagnostic tools: `cmd/feedcheck` and `cmd/discoverycheck`. Do not modify ScraperGo, Cloudflare Tunnel, `newsgo.sh`, or `devbuild.sh` as part of a dashboard cleanup.
+ScraperGo aims to retain the parts of a web article that matter while removing unrelated navigation, advertising, and promotional material. Depending on the publisher's HTML, the reading view can include the headline, author, paragraphs, article images, captions, section headings, and hyperlinks.
 
-## v0.2.25 — Focused frontend cleanup
+The application also offers a **TXT download** of the extracted article. This is useful for saving readable text and checking whether an article's paragraphs were actually captured.
 
-The v0.2.24 fix for **Read All Articles** remains intact. This release extracts a small common `readingSelection()` model from repeated conditional logic in `renderReading()` and `arrangeSharedLeads()`. It identifies the active source, subscribed server publisher eligibility, and visibility for both article groups. Per-publisher promoted lead stories continue working; individually fetched RSS feeds retain their existing Lead Stories and Latest Headlines layout. It preserves both fetch mechanisms, the browser subscription registry, and the interface. The thumbnail fallback limit is changed separately below. This is **not** a global chronological merge of cached and separately fetched RSS stories.
+ScraperGo is not a browser emulator or a subscription bypass. It cannot guarantee access to articles requiring logins, subscriptions, JavaScript-only rendering, or publishers that reject automated requests. Availability and completeness depend on the HTML actually returned by the publisher.
 
-Existing string-contract tests were updated for the factored selection helper and for the bumped script cache-busting version. Do not treat these static source checks as substitutes for actual browser tests.
+## Using the reader
 
-## Local verification and release handoff
+Open <https://scrapergo.themauris.org/> and enter the web address of an article. ScraperGo retrieves the publicly available document and displays a simplified reading view.
 
-The working tree contains the v0.2.25 subscription-selection cleanup and eager-loading adjustment, plus the separate generic thumbnail fallback change to 45 probes per publisher and its regression test. The last confirmed pushed and tagged baseline is v0.2.24. Before changing files, inspect `git status` and preserve local modifications.
+If the result is incomplete or formatted incorrectly, compare it with the original publisher page. The **TXT download** helps narrow down the problem: content missing in both the TXT file and reading view may have been lost during retrieval or extraction; content present in TXT but missing on-screen points more directly to presentation.
 
-```sh
-cd ~/projects/newsgo
-git status
-go test ./...
-./devbuild.sh
-./newsgo.sh
-```
+Publisher images and links are preserved where possible, but their positions and styles may differ from the original website.
 
-Browser-check in regular Safari and a NewsGo Dock app: **Read All Articles** with only two server-cached subscriptions, with only personal RSS feeds, and mixed; read a single publisher and return to All Subscriptions; ensure no unrelated publishers appear. Check article cards, thumbnails, source labels, refresh indicator, unsubscribe, and persistent subscription counts. Do **not** clear website data during installation.
+## Reading quality and known limitations
 
-After all tests and local checks pass, inspect `git diff --check`, `git status`, stage only intended files, review `git diff --cached --stat` and `git diff --cached --check`, commit, push, and only then tag v0.2.25. Roll back to the annotated `v0.2.24` tag if necessary.
+Websites structure articles in different ways. Some put editorial paragraphs inside containers shared with advertisements; some use complex photo galleries or custom heading markup. ScraperGo attempts to identify the complete article without including unrelated page elements, but extraction can still be imperfect.
 
-## Prior releases
+As of the **locally verified v0.2.55 development build (October 20, 2026)**, ScraperGo successfully recovered the full text and previously missing showroom photographs in a long Ars Technica article that had been truncated in earlier builds. The user confirmed this improvement. **Formatting fidelity remains incomplete**: for example, a large bold section heading, “The shopping experience,” is currently displayed like an ordinary paragraph. Heading and emphasis preservation is an active improvement area.
 
-- **v0.2.21:** Generic thumbnail metadata fallback for server-cached feeds.
-- **v0.2.22:** Unified authoritative local subscription registry with migration and import/export.
-- **v0.2.23:** Refresher status, source-scoped leads, article sections, navigation.
-- **v0.2.24:** Fixed Read All Articles for cached-only, RSS-only, and mixed subscriptions. Tagged at commit `199f191`.
-- **v0.2.25:** Factored common selection logic; eagerly loads all provided thumbnail URLs; increases generic shared thumbnail fallback from 8 to 45 candidate articles per publisher per refresh. No subscription storage change.
+That local development status does **not** imply v0.2.55 has been pushed, tagged, or publicly deployed; consult the repository's releases for published versions.
 
+## Where ScraperGo runs
 
-## v0.2.25 corrected test handoff
+The application is written in **Go** and serves its reading interface over HTTP. In the established local setup, it listens at:
 
-The first v0.2.25 ZIP mistakenly added `combined_subscriptions_v025_test.go` with a test name already defined by `combined_subscriptions_v024_test.go`. This corrected ZIP does **not** add a duplicate test file. Instead, it updates the existing v0.2.24 regression test to verify the v0.2.25 `readingSelection()` helper. The implementation files are unchanged from the original v0.2.25 candidate.
+`http://localhost:8083/`
 
-If the previous v0.2.25 ZIP was extracted and the duplicate test file still exists, remove only `internal/dashboard/combined_subscriptions_v025_test.go` before running `go test ./...`. The full suite must pass on the Mac before rebuilding or pushing.
+The public HTTPS endpoint is:
 
+<https://scrapergo.themauris.org/>
 
-## v0.2.25 thumbnail loading adjustment (October 19, 2026)
+The public address uses the existing Cloudflare Tunnel. The tunnel is a routing mechanism and should not, by itself, be treated as an authentication system.
 
-All available article thumbnails are now requested using `loading="eager"` for server-rendered cached-publication cards and `img.loading='eager'` for dynamically created RSS cards. This is not a publisher-specific exception. Image extraction rules, metadata lookup implementation, caches, article selection, subscriptions and CSS layout are unchanged; the generic fallback lookup budget is increased as described below. Articles without an image URL still have no thumbnail. Eager loading may increase page load, memory and bandwidth on long lists; verify performance in Safari and standalone Dock web app.
+This repository has existing scripts for building and running the service (`devbuild.sh` and `scrapergo.sh`). Coding agents and maintainers should use the development and operational instructions in [`AGENTS.md`](AGENTS.md) rather than relying on ad hoc setup or release commands.
 
-## v0.2.25 generic thumbnail fallback adjustment (October 19, 2026)
+## Relationship to NewsGo
 
-In `internal/dashboard/shared_images.go`, `enrichSharedImages()` now uses `perPublisher = 45` rather than `8`. The independent `maxConcurrent = 8` setting remains unchanged. The fallback fetches article-page Open Graph or Twitter image metadata only when the feed did not provide a usable image URL. The limit is **per publisher per shared-feed refresh**, not a guaranteed number of successful images. It applies uniformly to all publishers, with no Guardian-specific branches.
+[NewsGo](https://github.com/richard-mauri/newsgo) is a separate RSS/news aggregation project. ScraperGo can provide a cleaner view of articles discovered through NewsGo, but ScraperGo itself is not an RSS reader. The two projects have separate codebases and development processes.
 
-The generic fallback retains its **12-second overall deadline**, **2.5-second per-article request timeout**, and **four-hour cache for both successful and unsuccessful lookups**. Enlarging the budget can increase metadata requests, and the deadline can still limit how many finish. No image bytes are fetched by this server-side metadata lookup. Browser eager loading is independent: it only changes when existing thumbnail URLs are requested.
+## Security and publisher access
 
-`internal/dashboard/shared_images_test.go` now constructs 45 image-less articles and verifies that the fallback can dispatch 45 bounded lookups. The user reported `go test ./...` passing after this change and confirmed all Guardian thumbnails appeared in NewsGo, compared with 8 present and 37 missing before the budget increase. This is a local observation, not a guarantee that every article on every feed will have metadata.
+ScraperGo processes web URLs with request restrictions and publisher-access handling. It is designed to display content made available by the publisher, not to circumvent paywalls or account requirements. Publisher copyright and usage terms still apply to the source articles and their photographs.
 
-## Development and release notes
+## Reporting a problem
 
-The previous v0.2.25 handoff briefly included a duplicate `combined_subscriptions_v025_test.go` test; the corrected candidate updates `combined_subscriptions_v024_test.go` instead. If the obsolete duplicate file remains in the local tree, remove that file only. Do not clear Safari/Dock website data or localStorage. The current README update is standalone; no ZIP needs to be reapplied. Run `git diff --check`, inspect `git status` and `git diff`, verify Safari/Dock application behavior, then stage only intended files, commit, push, and tag v0.2.25 after the push.
+The most useful details are the **article URL**, the **ScraperGo version shown in the interface**, what is **missing or incorrectly formatted**, and whether it also appears in the downloaded **TXT** file. A comparison with the original article is helpful for issues involving images, captions, section headings, or missing ending paragraphs.
+
+For engineering diagnostics, previously verified regressions, development patch procedures, Git checks, and cross-chat continuity, see [`AGENTS.md`](AGENTS.md).
