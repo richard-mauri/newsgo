@@ -26,7 +26,7 @@ function exclusionDomain(value){
 function excludedURL(value){const h=hostOf(value);return !!h&&excludedDomains.some(d=>h===d||h.endsWith('.'+d))}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
 function saveExclusions(list){
- try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();return true}
+ try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleServerSave();return true}
  catch(e){message('Could not save exclusions: '+e.message);return false}
 }
 function excludeDomain(value){const domain=exclusionDomain(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedDomains.includes(domain))saveExclusions([...excludedDomains,domain]);else message(domain+' is already excluded.')}
@@ -35,11 +35,22 @@ function publisherForFeed(feed){return exclusionDomain(feed.website||feed.url||'
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
 function excludeButton(domain){const d=exclusionDomain(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
 function markSite(info,domain){if(!domain)return;const badge=document.createElement('small');badge.className='exclusion-label';badge.textContent=statusLabel(domain);info.append(badge)}
+// Compare against the specific excluded entry, not against every exclusion.
+function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
 function renderExclusionManager(){
  const root=el('excluded-list');root.replaceChildren();
  el('excluded-count').textContent='('+excludedDomains.length+')';
  if(!excludedDomains.length){root.textContent='No sites excluded.';return}
- excludedDomains.slice().sort().forEach(d=>{const row=document.createElement('div');row.className='personal-row';const label=document.createElement('strong');label.textContent=d;row.append(label,button('Allow site',()=>toggleDomain(d)));root.append(row)})
+ excludedDomains.slice().sort().forEach(d=>{
+  const row=document.createElement('div');row.className='personal-row';
+  const info=document.createElement('div');
+  const matches=registry.filter(r=>r.kind==='feed'&&excludedURLForDomain(r.url,d));
+  const names=[...new Set(matches.map(r=>r.name))];
+  const title=document.createElement('strong');title.textContent=names.length?names.join(' · '):d;
+  info.append(title);
+  if(names.length){const host=document.createElement('small');host.textContent=d;info.append(host)}
+  row.append(info,button('Allow site',()=>toggleDomain(d)));root.append(row);
+ })
 }
 function selectedPublisherExcluded(){
  const value=el('read-source').value;
@@ -102,7 +113,7 @@ function saveSubscriptions(next){
  try{
   const serialized=JSON.stringify(next);
   localStorage.setItem(unifiedKey,serialized);
-  registry=next;syncDerived();return true;
+  registry=next;syncDerived();scheduleServerSave();return true;
  }catch(e){message('Could not save subscriptions. No changes were applied: '+e.message);return false}
 }
 function hasSubscription(id){return registry.some(r=>r.id===id)}
@@ -176,7 +187,6 @@ function renderReading(){
  selectedSource=selection.feedURL;
  el('personal-feed').classList.toggle('personal-hidden',!selection.showPersonal);
  el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0;
- el('all-subscriptions').hidden=selection.all;
  el('reading-title').hidden=selection.all;
  el('reading-title').textContent=selection.feedURL?(feeds.find(f=>f.url===selection.feedURL)?.name||'Selected subscription'):'';
  el('personal-section-label').hidden=true;
@@ -245,7 +255,8 @@ function showView(view){
  el('subscriptions-panel').classList.toggle('personal-hidden',view!=='subscriptions');
  el('exclusions-panel').classList.toggle('personal-hidden',view!=='exclusions');
  el('news-content').classList.toggle('personal-hidden',view!=='news');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-exclusions','exclusions']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-exclusions','exclusions'],['manage-sync','sync']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -276,7 +287,6 @@ async function refresh(){
   loading.classList.remove('is-refreshing');
   renderPersonalArticles();
   const succeeded=data.filter(group=>!group.error).length;
-  el('subscription-updated').textContent='Updated subscribed feeds';
   loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.filter(a=>!excludedURL(a.url)).length+' visible headlines';
  }catch(e){
   if(sequence!==refreshSequence)return;
@@ -304,7 +314,6 @@ document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click
  if(f)add(f,b);
 }));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
-el('all-subscriptions').addEventListener('click',chooseAllSubscriptions);
 el('close-discovery').addEventListener('click',()=>showView('news'));
 el('close-subscriptions').addEventListener('click',()=>showView('news'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
@@ -321,8 +330,151 @@ el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0
    renderManager();refresh();message('Subscriptions imported'+(importedExclusions!==null?' with exclusions':' (existing exclusions preserved)')+'.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
 el('exclude-add').addEventListener('click',()=>{excludeDomain(el('exclude-domain').value);el('exclude-domain').value=''});
 el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('exclude-add').click()}});
-el('manage-exclusions').addEventListener('click',()=>showView('exclusions'));
+el('manage-exclusions').addEventListener('click',()=>{renderExclusionManager();showView('exclusions')});
 el('close-exclusions').addEventListener('click',()=>showView('news'));
+
+// Optional per-user server sync. The same token works on every device.
+// Remembered credentials are local to this browser origin; only use on a trusted device.
+const syncCredentialKey='newsgo.sync.token.v1';
+let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
+const syncStatus=t=>{el('sync-status').textContent=t};
+function syncAppearance(){
+ el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
+ el('sync-connect').hidden=syncConnected;
+ el('sync-token').hidden=syncConnected;
+}
+function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains}}
+async function syncRequest(method,body){
+ const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
+ if(response.status===404)return {notFound:true};
+ if(!response.ok)throw Error('HTTP '+response.status+(response.status===409?' — newer server preferences are available. See Advanced to resolve the conflict.':' — '+(await response.text()).trim().slice(0,140)));
+ return response.json();
+}
+function applyServerPreferences(data){
+ if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains))throw Error('Invalid server profile');
+ if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d))throw Error('Server profile contains invalid entries');
+ const migrated=convertLegacy(data.subscriptions);
+ localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));
+ registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];syncRevision=data.revision;
+ syncDirty=false;syncPending=false;syncConflict=false;
+ refreshExclusionViews();renderExclusionManager();renderManager();refresh();
+}
+// Require an explicit choice before replacing browser-only edits at connection.
+function samePreferences(data){
+ const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
+ const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
+ const domains=x=>[...new Set(x)].sort().join('\n');
+ return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains);
+}
+function resolveConnectDifference(){
+ return new Promise(resolve=>{
+  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
+  shade.setAttribute('role','presentation');
+  const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
+  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','sync-choice-title');
+  const h=document.createElement('h3');h.id='sync-choice-title';h.textContent='Choose your subscription preferences';
+  const p=document.createElement('p');p.textContent='This browser has different subscriptions or excluded sites than your saved server profile. Choose what to do with both lists.';
+  const actions=document.createElement('div');actions.className='sync-choice-actions';
+  function add(label,value){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{shade.remove();resolve(value)});actions.append(b);return b}
+  const useServer=add('Use Server Preferences','server');
+  add('Merge Preferences','merge');add('Cancel','cancel');
+  dialog.append(h,p,actions);shade.append(dialog);document.body.append(shade);useServer.focus();
+ });
+}
+async function connectSync(token=el('sync-token').value.trim(),remember=true){
+ if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter the 64-character approved token distributed by Richard.');return}
+ syncToken=token;syncConnected=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
+ let needsSave=false;
+ try{
+  const data=await syncRequest('GET');
+  if(data.notFound){syncRevision=0;syncConnected=true;syncDirty=true;needsSave=true;syncStatus('Connected · creating your server profile…')}
+  else {
+   if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d))throw Error('Invalid server profile');
+   if(!samePreferences(data)){
+    const decision=await resolveConnectDifference();
+    if(decision==='cancel'){
+     syncToken='';syncConnected=false;localStorage.removeItem(syncCredentialKey);syncStatus('Connection cancelled · browser preferences preserved.');syncAppearance();return;
+    }
+    if(decision==='merge'){
+     const combined=[...new Map([...convertLegacy(data.subscriptions),...registry].map(r=>[r.id,r])).values()];
+     const domains=[...new Set([...data.excludedDomains,...excludedDomains])];
+     // Only replace local storage once both lists are validated.
+     localStorage.setItem(unifiedKey,JSON.stringify(combined));localStorage.setItem(exclusionKey,JSON.stringify(domains));
+     registry=combined;syncDerived();excludedDomains=domains;syncRevision=data.revision;
+     refreshExclusionViews();renderManager();refresh();
+     syncConnected=true;syncDirty=true;needsSave=true;
+     syncStatus('Connected · saving merged preferences…');
+    }else{applyServerPreferences(data);syncConnected=true;syncStatus('Connected · server preferences loaded (revision '+syncRevision+')')}
+   }else{syncRevision=data.revision;syncConnected=true;syncDirty=false;syncStatus('Connected · up to date (revision '+syncRevision+')')}
+  }
+  if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
+  el('sync-token').value='';syncAppearance();
+ }catch(e){syncToken='';syncConnected=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
+ finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
+}
+async function loadSync(force=false){
+ if(!syncConnected||syncBusy||syncReading)return;
+ if((syncDirty||syncConflict)&&!force){syncStatus('Local changes need attention. Check Advanced before loading.');return}
+ syncReading=true;
+ try{
+  const data=await syncRequest('GET');
+  if(data.notFound){if(syncRevision>0)syncStatus('Server profile missing. Your local preferences were preserved.');return}
+  if(data.revision===syncRevision&&!force)return;
+  if(syncDirty&&!force)return;
+  applyServerPreferences(data);syncStatus('Connected · synchronized (revision '+syncRevision+')');
+ }catch(e){syncStatus('Sync unavailable: '+e.message+' · local preferences kept')}
+ finally{syncReading=false}
+}
+async function saveSync(){
+ if(!syncConnected||syncConflict||syncReading)return;
+ if(syncBusy){syncPending=true;return}
+ syncBusy=true;syncPending=false;
+ const snap=syncSnapshot();
+ try{
+  const data=await syncRequest('PUT',snap);syncRevision=data.revision;
+  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains);
+  syncDirty=changed;if(changed)syncPending=true;
+  syncStatus(changed?'Connected · saving newer changes…':'Connected · all changes saved');
+ }catch(e){
+  syncDirty=true;
+  if(/HTTP 409/.test(e.message))syncConflict=true;
+  syncStatus('Not synced: '+e.message+' · your local changes were preserved.');
+  syncBusy=false;
+  if(!syncConflict){clearTimeout(syncTimer);syncTimer=setTimeout(saveSync,30000)}
+  return;
+ }
+ syncBusy=false;if(syncPending){syncPending=false;scheduleServerSave()}
+}
+function scheduleServerSave(){
+ if(!syncConnected)return;
+ syncDirty=true;
+ syncStatus('Connected · saving changes…');
+ clearTimeout(syncTimer);
+ if(!syncConflict)syncTimer=setTimeout(saveSync,600);
+}
+async function checkSync(){
+ if(!syncConnected||syncBusy||syncReading||syncDirty||syncConflict||document.hidden)return;
+ await loadSync();
+}
+el('manage-sync').addEventListener('click',()=>showView('sync'));
+el('close-sync').addEventListener('click',()=>showView('news'));
+el('sync-connect').addEventListener('click',()=>connectSync());
+el('sync-load').addEventListener('click',()=>{
+ if(syncDirty||syncConflict){if(!confirm('Replace this browser’s subscriptions and excluded sites with the server copy? Unsaved local changes will be lost.'))return}
+ clearTimeout(syncTimer);loadSync(true);
+});
+el('sync-save').addEventListener('click',()=>{if(!syncConnected){syncStatus('Connect first.');return}if(syncConflict){syncStatus('Server changed. Use Load from Server to resolve before saving.');return}clearTimeout(syncTimer);syncDirty=true;saveSync()});
+el('sync-disconnect').addEventListener('click',()=>{
+ clearTimeout(syncTimer);syncConnected=false;syncToken='';syncRevision=0;syncDirty=false;syncConflict=false;
+ localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
+});
+syncAppearance();
+const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
+if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
+setInterval(checkSync,30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
+window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
+
 message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');searchCatalog();refresh();setInterval(refresh,15*60*1000);
 
 })();`

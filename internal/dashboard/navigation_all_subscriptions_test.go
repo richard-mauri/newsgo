@@ -1,21 +1,20 @@
 package dashboard
 
 import (
-	"strings"
-	"testing"
+ "strings"
+ "testing"
 )
 
-func TestAllSubscriptionsNavigation(t *testing.T) {
-	for _, fragment := range []string{
-		"function chooseAllSubscriptions()", "el('read-source').value=''", "renderReading();showView('news')", "Read All Articles", "el('all-subscriptions').addEventListener('click',chooseAllSubscriptions)",
-	} {
-		if !strings.Contains(personalJS, fragment) {
-			t.Errorf("missing all-subscriptions navigation: %s", fragment)
-		}
-	}
-	for _, fragment := range []string{"id=\"all-subscriptions\"", "← All Subscriptions"} {
-		if !strings.Contains(page.Tree.Root.String(), fragment) {
-			t.Errorf("missing navigation control: %s", fragment)
-		}
-	}
+func TestReadAllArticlesIsOnlyCombinedFeedNavigation(t *testing.T) {
+ for _, fragment := range []string{
+  "function chooseAllSubscriptions()", "el('read-source').value=''", "renderReading();showView('news')",
+  "button('Read All Articles',chooseAllSubscriptions)", "if(source&&excludedURL(publisherForFeed(source))){chooseAllSubscriptions();return}",
+ } {
+  if !strings.Contains(personalJS, fragment) { t.Errorf("missing combined-feed behavior: %s", fragment) }
+ }
+ for _, fragment := range []string{"id=\"all-subscriptions\"", "← All Subscriptions"} {
+  if strings.Contains(page.Tree.Root.String(), fragment) { t.Errorf("obsolete standalone navigation control still present: %s",fragment) }
+ }
+ if strings.Contains(personalJS,"el('all-subscriptions')") { t.Error("obsolete all-subscriptions element still referenced in JS") }
+ if !strings.Contains(page.Tree.Root.String(),`id="reading-title"`) {t.Error("selected publication title removed")}
 }

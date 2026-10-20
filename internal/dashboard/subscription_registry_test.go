@@ -11,12 +11,12 @@ func TestSingleSubscriptionRegistryMigration(t *testing.T) {
 	for _, token := range []string{
 		"newsgo.subscriptions.v2",
 		"loadSubscriptions()",
-		"localStorage.setItem(unifiedKey,JSON.stringify(registry))",
+		"localStorage.setItem(key,JSON.stringify(migrated))",
 		"function saveSubscriptions(next)",
 		"function subscribeRecord(record)",
 		"function unsubscribeRecord(id)",
 		"feedIdentity(f.url)",
-		"function convertLegacy(records)",
+		"convertLegacy(records)",
 		"snapshot.slice(offset,offset+8)",
 	} {
 		if !strings.Contains(personalJS, token) {

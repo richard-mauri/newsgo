@@ -1,4 +1,24 @@
-## v0.2.33 cleanup and discovery fixes — October 20, 2026
+## v0.2.41 — visible token placeholder (October 20, 2026)
+
+Server Sync token input placeholder now explicitly says `Enter the 64-character approved token distributed by Richard.` (not only validation error text). Presentation-only change; no sync behavior or JSON data changes. Tests assert actual input markup; preserve the version and script-cache synchronization.
+
+## v0.2.41 — presentation copy (October 20, 2026)
+
+Update header tagline to `NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO`, retaining displayed version `V0.2.41`. Change the missing/malformed token instruction to `Enter the 64-character approved token distributed by Richard.` Keep sync and storage behavior unchanged; update JavaScript query version and locked Go tests. Validate syntax, full Go tests, and staged file inventory before commit.
+
+## v0.2.38 — duplicate refresh status removal (October 20, 2026)
+
+Remove only the redundant upper-right `#subscription-updated` element and its personal_script.go assignment. Keep the detailed `#personal-loading` progress/status (updated feed count, errors, visible headlines) and spinner. The old v33 status test now asserts absence of the duplicate and presence of the detailed status. Sync, feeds, preferences, and exclusions unchanged. All exact version test assertions synchronized to 0.2.38. Validate full Go suite on the user Mac before commit.
+
+## v0.2.37 reading navigation cleanup — October 20, 2026
+
+Remove the redundant standalone `← All Subscriptions` button (`#all-subscriptions`) and its JS references; do **not** remove `chooseAllSubscriptions()`, the My Subscriptions `Read All Articles` action, automatic reset when selecting an excluded publisher, or the selected publication heading. Preserve all server sync and exclusion persistence behavior. `navigation_all_subscriptions_test.go` tests retained navigation and absence of the old button. Dashboard header/JS version and all version-locked tests are v0.2.37. Validate `go test ./...` on the user's Go toolchain before committing.
+
+## v0.2.36 excluded-site display — October 20, 2026
+
+The Excluded Sites panel previously showed raw domains only; a Hacker News exclusion was saved as `news.ycombinator.com`, making the publisher appear missing. Show the matching subscription names and the unchanged domain, using a comparison scoped to each excluded-domain entry. Refresh the panel on open. Preserve `excludedDomains` JSON, token sync, and subscriptions. The count must remain the number of excluded domain entries. Regression: `exclusion_manager_v36_test.go`.
+
+## v0.2.34 cleanup and discovery fixes — October 20, 2026
 
 The catalog exists for discovery only. `State.Refresh`, `State.Run`, shared-image enrichment, cached built-in articles, and the dead periodic-refresh CLI option were removed. Never reintroduce an automatic catalog headline pipeline. Preserve the v0.2.32 unified subscription registry, migration, exclusions, and reading behavior.
 
@@ -6,7 +26,7 @@ Discovery: Feedly exact-name searches may be empty while a prefix returns result
 
 Tests required: `go test ./...`, JavaScript syntax, version sync, and regression tests. The direct-unzip patch should be applied to a clean v0.2.32 baseline; never stage or push changes without user approval.
 
-## v0.2.33 unified subscription architecture — October 20, 2026
+## v0.2.34 unified subscription architecture — October 20, 2026
 
 Implementation candidate from the complete user-provided `newsgo-v32-source.zip`, based on local v0.2.31. **Every displayed article now comes from a subscribed feed fetched through `/api/personal`.** The built-in feed catalog is for discovery only; the independent automatic `app.Run` feed refresh is no longer invoked at server startup. Browser `readingSelection` has one feed path. Lead stories, latest headlines, sorting, and exclusion all operate on the same subscribed article array. An empty registry yields an empty briefing with a discovery action.
 
@@ -14,7 +34,7 @@ Migration reads `newsgo.subscriptions.v2` and the older legacy keys without dele
 
 **Testing:** Full Go suite was executed successfully in the supplied archive with an *isolated, temporary* `go.mod` declaration changed from `go 1.27.1` to `go 1.23.2` because the container lacks the required toolchain and cannot download it. The actual `go.mod` in the distributed patch is unchanged. JavaScript parser check and ZIP audit are separately required before delivery. This is not a verified result on the user's installed Go 1.27.1 or Safari; follow normal `go test ./...`, build, restart, and browser acceptance before Git commit.
 
-**Acceptance:** Existing subscribed catalog publishers remain subscribed after conversion; no unsubscribed publisher's articles appear; manual Find Subscriptions and Subscribe work; no automatic 200+ headlines; excluded sources have no headlines; the summary counts only visible subscribed articles; and new header, script cache-buster, tests, and documentation all display v0.2.33. Do not run tests with any toolchain downgrade in the user's actual project.
+**Acceptance:** Existing subscribed catalog publishers remain subscribed after conversion; no unsubscribed publisher's articles appear; manual Find Subscriptions and Subscribe work; no automatic 200+ headlines; excluded sources have no headlines; the summary counts only visible subscribed articles; and new header, script cache-buster, tests, and documentation all display v0.2.34. Do not run tests with any toolchain downgrade in the user's actual project.
 
 **Next step:** Install this development patch, execute `go test ./...`, verify Safari subscription persistence, subscribe/unsubscribe, exclusions, lead stories, and empty-view behavior. Stop if anything fails. Do not push, tag, or release without user approval.
 
@@ -156,3 +176,17 @@ The user ran `go test ./...` on v0.2.29 and five tests failed solely because the
 **v0.2.31 change:** Both subscription row types now add the existing `excludeButton(domain)` action, so allowed domains show **Exclude this site** and excluded domains show **Allow this site**. No changes to the subscription registry, storage keys, filtering, or server APIs. The displayed dashboard version and JavaScript URL, all five version-dependent tests, and both docs are updated together. `exclusion_actions_v31_test.go` protects the subscription action. This is a **development candidate**; full `go test ./...` and Safari testing on the user's actual checkout remain required.
 
 **Mandatory version-sync gate:** Every new installable build **MUST** update (1) visible dashboard/app version, (2) `/personal.js?v=...` cache-busting reference, (3) any exact-string version assertions in the existing Go tests, (4) `AGENTS.md` and `README.md` handoff/version text, and (5) artifact filename. Search every affected test file for prior version strings before packaging. An inconsistent version or an unupdated test assertion blocks delivery; never make the test pass by reverting the app version. Preserve actual user preferences and exclude ScraperGo from this work.
+
+
+## v0.2.34 server sync (October 20, 2026)
+
+Adds `internal/dashboard/sync.go` (per-user JSON preferences + hashed approved tokens), `cmd/newsgo-token` (manual issue/revoke), optional UI in dashboard/personal_script.go, and `-sync-dir` in cmd/newsgo. Server profile includes **both** `subscriptions` and `excludedDomains`; browser fallback preserved. Bearer tokens are not stored in localStorage; only held in memory. GET loads a profile, PUT uses optimistic revision concurrency control and atomic file replacement. Data directory must stay outside version control; patch installs must not overwrite user data. Test with three distinct Safari contexts via same tunnel origin.
+
+## v0.2.36 development handoff
+
+Server Sync remembers the per-user token in browser localStorage, loads the server profile on launch, saves both lists on edits, and polls every 30 seconds while visible plus on tab reactivation. Advanced holds manual Load, Save, Disconnect. Stale-write 409 errors preserve local changes and require explicit conflict resolution; polling must never replace unsaved edits. Keep token logging disabled. The original JSON persistence backend and unified subscriber-only headline model remain unchanged. Do not commit data/. Update all visible/template/cache/test versions together.
+
+
+### v0.2.41: safe reconnection
+
+When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.

@@ -1,8 +1,6 @@
-report.json
+data/
+
+# Local runtime files
 .cloudflared/
 newsgo.log
-*.test
-.DS_Store
-
-dist/
-*.log
+report.json

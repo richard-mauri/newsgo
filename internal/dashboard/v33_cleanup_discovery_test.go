@@ -27,8 +27,11 @@ func TestV33NoCachedCatalogHeadlinesOrServerRefresh(t *testing.T) {
 	if strings.Contains(html, "Fetching headlines…") || strings.Contains(html, "cached headlines") {
 		t.Fatal("obsolete server-side headline status in dashboard")
 	}
-	if !strings.Contains(html, "Waiting for subscribed feeds") {
-		t.Fatal("missing client-side status")
+	if strings.Contains(html, "Waiting for subscribed feeds") || strings.Contains(html, `id="subscription-updated"`) {
+		t.Fatal("obsolete duplicate header status present")
+	}
+	if !strings.Contains(html, `id="personal-loading"`) {
+		t.Fatal("missing detailed subscribed-feed status")
 	}
 	if !strings.Contains(html, "grid-template-columns:minmax(0,1fr) auto") {
 		t.Fatal("missing layout safeguard")
