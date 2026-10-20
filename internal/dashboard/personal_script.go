@@ -14,7 +14,8 @@ const recordValid=r=>r&&typeof r.id==='string'&&typeof r.name==='string'&&r.name
  (r.kind==='shared'||(r.kind==='feed'&&typeof r.url==='string'&&/^https?:\/\/[^\s/]+/i.test(r.url)&&r.url.length<=2048));
 // Publisher exclusions are independent of subscription membership.
 const exclusionKey='newsgo.excludedDomains.v1';
-let excludedDomains=[],exclusionError='';
+let excludedDomains=[],articleDomains=[],exclusionError='';
+const articleExclusionKey='newsgo.excludedArticleDomains.v1';
 function hostOf(value){
  try{const u=new URL(value.includes('://')?value:'https://'+value);if(!/^https?:$/.test(u.protocol)||u.username||u.password)return '';return u.hostname.toLowerCase().replace(/\.$/,'').replace(/^www\./,'')}
  catch(_){return ''}
@@ -23,6 +24,11 @@ function exclusionDomain(value){
  const host=hostOf(value);
  return host&&/^[a-z0-9.-]+$/.test(host)&&host.includes('.')&&!host.startsWith('.')&&!host.endsWith('.')&&!host.includes('..')?host:'';
 }
+function articleDomain(value){const d=exclusionDomain(value);return d==='youtu.be'?'youtube.com':d}
+function articleExcluded(value){const h=hostOf(value);return !!h&&articleDomains.some(d=>h===d||h.endsWith('.'+d)||(d==='youtube.com'&&h==='youtu.be'))}
+function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
+function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleServerSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
+function toggleArticleDomain(value){const d=articleDomain(value);if(!d){message('Enter a valid article domain.');return}saveArticleExclusions(articleDomains.includes(d)?articleDomains.filter(x=>x!==d):[...articleDomains,d])}
 function excludedURL(value){const h=hostOf(value);return !!h&&excludedDomains.some(d=>h===d||h.endsWith('.'+d))}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
 function saveExclusions(list){
@@ -39,8 +45,8 @@ function markSite(info,domain){if(!domain)return;const badge=document.createElem
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
 function renderExclusionManager(){
  const root=el('excluded-list');root.replaceChildren();
- el('excluded-count').textContent='('+excludedDomains.length+')';
- if(!excludedDomains.length){root.textContent='No sites excluded.';return}
+ el('excluded-count').textContent='('+(excludedDomains.length+articleDomains.length)+')';
+ if(!excludedDomains.length){const p=document.createElement('p');p.textContent='No publishers excluded.';root.append(p)}
  excludedDomains.slice().sort().forEach(d=>{
   const row=document.createElement('div');row.className='personal-row';
   const info=document.createElement('div');
@@ -50,7 +56,11 @@ function renderExclusionManager(){
   info.append(title);
   if(names.length){const host=document.createElement('small');host.textContent=d;info.append(host)}
   row.append(info,button('Allow site',()=>toggleDomain(d)));root.append(row);
- })
+ });
+ const heading=document.createElement('h3');heading.textContent='Excluded Article Domains';root.append(heading);
+ const desc=document.createElement('p');desc.textContent='Hide links to these domains from every subscribed feed. Subscriptions remain intact.';root.append(desc);
+ if(!articleDomains.length){const none=document.createElement('p');none.textContent='No article domains excluded.';root.append(none)}
+ articleDomains.slice().sort().forEach(d=>{const row=document.createElement('div');row.className='personal-row';const label=document.createElement('strong');label.textContent=d;row.append(label,button('Allow articles',()=>toggleArticleDomain(d)));root.append(row)})
 }
 function selectedPublisherExcluded(){
  const value=el('read-source').value;
@@ -63,7 +73,7 @@ function refreshExclusionViews(){
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}
  renderExclusionManager();renderManager();searchCatalog();
 }
-readExclusions();
+readExclusions();readArticleExclusions();
 let registry=[], storageError='';
 const unifiedKey='newsgo.subscriptions.unified.v1';
 function loadSubscriptions(){
@@ -197,7 +207,7 @@ function renderPersonalArticles(){
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
  const sources=new Set(feeds.filter(f=>!selectedSource||f.url===selectedSource).map(f=>f.name));
- const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!excludedURL(a.url));
+ const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!excludedURL(a.url)&&!articleExcluded(a.url));
  const seen=new Set();articles.sort((a,b)=>new Date(b.published)-new Date(a.published));
  let count=0;
  articles.forEach(a=>{
@@ -209,7 +219,7 @@ function renderPersonalArticles(){
   const title=document.createElement('a');title.className='story-title';title.href=a.open;title.target='newsgo-scrapergo';title.textContent=a.title;
   const sub=document.createElement('div');sub.className='story-meta';sub.textContent=a.date+'  ';
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
-  sub.append(original);body.append(meta,title,sub);const exclude=excludeButton(a.url);if(exclude)body.append(exclude);
+  sub.append(original);body.append(meta,title,sub);const exclude=excludeButton(a.url);if(exclude)body.append(exclude);const ad=articleDomain(a.url);if(ad){body.append(button('Exclude articles from '+ad,()=>toggleArticleDomain(ad),'exclude-article-domain'))}
   if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
    const img=document.createElement('img');img.className='article-thumb';img.src=a.image;img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove());
    if(featured)body.prepend(img);else row.append(img);
@@ -287,7 +297,7 @@ async function refresh(){
   loading.classList.remove('is-refreshing');
   renderPersonalArticles();
   const succeeded=data.filter(group=>!group.error).length;
-  loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.filter(a=>!excludedURL(a.url)).length+' visible headlines';
+  loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.filter(a=>!excludedURL(a.url)&&!articleExcluded(a.url)).length+' visible headlines';
  }catch(e){
   if(sequence!==refreshSequence)return;
   loading.classList.remove('is-refreshing');
@@ -318,18 +328,22 @@ el('close-discovery').addEventListener('click',()=>showView('news'));
 el('close-subscriptions').addEventListener('click',()=>showView('news'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
 const sug=el('personal-suggestions');suggestions.forEach(s=>sug.append(button('+ '+s.name,()=>add(s),'personal-suggestion')));
-el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({format:'newsgo-preferences-v3',subscriptions:registry,excludedDomains},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-preferences-v3.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
+el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({format:'newsgo-preferences-v3',subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-preferences-v3.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 el('personal-import').addEventListener('click',()=>el('personal-file').click());
 el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());const records=Array.isArray(data)?data:data&&data.format==='newsgo-preferences-v3'?data.subscriptions:null;if(!Array.isArray(records))throw Error('Invalid subscription list');
    const importedExclusions=Array.isArray(data)?null:data.excludedDomains;if(importedExclusions!==null&&(!Array.isArray(importedExclusions)||importedExclusions.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)))throw Error('Invalid exclusion list');
+   const importedArticles=Array.isArray(data)?null:(data.excludedArticleDomains===undefined?null:data.excludedArticleDomains);if(importedArticles!==null&&(!Array.isArray(importedArticles)||importedArticles.some(d=>typeof d!=='string'||articleDomain(d)!==d)))throw Error('Invalid article exclusion list');
    const migrated=convertLegacy(records.map(r=>r&&r.kind?r:feedRecord(r)));
  if(migrated.some(r=>!recordValid(r)))throw Error('Invalid subscription entry');
  const unique=[...new Map(migrated.map(r=>[r.id,r])).values()];
  if(!saveSubscriptions(unique))return;
    if(importedExclusions!==null&&!saveExclusions(importedExclusions))return;
+   if(importedArticles!==null&&!saveArticleExclusions(importedArticles))return;
    renderManager();refresh();message('Subscriptions imported'+(importedExclusions!==null?' with exclusions':' (existing exclusions preserved)')+'.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
 el('exclude-add').addEventListener('click',()=>{excludeDomain(el('exclude-domain').value);el('exclude-domain').value=''});
 el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('exclude-add').click()}});
+el('article-exclude-add').addEventListener('click',()=>{toggleArticleDomain(el('article-exclude-domain').value);el('article-exclude-domain').value=''});
+el('article-exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('article-exclude-add').click()}});
 el('manage-exclusions').addEventListener('click',()=>{renderExclusionManager();showView('exclusions')});
 el('close-exclusions').addEventListener('click',()=>showView('news'));
 
@@ -343,7 +357,7 @@ function syncAppearance(){
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
 }
-function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains}}
+function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains}}
 async function syncRequest(method,body){
  const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
  if(response.status===404)return {notFound:true};
@@ -351,11 +365,11 @@ async function syncRequest(method,body){
  return response.json();
 }
 function applyServerPreferences(data){
- if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains))throw Error('Invalid server profile');
- if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d))throw Error('Server profile contains invalid entries');
+ if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||!Array.isArray(data.excludedArticleDomains||[]))throw Error('Invalid server profile');
+ if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Server profile contains invalid entries');
  const migrated=convertLegacy(data.subscriptions);
- localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));
- registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];syncRevision=data.revision;
+ localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));localStorage.setItem(articleExclusionKey,JSON.stringify(data.excludedArticleDomains||[]));
+ registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];syncRevision=data.revision;
  syncDirty=false;syncPending=false;syncConflict=false;
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
@@ -364,7 +378,7 @@ function samePreferences(data){
  const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
  const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
  const domains=x=>[...new Set(x)].sort().join('\n');
- return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains);
+ return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains);
 }
 function resolveConnectDifference(){
  return new Promise(resolve=>{
@@ -373,7 +387,7 @@ function resolveConnectDifference(){
   const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
   dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','sync-choice-title');
   const h=document.createElement('h3');h.id='sync-choice-title';h.textContent='Choose your subscription preferences';
-  const p=document.createElement('p');p.textContent='This browser has different subscriptions or excluded sites than your saved server profile. Choose what to do with both lists.';
+  const p=document.createElement('p');p.textContent='This browser has different subscriptions or exclusions than your saved server profile. Choose whether to replace or merge your subscriptions, excluded publishers, and excluded article domains.';
   const actions=document.createElement('div');actions.className='sync-choice-actions';
   function add(label,value){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{shade.remove();resolve(value)});actions.append(b);return b}
   const useServer=add('Use Server Preferences','server');
@@ -389,7 +403,7 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
   const data=await syncRequest('GET');
   if(data.notFound){syncRevision=0;syncConnected=true;syncDirty=true;needsSave=true;syncStatus('Connected · creating your server profile…')}
   else {
-   if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d))throw Error('Invalid server profile');
+   if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Invalid server profile');
    if(!samePreferences(data)){
     const decision=await resolveConnectDifference();
     if(decision==='cancel'){
@@ -398,9 +412,10 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
     if(decision==='merge'){
      const combined=[...new Map([...convertLegacy(data.subscriptions),...registry].map(r=>[r.id,r])).values()];
      const domains=[...new Set([...data.excludedDomains,...excludedDomains])];
+     const articles=[...new Set([...(data.excludedArticleDomains||[]),...articleDomains])];
      // Only replace local storage once both lists are validated.
-     localStorage.setItem(unifiedKey,JSON.stringify(combined));localStorage.setItem(exclusionKey,JSON.stringify(domains));
-     registry=combined;syncDerived();excludedDomains=domains;syncRevision=data.revision;
+     localStorage.setItem(unifiedKey,JSON.stringify(combined));localStorage.setItem(exclusionKey,JSON.stringify(domains));localStorage.setItem(articleExclusionKey,JSON.stringify(articles));
+     registry=combined;syncDerived();excludedDomains=domains;articleDomains=articles;syncRevision=data.revision;
      refreshExclusionViews();renderManager();refresh();
      syncConnected=true;syncDirty=true;needsSave=true;
      syncStatus('Connected · saving merged preferences…');
@@ -432,7 +447,7 @@ async function saveSync(){
  const snap=syncSnapshot();
  try{
   const data=await syncRequest('PUT',snap);syncRevision=data.revision;
-  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains);
+  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains)||JSON.stringify(snap.excludedArticleDomains)!==JSON.stringify(articleDomains);
   syncDirty=changed;if(changed)syncPending=true;
   syncStatus(changed?'Connected · saving newer changes…':'Connected · all changes saved');
  }catch(e){

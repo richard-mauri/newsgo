@@ -27,10 +27,11 @@ type approvedToken struct {
 	Label  string `json:"label,omitempty"`
 }
 type storedPrefs struct {
-	Revision        uint64             `json:"revision"`
-	Subscriptions   []syncSubscription `json:"subscriptions"`
-	ExcludedDomains []string           `json:"excludedDomains"`
-	UpdatedAt       string             `json:"updatedAt"`
+	Revision               uint64             `json:"revision"`
+	Subscriptions          []syncSubscription `json:"subscriptions"`
+	ExcludedDomains        []string           `json:"excludedDomains"`
+	ExcludedArticleDomains []string           `json:"excludedArticleDomains"`
+	UpdatedAt              string             `json:"updatedAt"`
 }
 type syncSubscription struct {
 	ID       string `json:"id"`
@@ -164,7 +165,7 @@ func (s *SyncStore) Revoke(user string) error {
 	return atomicJSON(s.file("approved-tokens.json"), out)
 }
 func validPrefs(p storedPrefs) bool {
-	if len(p.Subscriptions) > 250 || len(p.ExcludedDomains) > 500 {
+	if len(p.Subscriptions) > 250 || len(p.ExcludedDomains) > 500 || len(p.ExcludedArticleDomains) > 500 {
 		return false
 	}
 	ids := map[string]bool{}
@@ -186,7 +187,7 @@ func validPrefs(p storedPrefs) bool {
 			return false
 		}
 	}
-	for _, v := range p.ExcludedDomains {
+	for _, v := range append(append([]string{}, p.ExcludedDomains...), p.ExcludedArticleDomains...) {
 		if v == "" || len(v) > 253 || strings.ContainsAny(v, " /:@\n\t") || strings.ToLower(v) != v || !strings.Contains(v, ".") {
 			return false
 		}

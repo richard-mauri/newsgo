@@ -1,10 +1,22 @@
-## v0.2.41 — visible token placeholder (October 20, 2026)
+## v0.2.44 — Missing-thumbnail retry and lookup budget
+
+The Seahorse Magazine Finn article had no thumbnail even after the v0.2.44 body-image fallback. Preserve feed/metadata/body extraction; allow 12 parallel metadata lookups within a 25-second shared deadline so late article lookups are less likely to be abandoned. Cache successful feeds containing image-less articles for 90 seconds rather than ten minutes to recover from transient metadata failures. Regression covers the Finn lead-image HTML and retry TTL. Live publisher image retrieval remains a browser acceptance test; no ScraperGo changes or data migration.
+
+## v0.2.44 — article body thumbnail fallback (October 20, 2026)
+
+The existing feed image and OG/Twitter metadata fallbacks remain primary. If those are missing, the same bounded article HTML response is examined for a plausible `<img>` in the article/main content; cross-publisher HTTPS image URLs are permitted. No new ScraperGo dependency. Regression: `article_metadata_test.go` Seahorse Magazine case. Keep per-feed caches, SSRF controls, and separate publisher/article-domain exclusions.
+
+## v0.2.42 — article destination exclusions (October 20, 2026)
+
+From released v0.2.41, add a second exclusion registry for *article destination domains*, separate from publisher/whole-feed exclusions. For example, youtube.com blocks youtube.com and www.youtube.com article links and youtu.be links across all subscriptions, without unsubscribing from KCRA 3. New article-domain exclusions are held in newsgo.excludedArticleDomains.v1 browser storage and synchronized using optional excludedArticleDomains in the existing per-user JSON profile. Do not change the interpretation of excludedDomains (publisher exclusions). Import/export both lists; refresh visible stories after an article exclusion change. Version all visible version strings and tests. Avoid touching ScraperGo. Tests run with the installed project Go toolchain; Go 1.23 fallback test is not the required production toolchain. Do not commit private data or tunnel files.
+
+## v0.2.42 — visible token placeholder (October 20, 2026)
 
 Server Sync token input placeholder now explicitly says `Enter the 64-character approved token distributed by Richard.` (not only validation error text). Presentation-only change; no sync behavior or JSON data changes. Tests assert actual input markup; preserve the version and script-cache synchronization.
 
-## v0.2.41 — presentation copy (October 20, 2026)
+## v0.2.42 — presentation copy (October 20, 2026)
 
-Update header tagline to `NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO`, retaining displayed version `V0.2.41`. Change the missing/malformed token instruction to `Enter the 64-character approved token distributed by Richard.` Keep sync and storage behavior unchanged; update JavaScript query version and locked Go tests. Validate syntax, full Go tests, and staged file inventory before commit.
+Update header tagline to `NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO`, retaining displayed version `V0.2.42`. Change the missing/malformed token instruction to `Enter the 64-character approved token distributed by Richard.` Keep sync and storage behavior unchanged; update JavaScript query version and locked Go tests. Validate syntax, full Go tests, and staged file inventory before commit.
 
 ## v0.2.38 — duplicate refresh status removal (October 20, 2026)
 
@@ -187,6 +199,6 @@ Adds `internal/dashboard/sync.go` (per-user JSON preferences + hashed approved t
 Server Sync remembers the per-user token in browser localStorage, loads the server profile on launch, saves both lists on edits, and polls every 30 seconds while visible plus on tab reactivation. Advanced holds manual Load, Save, Disconnect. Stale-write 409 errors preserve local changes and require explicit conflict resolution; polling must never replace unsaved edits. Keep token logging disabled. The original JSON persistence backend and unified subscriber-only headline model remain unchanged. Do not commit data/. Update all visible/template/cache/test versions together.
 
 
-### v0.2.41: safe reconnection
+### v0.2.42: safe reconnection
 
 When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.

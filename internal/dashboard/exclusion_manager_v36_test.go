@@ -13,7 +13,7 @@ func TestExcludedManagerNamesSitesAndPreservesDomainCountV36(t *testing.T) {
         "registry.filter(r=>r.kind==='feed'&&excludedURLForDomain(r.url,d))",
         "names.join(' · ')",
         "host.textContent=d",
-        "el('excluded-count').textContent='('+excludedDomains.length+')'",
+        "el('excluded-count').textContent='('+(excludedDomains.length+articleDomains.length)+')'",
         "()=>{renderExclusionManager();showView('exclusions')}",
     } {
         if !strings.Contains(personalJS, token) { t.Errorf("missing exclusion manager contract %q", token) }

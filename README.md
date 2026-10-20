@@ -1,6 +1,18 @@
-**v0.2.41:** Corrected the visible Server Sync token-entry placeholder to “Enter the 64-character approved token distributed by Richard.” No change to token handling, sync, subscriptions, or exclusions.
+## v0.2.44 — Missing-thumbnail retry and lookup budget
 
-**v0.2.41:** Presentation-only changes: header tagline is “NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO” and invalid/absent sync token guidance reads “Enter the 64-character approved token distributed by Richard.” No change to synchronization, subscription data, exclusions, or ScraperGo.
+The Seahorse Magazine Finn article had no thumbnail even after the v0.2.44 body-image fallback. Preserve feed/metadata/body extraction; allow 12 parallel metadata lookups within a 25-second shared deadline so late article lookups are less likely to be abandoned. Cache successful feeds containing image-less articles for 90 seconds rather than ten minutes to recover from transient metadata failures. Regression covers the Finn lead-image HTML and retry TTL. Live publisher image retrieval remains a browser acceptance test; no ScraperGo changes or data migration.
+
+## v0.2.44 — Article image fallback
+
+NewsGo now inspects article-body image tags when the feed and social metadata have no thumbnail. This addresses the Seahorse Magazine image in Sailing Anarchy’s “Control from the cockpit” link. Existing image metadata, safe network fetching, subscriptions, and exclusions are unchanged.
+
+## v0.2.42 — exclude article destination domains
+
+**Excluded Sites** now manages two independent lists: excluded publisher domains (the existing behavior) and excluded article domains. Add `youtube.com` to **Excluded Article Domains** to hide linked YouTube stories from any subscribed RSS feed, including KCRA, without removing the subscription or hiding non-YouTube articles. `youtu.be` short links are treated as YouTube. Use **Allow articles** to undo the exclusion. The button count includes entries from both exclusion lists. Both exclusion lists are retained in local browser storage, preference export/import, and token-authenticated server-side JSON synchronization. Existing JSON user profiles require no migration; omitted `excludedArticleDomains` means no article exclusions. Automatic saves, revision/conflict checks, and safe reconnect/merge now include article domains.
+
+**v0.2.42:** Corrected the visible Server Sync token-entry placeholder to “Enter the 64-character approved token distributed by Richard.” No change to token handling, sync, subscriptions, or exclusions.
+
+**v0.2.42:** Presentation-only changes: header tagline is “NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO” and invalid/absent sync token guidance reads “Enter the 64-character approved token distributed by Richard.” No change to synchronization, subscription data, exclusions, or ScraperGo.
 
 **v0.2.38:** Removes the redundant upper-right “Updated subscribed feeds” status. The detailed line showing updated feed counts and visible headlines remains the single source of refresh progress. No changes to subscriptions, exclusions, or server sync.
 
@@ -20,7 +32,7 @@ Headlines open in [ScraperGo](https://scrapergo.themauris.org/), a separate arti
 
 The service is written in Go, uses an RSS/Atom/JSON feed catalog (`feeds.json`) for discoverability, and presents article headlines from the feeds you have subscribed to. Provider access and publication frequencies vary. NewsGo is an aggregator, not a subscription/paywall bypass.
 
-**Development candidate:** v0.2.41 (October 20, 2026). This version adds optional per-user JSON-backed synchronization of subscriptions and excluded sites. The prior unified subscription reader and feed-discovery fixes remain intact. Existing browser preferences are preserved. Production deployment and live-browser validation have not been confirmed.
+**Development candidate:** v0.2.42 (October 20, 2026). This version adds optional per-user JSON-backed synchronization of subscriptions and excluded sites. The prior unified subscription reader and feed-discovery fixes remain intact. Existing browser preferences are preserved. Production deployment and live-browser validation have not been confirmed.
 
 **Developers and future AI agents:** See [`AGENTS.md`](AGENTS.md) for the authoritative current engineering handoff, development procedure, version synchronization rules, and Git safeguards.
 
@@ -48,6 +60,6 @@ Copy the printed secret token into **Server Sync** on each trusted browser once.
 Revoke a user token: `go run ./cmd/newsgo-token -dir data -user richard -revoke`. Reissue after revocation if necessary. Tokens are stored as SHA-256 digests; each token should be treated as a secret. The browser remembers the token in localStorage for automatic reconnection. Only enter tokens on trusted devices: browser storage is accessible to scripts running on this origin. Disconnect erases the locally remembered token, not the server account. The server must be reachable over HTTPS through your existing Cloudflare Tunnel. No additional hosted database is required.
 
 
-### v0.2.41: safe reconnection
+### v0.2.42: safe reconnection
 
 When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.

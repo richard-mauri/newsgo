@@ -107,6 +107,14 @@ func personalCacheTTL(entry cacheEntry) time.Duration {
 	if entry.err != "" {
 		return 20 * time.Second
 	}
+	// Missing thumbnails can be transient: metadata lookup may time out even
+	// though the feed itself loaded. Retry these feeds sooner rather than
+	// caching an image-less card for the full successful-feed interval.
+	for _, a := range entry.articles {
+		if a.Image == "" && a.URL != "" {
+			return 90 * time.Second
+		}
+	}
 	return 10 * time.Minute
 }
 
@@ -210,8 +218,63 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 // Keep page requests bounded; the feed remains usable if metadata is unavailable.
 var articleMetaRE = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
 var metaAttrRE = regexp.MustCompile(`(?is)\b(property|name|content)\s*=\s*["']([^"']+)["']`)
+var articleImgRE = regexp.MustCompile(`(?is)<img\b[^>]*>`)
+var imageAttrRE = regexp.MustCompile(`(?is)\b(src|data-src|data-original|data-lazy-src|srcset|data-srcset|alt|width|height)\s*=\s*["']([^"']+)["']`)
+var articleBodyRE = regexp.MustCompile(`(?is)<(?:article|main)\b[^>]*>`)
+
+// Article HTML can contain the real hero image without social metadata.
+// Favor the first plausible content image, never tracking pixels or site icons.
+func articleBodyImage(page string, base *url.URL) string {
+	start := 0
+	if loc := articleBodyRE.FindStringIndex(page); loc != nil {
+		start = loc[0]
+	}
+	candidates := articleImgRE.FindAllString(page[start:], 100)
+	for _, tag := range candidates {
+		attrs := map[string]string{}
+		for _, m := range imageAttrRE.FindAllStringSubmatch(tag, -1) {
+			attrs[strings.ToLower(m[1])] = html.UnescapeString(m[2])
+		}
+		alt := strings.ToLower(attrs["alt"])
+		if strings.Contains(alt, "logo") || strings.Contains(alt, "avatar") || strings.Contains(alt, "icon") {
+			continue
+		}
+		if attrs["width"] == "1" || attrs["height"] == "1" {
+			continue
+		}
+		for _, key := range []string{"data-src", "data-original", "data-lazy-src", "src", "data-srcset", "srcset"} {
+			raw := strings.TrimSpace(attrs[key])
+			if strings.Contains(key, "srcset") {
+				raw = strings.TrimSpace(strings.Split(strings.Split(raw, ",")[0], " ")[0])
+			}
+			if raw == "" || strings.HasPrefix(raw, "data:") {
+				continue
+			}
+			u, e := url.Parse(raw)
+			if e != nil {
+				continue
+			}
+			resolved := base.ResolveReference(u)
+			if resolved.Scheme != "https" || !safeURL(resolved.String()) {
+				continue
+			}
+			low := strings.ToLower(resolved.Path)
+			if strings.Contains(low, "logo") || strings.Contains(low, "icon") || strings.Contains(low, "pixel") || strings.Contains(low, "avatar") || strings.HasSuffix(low, ".svg") {
+				continue
+			}
+			return resolved.String()
+		}
+	}
+	return ""
+}
 
 func articlePageImage(ctx context.Context, client *http.Client, raw string) string {
+	// URL fragments (e.g. #new_tab) are client-side navigation hints, not request targets.
+	if parsed, err := url.Parse(raw); err == nil {
+		parsed.Fragment = ""
+		parsed.RawFragment = ""
+		raw = parsed.String()
+	}
 	if !safeURL(raw) {
 		return ""
 	}
@@ -257,18 +320,20 @@ func articlePageImage(ctx context.Context, client *http.Client, raw string) stri
 			return resolved
 		}
 	}
-	return ""
+	return articleBodyImage(string(b), base)
 }
 func enrichArticleImages(ctx context.Context, articles []feeds.Article) {
 	// Inspect every image-less article, not just the first few.
+	// Twelve concurrent bounded metadata requests keep late articles from
+	// losing their opportunity to the older eight-worker/18-second deadline.
 	// Keep total enrichment time bounded and do not fetch image bytes.
-	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 	client := safeFeedClient()
-	slots := make(chan struct{}, 8)
+	slots := make(chan struct{}, 12)
 	var wg sync.WaitGroup
 	for i := range articles {
-		if articles[i].Image != "" || !safeURL(articles[i].URL) {
+		if articles[i].Image != "" || !safeURL(strings.SplitN(articles[i].URL, "#", 2)[0]) {
 			continue
 		}
 		wg.Add(1)
