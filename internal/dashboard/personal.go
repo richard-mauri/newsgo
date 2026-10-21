@@ -268,6 +268,10 @@ func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []
 		if i >= currentArticleSettings().MaxArticlesPerFeed {
 			break
 		}
+		if articleTooOld(a.Published, days, time.Now()) {
+			out[i] = "too-old"
+			continue
+		}
 		wg.Add(1)
 		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
 	}
