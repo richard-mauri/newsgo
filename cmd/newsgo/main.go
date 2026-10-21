@@ -48,6 +48,9 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
+	if e = syncStore.ActivateServerSettings(); e != nil {
+		log.Fatal(e)
+	}
 	app.SetSyncStore(syncStore)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

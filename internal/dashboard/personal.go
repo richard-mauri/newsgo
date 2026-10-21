@@ -112,7 +112,7 @@ func personalCacheTTL(entry cacheEntry) time.Duration {
 	// caching an image-less card for the full successful-feed interval.
 	for _, a := range entry.articles {
 		if a.Image == "" && a.URL != "" {
-			return 90 * time.Second
+			return time.Duration(currentImageSettings().MissingImageCacheSeconds) * time.Second
 		}
 	}
 	return 10 * time.Minute
@@ -278,7 +278,7 @@ func articlePageImage(ctx context.Context, client *http.Client, raw string) stri
 	if !safeURL(raw) {
 		return ""
 	}
-	c, cancel := context.WithTimeout(ctx, 2500*time.Millisecond)
+	c, cancel := context.WithTimeout(ctx, time.Duration(currentImageSettings().MetadataTimeoutMs)*time.Millisecond)
 	defer cancel()
 	req, err := http.NewRequestWithContext(c, "GET", raw, nil)
 	if err != nil {
@@ -294,7 +294,7 @@ func articlePageImage(ctx context.Context, client *http.Client, raw string) stri
 	if resp.StatusCode != 200 || !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
 		return ""
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, int64(currentImageSettings().MaxHTMLKiB)<<10))
 	if err != nil {
 		return ""
 	}
@@ -327,10 +327,10 @@ func enrichArticleImages(ctx context.Context, articles []feeds.Article) {
 	// Twelve concurrent bounded metadata requests keep late articles from
 	// losing their opportunity to the older eight-worker/18-second deadline.
 	// Keep total enrichment time bounded and do not fetch image bytes.
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(currentImageSettings().EnrichmentDeadlineSeconds)*time.Second)
 	defer cancel()
 	client := safeFeedClient()
-	slots := make(chan struct{}, 12)
+	slots := make(chan struct{}, currentImageSettings().ParallelRequests)
 	var wg sync.WaitGroup
 	for i := range articles {
 		if articles[i].Image != "" || !safeURL(strings.SplitN(articles[i].URL, "#", 2)[0]) {

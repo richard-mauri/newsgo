@@ -25,6 +25,7 @@ type approvedToken struct {
 	User   string `json:"user"`
 	Digest string `json:"digest"`
 	Label  string `json:"label,omitempty"`
+	Role   string `json:"role,omitempty"`
 }
 type storedPrefs struct {
 	Revision               uint64             `json:"revision"`
@@ -42,6 +43,7 @@ type syncSubscription struct {
 }
 type userPrefs struct {
 	User string `json:"user"`
+	Role string `json:"role,omitempty"`
 	storedPrefs
 }
 
@@ -245,11 +247,11 @@ func (s *SyncStore) ServeSync(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		if !exists {
 			w.WriteHeader(404)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "No server preferences saved for this user"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "No server preferences saved for this user", "role": tokenRole(tokens, user)})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(userPrefs{User: user, storedPrefs: current})
+		_ = json.NewEncoder(w).Encode(userPrefs{User: user, Role: tokenRole(tokens, user), storedPrefs: current})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
@@ -282,4 +284,61 @@ func (s *SyncStore) ServeSync(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(userPrefs{User: user, storedPrefs: input})
+}
+
+func tokenRole(tokens []approvedToken, user string) string {
+	for _, tok := range tokens {
+		if tok.User == user && tok.Role == "admin" {
+			return "admin"
+		}
+	}
+	return "user"
+}
+
+// authenticate must be called while s.mu is held.
+func (s *SyncStore) authenticate(r *http.Request) (approvedToken, int) {
+	parts := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+	if len(parts) != 2 || parts[0] != "Bearer" || len(parts[1]) != 64 {
+		return approvedToken{}, http.StatusUnauthorized
+	}
+	tokens, err := s.loadTokens()
+	if err != nil {
+		return approvedToken{}, http.StatusInternalServerError
+	}
+	requested := digest(parts[1])
+	for _, entry := range tokens {
+		if entry.Digest == requested {
+			return entry, http.StatusOK
+		}
+	}
+	return approvedToken{}, http.StatusUnauthorized
+}
+
+// SetRole promotes or demotes a previously issued token without rotating it.
+func (s *SyncStore) SetRole(user, role string) error {
+	if role != "admin" && role != "user" {
+		return errors.New("role must be admin or user")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := s.loadTokens()
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range entries {
+		if entries[i].User == user {
+			found = true
+			if role == "user" {
+				entries[i].Role = ""
+			} else {
+				entries[i].Role = "admin"
+			}
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("unknown user %q", user)
+	}
+	return atomicJSON(s.file("approved-tokens.json"), entries)
 }

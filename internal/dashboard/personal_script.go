@@ -293,7 +293,8 @@ function showView(view){
  el('exclusions-panel').classList.toggle('personal-hidden',view!=='exclusions');
  el('news-content').classList.toggle('personal-hidden',view!=='news');
  el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-exclusions','exclusions'],['manage-sync','sync']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -378,17 +379,20 @@ el('close-exclusions').addEventListener('click',()=>showView('news'));
 // Optional per-user server sync. The same token works on every device.
 // Remembered credentials are local to this browser origin; only use on a trusted device.
 const syncCredentialKey='newsgo.sync.token.v1';
+let isAdmin=false,adminRevision=0;
 let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
 const syncStatus=t=>{el('sync-status').textContent=t};
 function syncAppearance(){
  el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
+ el('manage-admin').hidden=!(syncConnected&&isAdmin);
+ if(!(syncConnected&&isAdmin)&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
 }
 function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains}}
 async function syncRequest(method,body){
  const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
- if(response.status===404)return {notFound:true};
+ if(response.status===404){const data=await response.json();return {...data,notFound:true}}
  if(!response.ok)throw Error('HTTP '+response.status+(response.status===409?' — newer server preferences are available. See Advanced to resolve the conflict.':' — '+(await response.text()).trim().slice(0,140)));
  return response.json();
 }
@@ -425,10 +429,11 @@ function resolveConnectDifference(){
 }
 async function connectSync(token=el('sync-token').value.trim(),remember=true){
  if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter the 64-character approved token distributed by Richard.');return}
- syncToken=token;syncConnected=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
+ syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
  let needsSave=false;
  try{
   const data=await syncRequest('GET');
+  isAdmin=data.role==='admin';
   if(data.notFound){syncRevision=0;syncConnected=true;syncDirty=true;needsSave=true;syncStatus('Connected · creating your server profile…')}
   else {
    if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Invalid server profile');
@@ -452,7 +457,7 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
   }
   if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
   el('sync-token').value='';syncAppearance();
- }catch(e){syncToken='';syncConnected=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
+ }catch(e){syncToken='';syncConnected=false;isAdmin=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
  finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
 }
 async function loadSync(force=false){
@@ -508,8 +513,30 @@ el('sync-load').addEventListener('click',()=>{
 });
 el('sync-save').addEventListener('click',()=>{if(!syncConnected){syncStatus('Connect first.');return}if(syncConflict){syncStatus('Server changed. Use Load from Server to resolve before saving.');return}clearTimeout(syncTimer);syncDirty=true;saveSync()});
 el('sync-disconnect').addEventListener('click',()=>{
- clearTimeout(syncTimer);syncConnected=false;syncToken='';syncRevision=0;syncDirty=false;syncConflict=false;
+ clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
+});
+const adminFields={metadataTimeoutMs:'admin-timeout',maxHTMLKiB:'admin-html',parallelRequests:'admin-parallel',enrichmentDeadlineSeconds:'admin-deadline',missingImageCacheSeconds:'admin-cache'};
+const adminStatus=message=>{el('admin-status').textContent=message};
+async function adminRequest(method,payload){
+ const response=await fetch('/api/admin/settings',{method,headers:{Authorization:'Bearer '+syncToken,...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
+ if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
+}
+async function loadAdmin(){
+ if(!syncConnected||!isAdmin)return;
+ try{const data=await adminRequest('GET');adminRevision=data.revision;
+  for(const [key,id] of Object.entries(adminFields))el(id).value=data.image[key];
+  adminStatus('Server settings loaded (revision '+adminRevision+').');
+ }catch(e){adminStatus('Could not load settings: '+e.message)}
+}
+el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
+el('close-admin').addEventListener('click',()=>showView('news'));
+el('admin-reload').addEventListener('click',loadAdmin);
+el('admin-form').addEventListener('submit',async event=>{
+ event.preventDefault();if(!syncConnected||!isAdmin)return;
+ const image={};for(const [key,id] of Object.entries(adminFields))image[key]=Number(el(id).value);
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image});adminRevision=result.revision;adminStatus('Saved server settings (revision '+adminRevision+').');}
+ catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.')}
 });
 syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);

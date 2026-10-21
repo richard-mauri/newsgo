@@ -12,6 +12,7 @@ func main() {
 	user := flag.String("user", "", "unique user ID")
 	label := flag.String("label", "", "optional display label")
 	revoke := flag.Bool("revoke", false, "revoke the named user token")
+	role := flag.String("set-role", "", "set existing token role: admin or user (does not rotate the token)")
 	flag.Parse()
 	if *user == "" {
 		log.Fatal("-user is required")
@@ -19,6 +20,16 @@ func main() {
 	s, e := dashboard.NewSyncStore(*dir)
 	if e != nil {
 		log.Fatal(e)
+	}
+	if *role != "" {
+		if *revoke {
+			log.Fatal("-revoke and -set-role cannot be combined")
+		}
+		if e = s.SetRole(*user, *role); e != nil {
+			log.Fatal(e)
+		}
+		fmt.Println("Updated token role for", *user, "to", *role)
+		return
 	}
 	if *revoke {
 		if e = s.Revoke(*user); e != nil {
