@@ -1,3 +1,9 @@
+**Development correction:** Fixed missing date check in the classification pipeline: articles older than the selected maximum age are now marked `too-old` before invoking ScraperGo. Added `article_age_pipeline_test.go` to prevent recurrence. Pending CI/Mac verification.
+
+## User reading preference: Maximum Article Age (development)
+
+The Reading Preferences panel offers All (default), 1, 3, 7, 14, 30, or 60 days. Selected age is stored per browser and synchronized with the authenticated user's existing Server Sync profile. Older dated feed items are excluded before expensive ScraperGo classification and appear in the Filtered / unprocessed articles card with reason `too-old`. Undated entries are retained. Existing subscriptions, exclusions, and Admin Settings are unchanged. CI and live Safari acceptance are required before merging to main.
+
 ## NewsGo v0.2.53 development: filtered article audit and operational controls
 
 The briefing now offers a collapsible **Filtered / unprocessed articles** card. It reports headlines rejected by ScraperGo classification with their classification codes, items hidden by saved exclusion domains, and a separate count of feed entries not classified because they exceed the configured per-feed cap. It does not claim to diagnose entries absent from the RSS feed. Admin Settings now exposes four **active** persisted controls: maximum articles per feed (default 60, range 1–250), classification timeout (7 seconds, 2–30), parallel classifications (8, 1–16), and successful-feed cache TTL (10 minutes, 1–60). Older saved settings migrate transparently. Historic image enrichment settings are clearly labeled inactive because thumbnail delivery is now managed by ScraperGo. The API limit of eight feeds per request and the 4 MiB feed payload safety cap remain fixed. Changes have passed GitHub Go tests/build, but browser acceptance is pending; no production promotion intended.
