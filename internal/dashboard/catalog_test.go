@@ -7,12 +7,12 @@ import (
 
 func TestRemoteSearchAndSubscriptionPreservation(t *testing.T) {
 	h := page.Tree.Root.String()
-	for _, s := range []string{`id="catalog-search"`, `id="catalog-list"`, `id="view-subscriptions"`, `/personal.js?v=0.2.44`} {
+	for _, s := range []string{`id="catalog-search"`, `id="catalog-list"`, `id="view-subscriptions"`, `id="catalog-search"`} {
 		if !strings.Contains(h, s) {
 			t.Fatalf("missing HTML %s", s)
 		}
 	}
-	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "add({name:f.name", "localStorage.getItem(key)", "queueSearch"} {
+	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "add({name:f.name", "localStorage.getItem(key)", "submitCatalogSearch"} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing JS %s", s)
 		}

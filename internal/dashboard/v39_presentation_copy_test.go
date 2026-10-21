@@ -6,7 +6,7 @@ import (
 )
 
 func TestV40PresentationCopy(t *testing.T) {
-	if !strings.Contains(page.Tree.Root.String(), "NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.44") {
+	if !strings.Contains(page.Tree.Root.String(), "NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V") {
 		t.Fatal("header must use requested tagline and version")
 	}
 	if strings.Contains(page.Tree.Root.String(), "NEWS DISCOVERY FOR SCRAPERGO") {

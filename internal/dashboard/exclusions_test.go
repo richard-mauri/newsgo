@@ -13,12 +13,12 @@ func TestExclusionControlsPreserveSubscriptionFlows(t *testing.T) {
 		"function unsubscribeRecord(id)",
 		"function renderManager()",
 		"function chooseAllSubscriptions()",
-												"function saveExclusions(list)",
+		"function saveExclusions(list)",
 		"function renderExclusionManager()",
 		"function excludeButton(domain)",
 		"function refreshExclusionViews()",
 		"function showView(view)",
-		"showView('news');searchCatalog();refresh();",
+		"showView('news');el('catalog-message').textContent=",
 	} {
 		if !strings.Contains(personalJS, required) {
 			t.Errorf("missing subscription/exclusion contract: %s", required)

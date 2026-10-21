@@ -71,7 +71,7 @@ function refreshExclusionViews(){
  // If the user just excluded the publication they are reading, show the
  // remaining subscriptions rather than an empty publisher page.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}
- renderExclusionManager();renderManager();searchCatalog();
+ renderExclusionManager();renderManager();
 }
 readExclusions();readArticleExclusions();
 let registry=[], storageError='';
@@ -142,16 +142,36 @@ let selectedSource='';
 
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',handler);return b}
-let searchTimer, searchSeq=0;
+let searchSeq=0, lastSearchSentAt=0, searchInFlight=false;
+const searchIntervalMs=3200; // Server allows one uncached search per IP every 3 seconds.
+const searchDelay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function searchCatalog(){
  const q=el('catalog-search').value.trim(),root=el('catalog-list'),status=el('catalog-message');
- const seq=++searchSeq;root.replaceChildren();
- if(q.length<2){status.textContent='Enter at least two characters to search for news sources.';return}
- status.textContent='Searching for “'+q+'”…';
+ if(searchInFlight)return;
+ const seq=++searchSeq;
+ if(q.length<2){root.replaceChildren();status.textContent='Enter at least two characters to search for news sources.';return}
+ searchInFlight=true;el('catalog-submit').disabled=true;
+ // Keep the previous results visible while waiting, but label them as previous results.
+ status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+ status.textContent='⏳ Searching subscriptions for “'+q+'”… Previous results remain visible until updated.';
  try{
-  const res=await fetch('/api/search-feeds?q='+encodeURIComponent(q),{cache:'no-store'});
-  const data=await res.json();if(seq!==searchSeq)return;
+  let res,data;
+  for(let attempt=0;attempt<3;attempt++){
+   const wait=Math.max(0,searchIntervalMs-(Date.now()-lastSearchSentAt));
+   if(wait>0){status.textContent='⏳ Waiting to continue search for “'+q+'”…';await searchDelay(wait)}
+   if(seq!==searchSeq)return;
+   lastSearchSentAt=Date.now();
+   res=await fetch('/api/search-feeds?q='+encodeURIComponent(q),{cache:'no-store'});
+   if(seq!==searchSeq)return;
+   data=await res.json();
+   if(res.status!==429)break;
+   if(attempt===2)throw Error('Search is temporarily busy. Please try again.');
+   status.textContent='⏳ Search rate limited; retrying automatically…';
+  }
+  if(seq!==searchSeq)return;
   if(!res.ok)throw Error(data.error||'Search unavailable (HTTP '+res.status+').');
+  // Only replace the previous results after the new response was successful.
+  root.replaceChildren();
   if(!data.feeds||!data.feeds.length){status.textContent='No matching sources found. Try another search or Add a website below.';return}
   data.feeds.forEach(f=>{
    const row=document.createElement('div');row.className='catalog-card';
@@ -163,9 +183,16 @@ async function searchCatalog(){
    const exclude=excludeButton(domain);row.append(info,b);if(exclude)row.append(exclude);root.append(row);
   });
   status.textContent=data.feeds.length+' candidate sources. Each feed is validated when you select Subscribe.';
- }catch(err){if(seq===searchSeq)status.textContent='Search failed: '+err.message+' Try Add a website below.'}
+ }catch(err){if(seq===searchSeq)status.textContent='Search failed: '+err.message+' Previous results remain visible; try again shortly.'}
+ finally{searchInFlight=false;el('catalog-submit').disabled=false}
 }
-function queueSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(searchCatalog,350)}
+function queryEdited(){
+ ++searchSeq; // Discard a response if its submitted query is no longer current.
+ const q=el('catalog-search').value.trim();
+ el('catalog-message').textContent=q.length>=2?'Press Search or Enter to search for “'+q+'”. Previous results stay visible.':'Enter at least two characters to search for news sources.';
+}
+function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
+
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following})}
 function chooseAllSubscriptions(){
  el('read-source').value='';selectedSource='';renderReading();showView('news');
@@ -315,7 +342,8 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
  }catch(err){message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
-el('catalog-search').addEventListener('input',queueSearch);
+el('catalog-search').addEventListener('input',queryEdited);
+el('catalog-form').addEventListener('submit',submitCatalogSearch);
 el('manage-personal').addEventListener('click',()=>showView('discover'));
 
 function chooseIncluded(name){const f=catalogByName.get(name);if(f)chooseSource(f.url)}
@@ -490,6 +518,6 @@ setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
 
-message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');searchCatalog();refresh();setInterval(refresh,15*60*1000);
+message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';refresh();setInterval(refresh,15*60*1000);
 
 })();`

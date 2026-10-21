@@ -202,3 +202,11 @@ Server Sync remembers the per-user token in browser localStorage, loads the serv
 ### v0.2.42: safe reconnection
 
 When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.
+
+
+## v0.2.45 development handoff
+
+Change limited to subscription search UX in `internal/dashboard/personal_script.go` and HTML display version (`dashboard.go`). Existing `/api/search-feeds` per-IP cooldown is three seconds and remains unchanged. Client waits at least 3.2 seconds between requests, retries up to twice on HTTP 429, labels pending/waiting searches, retains earlier results while waiting, and ignores stale async results. Versioned UI tests updated and `search_feedback_v45_test.go` added. Next work: verify live typing `inves`→`invest` and browser accessibility feedback. NewsValidate remains v0.3.2 and is not touched.
+
+### v0.2.46 corrected release gate
+Version-sensitive tests must derive expectations from the displayed application version rather than encode a release number. Tests for changed behaviors must be updated with the implementation, not suppressed. The explicit subscription search requires a button or Enter; keystrokes and initial load must not trigger discovery requests. Run the complete `go test ./...` and `go build -o newsgo ./cmd/newsgo` in the actual project toolchain. Do not describe a ZIP as verified unless tests have passed.

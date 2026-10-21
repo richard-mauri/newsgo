@@ -63,3 +63,11 @@ Revoke a user token: `go run ./cmd/newsgo-token -dir data -user richard -revoke`
 ### v0.2.42: safe reconnection
 
 When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.
+
+
+## v0.2.45 — Subscription search feedback
+
+Subscription search preserves old results during new searches and shows pending/waiting/retry messages. Browser pacing reflects the existing three-second per-IP uncached-search limit, with bounded automatic retries for HTTP 429. Obsolete responses cannot replace results for a newer query. No changes to the feed-search API, subscriptions, or exclusions.
+
+### v0.2.46 corrected release gate
+Version-sensitive tests must derive expectations from the displayed application version rather than encode a release number. Tests for changed behaviors must be updated with the implementation, not suppressed. The explicit subscription search requires a button or Enter; keystrokes and initial load must not trigger discovery requests. Run the complete `go test ./...` and `go build -o newsgo ./cmd/newsgo` in the actual project toolchain. Do not describe a ZIP as verified unless tests have passed.
