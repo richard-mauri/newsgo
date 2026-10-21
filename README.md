@@ -1,3 +1,7 @@
+## Administrator interface cleanup (v0.2.57 candidate)
+
+Admin Settings now shows only active article processing controls. Inactive legacy thumbnail enrichment fields are hidden. Existing legacy values remain preserved in server-settings.json and carried through authenticated Admin saves for backwards compatibility; image retrieval continues to be handled by ScraperGo. No server settings migration or deletion occurs.
+
 ## Raw publication date fallback (release candidate)
 
 When an RSS, Atom, JSON Feed, or RDF item provides a nonempty publication-date string that NewsGo cannot parse, the article card displays that original text with “Unrecognized date format” and a tooltip explaining that article age cannot be determined. Missing dates still show “Date unavailable”. Unrecognized dates remain visible rather than receiving a fabricated age. The parser continues to use parsed dates for cutoff and sorting; the raw text is preserved independently. Regression tests cover missing, unrecognized, and Investing.com dates.
