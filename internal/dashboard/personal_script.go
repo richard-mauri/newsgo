@@ -16,6 +16,12 @@ const recordValid=r=>r&&typeof r.id==='string'&&typeof r.name==='string'&&r.name
 const exclusionKey='newsgo.excludedDomains.v1';
 let excludedDomains=[],articleDomains=[],exclusionError='';
 const articleExclusionKey='newsgo.excludedArticleDomains.v1';
+const agePreferenceKey='newsgo.maxArticleAgeDays.v1';
+const allowedAges=[0,1,3,7,14,30,60];
+function normalizedAge(v){const n=Number(v);return allowedAges.includes(n)?n:0}
+let maxArticleAgeDays=normalizedAge(localStorage.getItem(agePreferenceKey)||0);
+function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);scheduleServerSave();refresh();}
+
 function hostOf(value){
  try{const u=new URL(value.includes('://')?value:'https://'+value);if(!/^https?:$/.test(u.protocol)||u.username||u.password)return '';return u.hostname.toLowerCase().replace(/\.$/,'').replace(/^www\./,'')}
  catch(_){return ''}
@@ -246,7 +252,7 @@ function renderFilteredArticles(){
  count.textContent='('+display.length+' filtered, '+pending.reduce((n,x)=>n+x.count,0)+' unprocessed)';
  card.hidden=activeReadingSelection===null;
  if(display.length===0&&pending.length===0){const empty=document.createElement('p');empty.className='personal-status';empty.textContent='No filtered or unprocessed entries reported for this selection.';list.append(empty);}
- for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason||'unknown');row.append(link,reason);list.append(row)}
+ for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);list.append(row)}
  for(const x of pending){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';list.append(p)}
 }
 
@@ -316,7 +322,8 @@ function showView(view){
  el('news-content').classList.toggle('personal-hidden',view!=='news');
  el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
  el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -334,7 +341,7 @@ async function refresh(){
   let completed=0;
   for(let offset=0;offset<snapshot.length;offset+=8){
    const batch=snapshot.slice(offset,offset+8);
-   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch})});
+   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays})});
    if(sequence!==refreshSequence)return;
    if(!res.ok)throw new Error('HTTP '+res.status);
    data.push(...await res.json());
@@ -360,7 +367,7 @@ async function refresh(){
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f]})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);const domain=publisherForFeed(f);markSite(info,domain);row.append(info,button('Subscribe',()=>add(f)));const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
@@ -414,7 +421,7 @@ function syncAppearance(){
  el('manage-admin').hidden=!(syncConnected&&isAdmin);
  if(!(syncConnected&&isAdmin)&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
 }
-function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains}}
+function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays}}
 async function syncRequest(method,body){
  const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
  if(response.status===404){const data=await response.json();return {...data,notFound:true}}
@@ -426,7 +433,7 @@ function applyServerPreferences(data){
  if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Server profile contains invalid entries');
  const migrated=convertLegacy(data.subscriptions);
  localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));localStorage.setItem(articleExclusionKey,JSON.stringify(data.excludedArticleDomains||[]));
- registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];syncRevision=data.revision;
+ registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);syncRevision=data.revision;
  syncDirty=false;syncPending=false;syncConflict=false;
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
@@ -435,7 +442,7 @@ function samePreferences(data){
  const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
  const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
  const domains=x=>[...new Set(x)].sort().join('\n');
- return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains);
+ return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays;
 }
 function resolveConnectDifference(){
  return new Promise(resolve=>{
@@ -444,7 +451,7 @@ function resolveConnectDifference(){
   const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
   dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','sync-choice-title');
   const h=document.createElement('h3');h.id='sync-choice-title';h.textContent='Choose your subscription preferences';
-  const p=document.createElement('p');p.textContent='This browser has different subscriptions or exclusions than your saved server profile. Choose whether to replace or merge your subscriptions, excluded publishers, and excluded article domains.';
+  const p=document.createElement('p');p.textContent='This browser has different reading preferences, subscriptions, or exclusions than your saved server profile. Choose whether to load the server settings or merge saved subscriptions and exclusions while retaining the local article-age preference.';
   const actions=document.createElement('div');actions.className='sync-choice-actions';
   function add(label,value){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{shade.remove();resolve(value)});actions.append(b);return b}
   const useServer=add('Use Server Preferences','server');
@@ -471,6 +478,7 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
      const combined=[...new Map([...convertLegacy(data.subscriptions),...registry].map(r=>[r.id,r])).values()];
      const domains=[...new Set([...data.excludedDomains,...excludedDomains])];
      const articles=[...new Set([...(data.excludedArticleDomains||[]),...articleDomains])];
+     // The local reading-age preference wins when merging profiles.
      // Only replace local storage once both lists are validated.
      localStorage.setItem(unifiedKey,JSON.stringify(combined));localStorage.setItem(exclusionKey,JSON.stringify(domains));localStorage.setItem(articleExclusionKey,JSON.stringify(articles));
      registry=combined;syncDerived();excludedDomains=domains;articleDomains=articles;syncRevision=data.revision;
@@ -505,7 +513,7 @@ async function saveSync(){
  const snap=syncSnapshot();
  try{
   const data=await syncRequest('PUT',snap);syncRevision=data.revision;
-  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains)||JSON.stringify(snap.excludedArticleDomains)!==JSON.stringify(articleDomains);
+  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains)||JSON.stringify(snap.excludedArticleDomains)!==JSON.stringify(articleDomains)||snap.maxArticleAgeDays!==maxArticleAgeDays;
   syncDirty=changed;if(changed)syncPending=true;
   syncStatus(changed?'Connected · saving newer changes…':'Connected · all changes saved');
  }catch(e){
@@ -557,6 +565,10 @@ async function loadAdmin(){
   adminStatus('Server settings loaded (revision '+adminRevision+').');
  }catch(e){adminStatus('Could not load settings: '+e.message)}
 }
+el('maximum-article-age').value=String(maxArticleAgeDays);
+el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
+el('manage-preferences').addEventListener('click',()=>showView('preferences'));
+el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
 el('close-admin').addEventListener('click',()=>showView('news'));
 el('admin-reload').addEventListener('click',loadAdmin);
