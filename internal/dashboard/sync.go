@@ -32,6 +32,7 @@ type storedPrefs struct {
 	Subscriptions          []syncSubscription `json:"subscriptions"`
 	ExcludedDomains        []string           `json:"excludedDomains"`
 	ExcludedArticleDomains []string           `json:"excludedArticleDomains"`
+ MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
 	UpdatedAt              string             `json:"updatedAt"`
 }
 type syncSubscription struct {
@@ -167,7 +168,8 @@ func (s *SyncStore) Revoke(user string) error {
 	return atomicJSON(s.file("approved-tokens.json"), out)
 }
 func validPrefs(p storedPrefs) bool {
-	if len(p.Subscriptions) > 250 || len(p.ExcludedDomains) > 500 || len(p.ExcludedArticleDomains) > 500 {
+	if p.MaxArticleAgeDays != 0 && p.MaxArticleAgeDays != 1 && p.MaxArticleAgeDays != 3 && p.MaxArticleAgeDays != 7 && p.MaxArticleAgeDays != 14 && p.MaxArticleAgeDays != 30 && p.MaxArticleAgeDays != 60 { return false }
+ if len(p.Subscriptions) > 250 || len(p.ExcludedDomains) > 500 || len(p.ExcludedArticleDomains) > 500 {
 		return false
 	}
 	ids := map[string]bool{}
