@@ -244,7 +244,8 @@ function renderFilteredArticles(){
  }
  const pending=notProcessedEntries.filter(x=>sources.has(x.source));
  count.textContent='('+display.length+' filtered, '+pending.reduce((n,x)=>n+x.count,0)+' unprocessed)';
- card.hidden=activeReadingSelection===null||(display.length===0&&pending.length===0);
+ card.hidden=activeReadingSelection===null;
+ if(display.length===0&&pending.length===0){const empty=document.createElement('p');empty.className='personal-status';empty.textContent='No filtered or unprocessed entries reported for this selection.';list.append(empty);}
  for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason||'unknown');row.append(link,reason);list.append(row)}
  for(const x of pending){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';list.append(p)}
 }
