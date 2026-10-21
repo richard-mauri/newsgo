@@ -1,16 +1,15 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"github.com/richard-mauri/newsgo/internal/feeds"
-	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -107,14 +106,6 @@ func personalCacheTTL(entry cacheEntry) time.Duration {
 	if entry.err != "" {
 		return 20 * time.Second
 	}
-	// Missing thumbnails can be transient: metadata lookup may time out even
-	// though the feed itself loaded. Retry these feeds sooner rather than
-	// caching an image-less card for the full successful-feed interval.
-	for _, a := range entry.articles {
-		if a.Image == "" && a.URL != "" {
-			return time.Duration(currentImageSettings().MissingImageCacheSeconds) * time.Second
-		}
-	}
 	return 10 * time.Minute
 }
 
@@ -142,9 +133,6 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, s
 		return cached.articles, cached.err
 	}
 	a, err := feeds.FetchArticles(ctx, safeFeedClient(), source)
-	if err == nil {
-		enrichArticleImages(ctx, a)
-	}
 	msg := ""
 	if err != nil {
 		msg = err.Error()
@@ -192,15 +180,19 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			seen[src.URL] = true
 			articles, msg := personalFetch(r.Context(), src)
 			res.Error = msg
+			decisions := classifyFeedArticles(r.Context(), s.reader, articles)
 			for i, a := range articles {
 				if i >= 60 {
 					break
+				}
+				if decisions[i] != "article" {
+					continue
 				}
 				date := "Date unavailable"
 				if !a.Published.IsZero() {
 					date = a.Published.Local().Format("Jan 2, 3:04 PM")
 				}
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, Published: a.Published.Format(time.RFC3339), Image: a.Image})
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
 			}
 			if msg == "" && len(res.Articles) == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -214,141 +206,103 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(results)
 }
 
-// Metadata-only fallback for feeds that omit thumbnails. Never fetch full images.
-// Keep page requests bounded; the feed remains usable if metadata is unavailable.
-var articleMetaRE = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
-var metaAttrRE = regexp.MustCompile(`(?is)\b(property|name|content)\s*=\s*["']([^"']+)["']`)
-var articleImgRE = regexp.MustCompile(`(?is)<img\b[^>]*>`)
-var imageAttrRE = regexp.MustCompile(`(?is)\b(src|data-src|data-original|data-lazy-src|srcset|data-srcset|alt|width|height)\s*=\s*["']([^"']+)["']`)
-var articleBodyRE = regexp.MustCompile(`(?is)<(?:article|main)\b[^>]*>`)
-
-// Article HTML can contain the real hero image without social metadata.
-// Favor the first plausible content image, never tracking pixels or site icons.
-func articleBodyImage(page string, base *url.URL) string {
-	start := 0
-	if loc := articleBodyRE.FindStringIndex(page); loc != nil {
-		start = loc[0]
+// scraperThumbnailURL delegates discovery, retrieval, resizing and caching to ScraperGo.
+// The browser never requests publisher image URLs from NewsGo's article cards.
+func scraperThumbnailURL(reader, article string) string {
+	article = strings.TrimSpace(article)
+	if u, err := url.Parse(article); err == nil {
+		u.Fragment = ""
+		u.RawFragment = ""
+		article = u.String()
 	}
-	candidates := articleImgRE.FindAllString(page[start:], 100)
-	for _, tag := range candidates {
-		attrs := map[string]string{}
-		for _, m := range imageAttrRE.FindAllStringSubmatch(tag, -1) {
-			attrs[strings.ToLower(m[1])] = html.UnescapeString(m[2])
-		}
-		alt := strings.ToLower(attrs["alt"])
-		if strings.Contains(alt, "logo") || strings.Contains(alt, "avatar") || strings.Contains(alt, "icon") {
-			continue
-		}
-		if attrs["width"] == "1" || attrs["height"] == "1" {
-			continue
-		}
-		for _, key := range []string{"data-src", "data-original", "data-lazy-src", "src", "data-srcset", "srcset"} {
-			raw := strings.TrimSpace(attrs[key])
-			if strings.Contains(key, "srcset") {
-				raw = strings.TrimSpace(strings.Split(strings.Split(raw, ",")[0], " ")[0])
-			}
-			if raw == "" || strings.HasPrefix(raw, "data:") {
-				continue
-			}
-			u, e := url.Parse(raw)
-			if e != nil {
-				continue
-			}
-			resolved := base.ResolveReference(u)
-			if resolved.Scheme != "https" || !safeURL(resolved.String()) {
-				continue
-			}
-			low := strings.ToLower(resolved.Path)
-			if strings.Contains(low, "logo") || strings.Contains(low, "icon") || strings.Contains(low, "pixel") || strings.Contains(low, "avatar") || strings.HasSuffix(low, ".svg") {
-				continue
-			}
-			return resolved.String()
-		}
+	if !safeURL(article) {
+		return ""
 	}
-	return ""
+	return strings.TrimRight(reader, "/") + "/api/thumbnail?" + url.Values{"url": {article}, "width": {"256"}}.Encode()
 }
 
-func articlePageImage(ctx context.Context, client *http.Client, raw string) string {
-	// URL fragments (e.g. #new_tab) are client-side navigation hints, not request targets.
-	if parsed, err := url.Parse(raw); err == nil {
-		parsed.Fragment = ""
-		parsed.RawFragment = ""
-		raw = parsed.String()
-	}
-	if !safeURL(raw) {
-		return ""
-	}
-	c, cancel := context.WithTimeout(ctx, time.Duration(currentImageSettings().MetadataTimeoutMs)*time.Millisecond)
-	defer cancel()
-	req, err := http.NewRequestWithContext(c, "GET", raw, nil)
-	if err != nil {
-		return ""
-	}
-	req.Header.Set("User-Agent", "NewsGo/0.2 (article thumbnail metadata)")
-	req.Header.Set("Accept", "text/html")
-	resp, err := client.Do(req)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 || !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
-		return ""
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, int64(currentImageSettings().MaxHTMLKiB)<<10))
-	if err != nil {
-		return ""
-	}
-	base := resp.Request.URL
-	for _, tag := range articleMetaRE.FindAllString(string(b), -1) {
-		attrs := map[string]string{}
-		for _, m := range metaAttrRE.FindAllStringSubmatch(tag, -1) {
-			attrs[strings.ToLower(m[1])] = html.UnescapeString(m[2])
-		}
-		kind := strings.ToLower(attrs["property"])
-		if kind == "" {
-			kind = strings.ToLower(attrs["name"])
-		}
-		if kind != "og:image" && kind != "og:image:url" && kind != "twitter:image" && kind != "twitter:image:src" {
-			continue
-		}
-		u, e := url.Parse(strings.TrimSpace(attrs["content"]))
-		if e != nil {
-			continue
-		}
-		resolved := base.ResolveReference(u).String()
-		if strings.HasPrefix(resolved, "https://") && safeURL(resolved) {
-			return resolved
-		}
-	}
-	return articleBodyImage(string(b), base)
+// Classification is authoritative only for a confirmed homepage/index. A failed
+// lookup cannot delete a legitimate headline or prevent opening ScraperGo.
+type classificationOutcome struct {
+	Classification string `json:"classification"`
 }
-func enrichArticleImages(ctx context.Context, articles []feeds.Article) {
-	// Inspect every image-less article, not just the first few.
-	// Twelve concurrent bounded metadata requests keep late articles from
-	// losing their opportunity to the older eight-worker/18-second deadline.
-	// Keep total enrichment time bounded and do not fetch image bytes.
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(currentImageSettings().EnrichmentDeadlineSeconds)*time.Second)
-	defer cancel()
-	client := safeFeedClient()
-	slots := make(chan struct{}, currentImageSettings().ParallelRequests)
+type newsClassificationEntry struct {
+	value  string
+	expiry time.Time
+}
+
+var newsClassificationCache = struct {
+	sync.Mutex
+	entries map[string]newsClassificationEntry
+}{entries: make(map[string]newsClassificationEntry)}
+var newsClassificationSlots = make(chan struct{}, 8)
+
+func classifyFeedArticles(ctx context.Context, reader string, articles []feeds.Article) []string {
+	out := make([]string, len(articles))
 	var wg sync.WaitGroup
-	for i := range articles {
-		if articles[i].Image != "" || !safeURL(strings.SplitN(articles[i].URL, "#", 2)[0]) {
-			continue
+	for i, a := range articles {
+		if i >= 60 {
+			break
 		}
 		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			select {
-			case slots <- struct{}{}:
-				defer func() { <-slots }()
-			case <-ctx.Done():
-				return
-			}
-			if img := articlePageImage(ctx, client, articles[i].URL); img != "" {
-				articles[i].Image = img
-			}
-		}(i)
+		go func(i int, article string) { defer wg.Done(); out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
 	}
 	wg.Wait()
+	return out
+}
+func newsClassify(ctx context.Context, reader, article string) string {
+	if !safeURL(article) {
+		return "unknown"
+	}
+	key := reader + "|" + article
+	newsClassificationCache.Lock()
+	entry, ok := newsClassificationCache.entries[key]
+	newsClassificationCache.Unlock()
+	if ok && time.Now().Before(entry.expiry) {
+		return entry.value
+	}
+	select {
+	case newsClassificationSlots <- struct{}{}:
+		defer func() { <-newsClassificationSlots }()
+	case <-ctx.Done():
+		return "unknown"
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
+	defer cancel()
+	body, _ := json.Marshal(map[string]string{"url": article})
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(reader, "/")+"/api/classify", bytes.NewReader(body))
+	if err != nil {
+		return "unknown"
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 7 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "unknown"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "unknown"
+	}
+	var result classificationOutcome
+	if json.NewDecoder(io.LimitReader(resp.Body, 2048)).Decode(&result) != nil {
+		return "unknown"
+	}
+	if result.Classification != "homepage" && result.Classification != "unreadable" && result.Classification != "article" && result.Classification != "unavailable" {
+		return "unknown"
+	}
+	newsClassificationCache.Lock()
+	if len(newsClassificationCache.entries) >= 2048 {
+		for k := range newsClassificationCache.entries {
+			delete(newsClassificationCache.entries, k)
+			break
+		}
+	}
+	ttl := 30 * time.Minute
+	if result.Classification == "unavailable" {
+		ttl = time.Minute
+	}
+	newsClassificationCache.entries[key] = newsClassificationEntry{result.Classification, time.Now().Add(ttl)}
+	newsClassificationCache.Unlock()
+	return result.Classification
 }

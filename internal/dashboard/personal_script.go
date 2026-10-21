@@ -139,6 +139,7 @@ const suggestions=[
 const el=id=>document.getElementById(id);
 const valid=f=>f&&typeof f.name==='string'&&f.name.trim().length>0&&f.name.length<=70&&typeof f.category==='string'&&f.category.length<=40&&typeof f.url==='string'&&f.url.length<=2048&&/^https?:\/\/[^\s/]+/i.test(f.url);
 let selectedSource='';
+let activeReadingSelection=null; // null until user explicitly chooses a feed or All
 
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',handler);return b}
@@ -195,13 +196,13 @@ function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following})}
 function chooseAllSubscriptions(){
- el('read-source').value='';selectedSource='';renderReading();showView('news');
+ activeReadingSelection='all';el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
 }
 function chooseSource(url){
  const source=feeds.find(f=>f.url===url);
  if(source&&excludedURL(publisherForFeed(source))){chooseAllSubscriptions();return}
- selectedSource=url;el('read-source').value='personal:'+url;renderReading();showView('news');
+ activeReadingSelection=url;selectedSource=url;el('read-source').value='personal:'+url;renderReading();showView('news');refresh();
  el('reading-title').scrollIntoView({block:'start',behavior:'smooth'});
 }
 function renderSourceSelector(){
@@ -233,7 +234,7 @@ let allPersonalArticles=[], personalErrors=[];
 function renderPersonalArticles(){
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
- const sources=new Set(feeds.filter(f=>!selectedSource||f.url===selectedSource).map(f=>f.name));
+ const sources=new Set(feeds.filter(f=>activeReadingSelection!==null&&(!selectedSource||f.url===selectedSource)).map(f=>f.name));
  const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!excludedURL(a.url)&&!articleExcluded(a.url));
  const seen=new Set();articles.sort((a,b)=>new Date(b.published)-new Date(a.published));
  let count=0;
@@ -257,6 +258,7 @@ function renderPersonalArticles(){
  el('personal-lead-section').hidden=!hasArticles;
  el('personal-latest-section').hidden=!hasArticles;
  const selected=feeds.find(f=>f.url===selectedSource);
+ if(activeReadingSelection===null){el('personal-loading').textContent='Welcome to NewsGo. Find Subscriptions, or select one subscription or All Subscriptions to read.';return}
  if(!el('personal-loading').classList.contains('is-refreshing'))
   el('personal-loading').textContent=seen.size+' headlines'+(selected?' from '+selected.name:' from your subscriptions')+(personalErrors.length?' · '+personalErrors.join('; '):'');
 }
@@ -300,9 +302,10 @@ let refreshSequence=0;
 async function refresh(){
  const sequence=++refreshSequence;
  const loading=el('personal-loading');
+ if(activeReadingSelection===null)return;
  renderReading();
  if(!feeds.length){loading.classList.remove('is-refreshing');allPersonalArticles=[];personalErrors=[];renderPersonalArticles();return}
- const snapshot=feeds.slice();
+ const snapshot=activeReadingSelection==='all'?feeds.slice():feeds.filter(f=>f.url===activeReadingSelection);
  loading.classList.add('is-refreshing');
  const context='';
  loading.textContent='Refreshing '+snapshot.length+' subscribed web feed'+(snapshot.length===1?'':'s')+'…'+context;
@@ -353,6 +356,7 @@ document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click
  if(f)add(f,b);
 }));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
+el('read-source').addEventListener('change',()=>{const value=el('read-source').value;if(value.startsWith('personal:'))chooseSource(value.slice(9));else chooseAllSubscriptions()});
 el('close-discovery').addEventListener('click',()=>showView('news'));
 el('close-subscriptions').addEventListener('click',()=>showView('news'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
@@ -545,6 +549,6 @@ setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
 
-message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';refresh();setInterval(refresh,15*60*1000);
+message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';renderPersonalArticles();
 
 })();`

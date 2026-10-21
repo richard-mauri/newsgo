@@ -1,3 +1,28 @@
+# NewsGo v0.2.52 — strict classification gate (development)
+
+Requires ScraperGo v0.2.65. Shows headlines and eager thumbnails only when `/api/classify` confirms `article`. Suppresses homepage, unreadable, unavailable, and unknown during the current reading session. Transient failures can be retried on subsequent selections; nothing is unsubscribed. Preserves v0.2.51 eager thumbnail loading and on-demand welcome/startup behavior. Does not repair backend image-fetch failures. Test full local suite and browser before commit.
+
+# NewsGo v0.2.51 — eager thumbnail loading (development candidate)
+
+Changes Safari card thumbnail HTML from lazy to eager loading, so all rendered images request immediately rather than appearing only when scrolled into view. Preserves ScraperGo URLs, the no-auto-fetch welcome screen, single-feed selection and v0.2.50 classification filtering. This will cause more simultaneous image requests and does not guarantee availability where ScraperGo returns an error or cannot select an image. Install direct-unzip, test/build/restart on Mac, and verify in Safari before commit.
+
+# 0.2.50 development candidate — 2026-10-21
+
+Startup waits for explicit subscription or All selection. Only selected feeds fetched; suppress confirmed homepage/unreadable classifications.
+
+Install ScraperGo before NewsGo. Run full Mac tests/build and browser acceptance prior to commit. Preserve launcher/tunnel and local runtime state.
+
+
+## Development candidate v0.2.49 — 2026-10-21
+
+NewsGo POST /api/personal now classifies up to 60 feed entries per source using ScraperGo /api/classify before response. Confirmed homepage entries are suppressed. Unknown entries are retained. Eight concurrent classification requests and a 7-second per-request timeout; classification caching 30 minutes. This adds latency on cold feeds and awaits live load testing.
+
+## v0.2.48 — ScraperGo thumbnail integration (development candidate)
+
+NewsGo delegates article-thumbnail discovery, downloading, resizing and caching to ScraperGo `/api/thumbnail`. The NewsGo `/api/personal` response now supplies a ScraperGo thumbnail URL for each valid article URL instead of inspecting publisher HTML or returning publisher image URLs. Dashboard thumbnails use lazy loading, with the existing image-error fallback. Feed fetching, subscriptions, exclusions, and server sync are unchanged. ScraperGo must have a reachable HTTPS `/api/thumbnail` route through its existing tunnel. Server image-retrieval tuning fields from v0.2.47 are retained for backward-compatible server-settings JSON, but no longer govern NewsGo thumbnail lookups; future settings cleanup should be handled separately.
+
+**Development verification:** run `go test ./...`, `./devbuild.sh`, and live Safari tests on the user's Go 1.27.1 Mac before commit or deployment. Test CNBC, Seahorse, no-image stories, and publisher exclusions. Image requests are now browser-to-ScraperGo; NewsGo does not fetch thumbnail bytes. ScraperGo cache and rate limits require attention for high headline volumes.
+
 # CURRENT CANDIDATE — NewsGo v0.2.47 admin server settings (2026-10-21)
 
 Based on authoritative user-provided source matching GitHub commit `598ec5b`. This direct-unzip candidate adds local CLI `-set-role admin` / `-set-role user` to designate an existing hashed token without rotating it, admin-guarded `/api/admin/settings` GET/PUT, separately revisioned atomic `data/server-settings.json`, and a browser Admin Settings panel revealed to the connected admin token. Image metadata timeout, maximum HTML response, concurrent lookups, enrichment deadline, and missing-image cache TTL now use bounded live server settings. No changes to user preferences or secrets. The default values remain 2500 ms, 512 KiB, 12, 25 seconds, 90 seconds. Tests passed in an isolated Go 1.23.2 compatibility run (temporary go.mod only, original go.mod retained); the required Go 1.27.1 project tests, ./devbuild.sh and live Safari acceptance remain unverified. No Git commit, push, restart or release authorized. ScraperGo and NewsValidate will be handled separately after the CNBC investigation. The existing historical handoff below is retained for context; old "next step" statements are superseded by this paragraph.

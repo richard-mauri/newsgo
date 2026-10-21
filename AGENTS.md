@@ -1,3 +1,26 @@
+# NewsGo v0.2.52 development handoff
+Only a confirmed `article` classification renders. Preserve v0.2.51 eager loading and explicit startup selection. No commit or push; require Mac acceptance.
+
+# NewsGo v0.2.51 development patch — eager thumbnails (2026-10-21)
+
+Built atop installed v0.2.50 development candidate. Change only browser image loading=lazy to loading=eager, and bump visible dashboard version/cache-busting query. Preserve the explicit on-demand welcome/no-fetch startup, single-subscription selection, classification filter, subscriptions/exclusions, sync, admin settings, and launchers. This does not resolve server-side thumbnail failures or preload thumbnails before the feed response. Run Mac go test -count=1 ./..., ./devbuild.sh, ./newsgo.sh, and browser verification before commit.
+
+# 0.2.50 development candidate — 2026-10-21
+
+Startup waits for explicit subscription or All selection. Only selected feeds fetched; suppress confirmed homepage/unreadable classifications.
+
+Install ScraperGo before NewsGo. Run full Mac tests/build and browser acceptance prior to commit. Preserve launcher/tunnel and local runtime state.
+
+# v0.2.49 candidate — classification gate
+
+NewsGo POST /api/personal now classifies up to 60 feed entries per source using ScraperGo /api/classify before response. Confirmed homepage entries are suppressed. Unknown entries are retained. Eight concurrent classification requests and a 7-second per-request timeout; classification caching 30 minutes. This adds latency on cold feeds and awaits live load testing.
+
+Do not commit or push without testing, and preserve local changes, launchers and tunnel configuration.
+
+# ACTIVE HANDOFF — NewsGo v0.2.48 ScraperGo thumbnails (development candidate, 2026-10-21)
+
+Source baseline: user's uploaded NewsGo v0.2.47 working source, corresponding to confirmed GitHub commit cc4cacd. New ScraperGo API `/api/thumbnail` has passed the user's live CNBC test (200, image/jpeg, 256x176), but latest ScraperGo Git push is not independently verified. This NewsGo patch removes publisher-HTML thumbnail extraction and instead constructs per-article ScraperGo thumbnail URLs. It does not touch ScraperGo, NewsValidate, tokens, feeds.json, or runtime data. Old v0.2.47 admin-settings JSON fields remain accepted, but their image-fetch tuning values no longer affect NewsGo thumbnail fetches; redesign server admin settings only as a separate change. Verify NewsGo full Go suite, build, Safari subscriptions/exclusions/sync, CNBC and Seahorse image rendering; ensure ScraperGo public endpoint and image CDN delivery behave reliably, and check load from large news feeds. Do not commit, push or restart without explicit approval. Use ./devbuild.sh then ./newsgo.sh; never generic root binary. Package is project-relative direct-unzip.
+
 # CURRENT CANDIDATE — NewsGo v0.2.47 admin server settings (2026-10-21)
 
 Based on authoritative user-provided source matching GitHub commit `598ec5b`. This direct-unzip candidate adds local CLI `-set-role admin` / `-set-role user` to designate an existing hashed token without rotating it, admin-guarded `/api/admin/settings` GET/PUT, separately revisioned atomic `data/server-settings.json`, and a browser Admin Settings panel revealed to the connected admin token. Image metadata timeout, maximum HTML response, concurrent lookups, enrichment deadline, and missing-image cache TTL now use bounded live server settings. No changes to user preferences or secrets. The default values remain 2500 ms, 512 KiB, 12, 25 seconds, 90 seconds. Tests passed in an isolated Go 1.23.2 compatibility run (temporary go.mod only, original go.mod retained); the required Go 1.27.1 project tests, ./devbuild.sh and live Safari acceptance remain unverified. No Git commit, push, restart or release authorized. ScraperGo and NewsValidate will be handled separately after the CNBC investigation. The existing historical handoff below is retained for context; old "next step" statements are superseded by this paragraph.
