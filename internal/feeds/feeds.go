@@ -40,6 +40,7 @@ type Report struct {
 type item struct {
 	title, link, image string
 	date               time.Time
+ rawDate string
 }
 type rss struct {
 	XMLName xml.Name `xml:"rss"`
@@ -133,7 +134,7 @@ func Parse(data []byte) (string, []item, error) {
 			if d == "" {
 				d = v.Modified
 			}
-			out = append(out, item{title: v.Title, link: l, image: firstImage(v.Image, v.BannerImage), date: parseDate(d)})
+			out = append(out, item{title: v.Title, link: l, image: firstImage(v.Image, v.BannerImage), date: parseDate(d), rawDate: strings.TrimSpace(d)})
 		}
 		return "JSON Feed", out, nil
 	}
@@ -173,7 +174,7 @@ func Parse(data []byte) (string, []item, error) {
 				image = firstImage(image, v.Enclosure.URL)
 			}
 			image = firstImage(image, v.ITunesImage.Href, imageFromHTML(v.ContentEncoded, l), imageFromHTML(v.Description, l))
-			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d)})
+			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d), rawDate: strings.TrimSpace(d)})
 		}
 		return "RSS", out, nil
 	case "feed":
@@ -204,7 +205,7 @@ func Parse(data []byte) (string, []item, error) {
 				}
 			}
 			image = firstImage(image, imageFromHTML(v.Content, l), imageFromHTML(v.Summary, l))
-			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d)})
+			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d), rawDate: strings.TrimSpace(d)})
 		}
 		return "Atom", out, nil
 	case "rdf":
@@ -214,7 +215,7 @@ func Parse(data []byte) (string, []item, error) {
 		}
 		out := make([]item, 0, len(f.Items))
 		for _, v := range f.Items {
-			out = append(out, item{title: v.Title, link: v.Link, date: parseDate(v.Date)})
+			out = append(out, item{title: v.Title, link: v.Link, date: parseDate(v.Date), rawDate: strings.TrimSpace(v.Date)})
 		}
 		return "RSS RDF", out, nil
 	default:
