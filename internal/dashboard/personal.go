@@ -17,6 +17,7 @@ import (
 
 type personalRequest struct {
 	Feeds []feeds.Source `json:"feeds"`
+ MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
 }
 type personalResult struct {
 	Source   feeds.Source      `json:"source"`
@@ -170,7 +171,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	var req personalRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Feeds) > 8 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Feeds) > 8 || !validArticleAgeDays(req.MaxArticleAgeDays) {
 		http.Error(w, "Expected up to 8 feeds", 400)
 		return
 	}
@@ -192,7 +193,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			cfg := currentArticleSettings()
    res.FeedEntries = len(articles)
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
-   decisions := classifyFeedArticles(r.Context(), s.reader, articles)
+   decisions := classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
 					break
@@ -250,7 +251,15 @@ var newsClassificationCache = struct {
 }{entries: make(map[string]newsClassificationEntry)}
 var newsClassificationSlots = make(chan struct{}, 16)
 
+func validArticleAgeDays(n int) bool { return n==0 || n==1 || n==3 || n==7 || n==14 || n==30 || n==60 }
+
+func articleTooOld(published time.Time, days int, now time.Time) bool {
+ return days > 0 && !published.IsZero() && published.Before(now.AddDate(0,0,-days))
+}
 func classifyFeedArticles(ctx context.Context, reader string, articles []feeds.Article) []string {
+ return classifyFeedArticlesWithAge(ctx, reader, articles, 0)
+}
+func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []feeds.Article, days int) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
