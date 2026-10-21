@@ -260,7 +260,7 @@ func firstImage(values ...string) string {
 	return ""
 }
 func parseDate(s string) time.Time {
-	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, "Mon, 2 Jan 2006 15:04:05 MST", "2006-01-02T15:04:05Z0700", "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, "Mon, 2 Jan 2006 15:04:05 MST", "2006-01-02T15:04:05Z0700", "2006-01-02 15:04:05", "2006-01-02"} {
 		if t, e := time.Parse(layout, strings.TrimSpace(s)); e == nil {
 			return t
 		}
