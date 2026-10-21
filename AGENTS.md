@@ -1,3 +1,11 @@
+# NEW DEVELOPMENT PATCH — NewsGo executable-version introspection (2026-10-21)
+
+Prepared against verified clean GitHub/local HEAD `9766238` (both local and `origin/main` confirmed by user). This source-only, direct-unzip v0.2.46 follow-up adds `newsgo -version`, updates the startup log to derive its version from the existing dashboard header, and updates `newsgo.sh` to print/check the actual `dist/newsgo-darwin-amd64` path and version *before* stopping the existing process. Files: `cmd/newsgo/main.go`, `cmd/newsgo/version_test.go`, `internal/dashboard/version.go`, `newsgo.sh`, `README.md`, `AGENTS.md`. This patch does NOT change the dashboard header version, `personal.js` cache buster, feeds, secrets, or the other projects. It does not add release tooling. Shell syntax and Go formatting have been checked in the packaging environment; full `go test ./...`, `./devbuild.sh`, running process and Safari behavior remain UNVERIFIED and must be checked on the user's Mac. Do not commit/push/restart without explicit authorization. `./devbuild.sh` must be used to refresh the launched `dist/` executable. Older v0.2.46 handoff statements below are historical until updated after local acceptance.
+
+**Multi-project architecture remains on the roadmap:** ScraperGo v0.2.56 will supply reusable article/HTML/image extraction utilities from its existing repository; NewsGo will consume appropriate image metadata; NewsValidate v0.3.2 will migrate only low-level parsing helpers and preserve independent reference selection. No changes to ScraperGo or NewsValidate in this patch.
+
+---
+
 # ACTIVE HANDOFF — NewsGo (2026-10-21; read before historical notes)
 
 **Scope:** This is the authoritative *conversation handoff*, not a claim about the current remote Git branch or running process. The user's local checkout is authoritative. Historical sections below describe prior candidates and are not instructions to revert the current work. Do not begin a new feature until checking local status.

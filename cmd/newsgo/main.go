@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/richard-mauri/newsgo/internal/dashboard"
 	"github.com/richard-mauri/newsgo/internal/feeds"
 	"log"
@@ -19,7 +20,12 @@ func main() {
 	syncDir := flag.String("sync-dir", "data", "local directory for approved tokens and synced preferences")
 	addr := flag.String("listen", "127.0.0.1:8084", "HTTP listen address")
 	reader := flag.String("scrapergo", "https://scrapergo.themauris.org", "ScraperGo reader base URL")
+	showVersion := flag.Bool("version", false, "print the executable version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Printf("NewsGo v%s\n", dashboard.Version())
+		return
+	}
 	b, e := os.ReadFile(*feedPath)
 	if e != nil {
 		log.Fatal(e)
@@ -53,7 +59,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	log.Printf("NewsGo v0.2.34: http://%s", *addr)
+	log.Printf("NewsGo v%s: http://%s", dashboard.Version(), *addr)
 	if e = srv.ListenAndServe(); e != nil && e != http.ErrServerClosed {
 		log.Fatal(e)
 	}

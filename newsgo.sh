@@ -21,6 +21,19 @@ if [[ ! -x "$APP" || ! -x "$CLOUDFLARED" ]]; then
     exit 1
 fi
 
+# Verify the *exact* executable before stopping any existing NewsGo process.
+# An old dist binary without -version must not silently replace a working app.
+echo "NewsGo executable: $APP"
+if ! version_output="$("$APP" -version 2>&1)"; then
+    printf 'Error: NewsGo version check failed: %s\n' "$version_output" >&2
+    exit 1
+fi
+if [[ ! "$version_output" =~ ^NewsGo\ v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'Error: unexpected NewsGo executable version: %s\n' "$version_output" >&2
+    exit 1
+fi
+printf 'NewsGo executable version: %s\n' "$version_output"
+
 # Stop only the NewsGo instance launched from this project's dist directory.
 ps -axo pid=,command= | while read -r pid command; do
     if [[ "$command" == "$APP"* ]]; then
@@ -47,4 +60,4 @@ nohup "$CLOUDFLARED" tunnel run \
 
 disown -a
 
-echo "Started NewsGo on 127.0.0.1:8084 and its dedicated Cloudflare Tunnel."
+echo "Started $version_output on 127.0.0.1:8084 and its dedicated Cloudflare Tunnel."

@@ -1,3 +1,7 @@
+## v0.2.46 — Executable version reporting (development patch, October 21, 2026)
+
+The NewsGo executable now supports `-version` and prints `NewsGo v0.2.46` without loading feeds or starting a server. The launcher `newsgo.sh` reports the exact `dist/newsgo-darwin-amd64` path and checks its executable version **before** terminating any running NewsGo process. The startup log uses the dashboard's current version instead of its previous stale v0.2.34 message. This is a narrowly scoped v0.2.46 follow-up and does not alter subscriptions, sync, exclusions, or article rendering. Local full-project Go tests, Intel builds, and runtime behavior remain to be verified on the user's Mac. Use the established `./devbuild.sh` build command; its output goes to `dist/`.
+
 ## v0.2.44 — Missing-thumbnail retry and lookup budget
 
 The Seahorse Magazine Finn article had no thumbnail even after the v0.2.44 body-image fallback. Preserve feed/metadata/body extraction; allow 12 parallel metadata lookups within a 25-second shared deadline so late article lookups are less likely to be abandoned. Cache successful feeds containing image-less articles for 90 seconds rather than ten minutes to recover from transient metadata failures. Regression covers the Finn lead-image HTML and retry TTL. Live publisher image retrieval remains a browser acceptance test; no ScraperGo changes or data migration.
@@ -32,14 +36,13 @@ Headlines open in [ScraperGo](https://scrapergo.themauris.org/), a separate arti
 
 The service is written in Go, uses an RSS/Atom/JSON feed catalog (`feeds.json`) for discoverability, and presents article headlines from the feeds you have subscribed to. Provider access and publication frequencies vary. NewsGo is an aggregator, not a subscription/paywall bypass.
 
-**Development candidate:** v0.2.42 (October 20, 2026). This version adds optional per-user JSON-backed synchronization of subscriptions and excluded sites. The prior unified subscription reader and feed-discovery fixes remain intact. Existing browser preferences are preserved. Production deployment and live-browser validation have not been confirmed.
+**Development baseline:** v0.2.46 (October 21, 2026), committed on GitHub in `59322fa`, with handoff update `9766238`. Live executable version and manual-search acceptance were not established by the handoff. This patch adds version introspection; it has not yet been installed, built, or browser-tested on the Mac.
 
 **Developers and future AI agents:** See [`AGENTS.md`](AGENTS.md) for the authoritative current engineering handoff, development procedure, version synchronization rules, and Git safeguards.
 
 ### v0.2.33 discovery and cleanup recap
 
 Removed the obsolete server-side catalog headline fetching and image enrichment path. Improved Feedly publisher-name lookup with a prefix fallback when no results are returned, clearer external-feed HTTP error messages, and discovery result card layout. The feed catalog remains a source of discoverable subscriptions, not an automatic headline stream.
-
 
 ## Optional server synchronization (v0.2.34)
 
@@ -59,15 +62,13 @@ Copy the printed secret token into **Server Sync** on each trusted browser once.
 
 Revoke a user token: `go run ./cmd/newsgo-token -dir data -user richard -revoke`. Reissue after revocation if necessary. Tokens are stored as SHA-256 digests; each token should be treated as a secret. The browser remembers the token in localStorage for automatic reconnection. Only enter tokens on trusted devices: browser storage is accessible to scripts running on this origin. Disconnect erases the locally remembered token, not the server account. The server must be reachable over HTTPS through your existing Cloudflare Tunnel. No additional hosted database is required.
 
-
 ### v0.2.42: safe reconnection
 
 When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.
-
 
 ## v0.2.45 — Subscription search feedback
 
 Subscription search preserves old results during new searches and shows pending/waiting/retry messages. Browser pacing reflects the existing three-second per-IP uncached-search limit, with bounded automatic retries for HTTP 429. Obsolete responses cannot replace results for a newer query. No changes to the feed-search API, subscriptions, or exclusions.
 
 ### v0.2.46 corrected release gate
-Version-sensitive tests must derive expectations from the displayed application version rather than encode a release number. Tests for changed behaviors must be updated with the implementation, not suppressed. The explicit subscription search requires a button or Enter; keystrokes and initial load must not trigger discovery requests. Run the complete `go test ./...` and `go build -o newsgo ./cmd/newsgo` in the actual project toolchain. Do not describe a ZIP as verified unless tests have passed.
+Version-sensitive tests must derive expectations from the displayed application version rather than encode a release number. Tests for changed behaviors must be updated with the implementation, not suppressed. The explicit subscription search requires a button or Enter; keystrokes and initial load must not trigger discovery requests. Run the complete `go test ./...` using the actual project toolchain; build through `./devbuild.sh` so the launcher uses the new executable. Do not describe a ZIP as verified unless tests have passed.
