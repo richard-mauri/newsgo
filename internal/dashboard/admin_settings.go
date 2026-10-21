@@ -18,9 +18,23 @@ type ImageSettings struct {
 	EnrichmentDeadlineSeconds int `json:"enrichmentDeadlineSeconds"`
 	MissingImageCacheSeconds  int `json:"missingImageCacheSeconds"`
 }
+// ArticleSettings governs the active feed classification pipeline.
+type ArticleSettings struct {
+ MaxArticlesPerFeed int `json:"maxArticlesPerFeed"`
+ ClassificationTimeoutSeconds int `json:"classificationTimeoutSeconds"`
+ ClassificationConcurrency int `json:"classificationConcurrency"`
+ FeedCacheMinutes int `json:"feedCacheMinutes"`
+}
+func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10} }
+func validArticleSettings(a ArticleSettings) bool {
+ return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60
+}
+var activeArticleSettings atomic.Value
+func currentArticleSettings() ArticleSettings { if v := activeArticleSettings.Load(); v != nil { return v.(ArticleSettings) }; return defaultArticleSettings() }
 type serverSettings struct {
 	Revision  uint64        `json:"revision"`
 	Image     ImageSettings `json:"image"`
+ Articles ArticleSettings `json:"articles"`
 	UpdatedAt string        `json:"updatedAt,omitempty"`
 }
 
@@ -40,14 +54,15 @@ func (s *SyncStore) ActivateServerSettings() error {
 		return e
 	}
 	activeImageSettings.Store(c.Image)
+ activeArticleSettings.Store(c.Articles)
 	return nil
 }
 func defaultServerSettings() serverSettings {
-	return serverSettings{Image: ImageSettings{2500, 512, 12, 25, 90}}
+	return serverSettings{Image: ImageSettings{2500, 512, 12, 25, 90}, Articles: defaultArticleSettings()}
 }
 func validServerSettings(c serverSettings) bool {
 	i := c.Image
-	return i.MetadataTimeoutMs >= 500 && i.MetadataTimeoutMs <= 10000 && i.MaxHTMLKiB >= 128 && i.MaxHTMLKiB <= 2048 && i.ParallelRequests >= 1 && i.ParallelRequests <= 16 && i.EnrichmentDeadlineSeconds >= 10 && i.EnrichmentDeadlineSeconds <= 60 && i.MissingImageCacheSeconds >= 30 && i.MissingImageCacheSeconds <= 600
+	return validArticleSettings(c.Articles) && i.MetadataTimeoutMs >= 500 && i.MetadataTimeoutMs <= 10000 && i.MaxHTMLKiB >= 128 && i.MaxHTMLKiB <= 2048 && i.ParallelRequests >= 1 && i.ParallelRequests <= 16 && i.EnrichmentDeadlineSeconds >= 10 && i.EnrichmentDeadlineSeconds <= 60 && i.MissingImageCacheSeconds >= 30 && i.MissingImageCacheSeconds <= 600
 }
 func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	b, e := os.ReadFile(s.file("server-settings.json"))
@@ -61,7 +76,8 @@ func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	if e = json.Unmarshal(b, &v); e != nil {
 		return v, e
 	}
-	if !validServerSettings(v) {
+	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() } // migrate historical saved settings
+ if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
 	return v, nil
@@ -123,7 +139,8 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unexpected extra JSON", 400)
 		return
 	}
-	if !validServerSettings(candidate) {
+	if candidate.Articles.MaxArticlesPerFeed == 0 { candidate.Articles = current.Articles } // old admin clients
+ if !validServerSettings(candidate) {
 		http.Error(w, "Out-of-range server settings", 400)
 		return
 	}
@@ -138,5 +155,6 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	activeImageSettings.Store(candidate.Image)
+ activeArticleSettings.Store(candidate.Articles)
 	_ = json.NewEncoder(w).Encode(candidate)
 }

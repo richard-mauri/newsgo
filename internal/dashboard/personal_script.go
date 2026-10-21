@@ -230,7 +230,26 @@ function renderReading(){
  el('personal-section-label').hidden=true;
  renderPersonalArticles();
 }
-let allPersonalArticles=[], personalErrors=[];
+let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedEntries=[];
+function renderFilteredArticles(){
+ const card=el('filtered-articles-card'),list=el('filtered-articles-list'),count=el('filtered-articles-count');
+ if(!card||!list)return;
+ list.replaceChildren();
+ const sources=new Set(feeds.filter(f=>activeReadingSelection!==null&&(!selectedSource||f.url===selectedSource)).map(f=>f.name));
+ let display=[];
+ for(const f of filteredEntries)if(sources.has(f.source))display.push(f);
+ for(const a of allPersonalArticles)if(sources.has(a.source)){
+   if(excludedURL(a.url))display.push({title:a.title,url:a.url,source:a.source,reason:'publisher exclusion'});
+   else if(articleExcluded(a.url))display.push({title:a.title,url:a.url,source:a.source,reason:'article-domain exclusion'});
+ }
+ const pending=notProcessedEntries.filter(x=>sources.has(x.source));
+ count.textContent='('+display.length+' filtered, '+pending.reduce((n,x)=>n+x.count,0)+' unprocessed)';
+ card.hidden=activeReadingSelection===null;
+ if(display.length===0&&pending.length===0){const empty=document.createElement('p');empty.className='personal-status';empty.textContent='No filtered or unprocessed entries reported for this selection.';list.append(empty);}
+ for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason||'unknown');row.append(link,reason);list.append(row)}
+ for(const x of pending){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';list.append(p)}
+}
+
 function renderPersonalArticles(){
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
@@ -254,6 +273,7 @@ function renderPersonalArticles(){
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
  });
+ renderFilteredArticles();
  const hasArticles=count>0;
  el('personal-lead-section').hidden=!hasArticles;
  el('personal-latest-section').hidden=!hasArticles;
@@ -323,7 +343,8 @@ async function refresh(){
    if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
   }
   if(sequence!==refreshSequence)return;
-  allPersonalArticles=[];personalErrors=[];
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
+  data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
   loading.classList.remove('is-refreshing');
   renderPersonalArticles();
@@ -520,6 +541,7 @@ el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
+const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache'};
 const adminFields={metadataTimeoutMs:'admin-timeout',maxHTMLKiB:'admin-html',parallelRequests:'admin-parallel',enrichmentDeadlineSeconds:'admin-deadline',missingImageCacheSeconds:'admin-cache'};
 const adminStatus=message=>{el('admin-status').textContent=message};
 async function adminRequest(method,payload){
@@ -530,6 +552,8 @@ async function loadAdmin(){
  if(!syncConnected||!isAdmin)return;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
   for(const [key,id] of Object.entries(adminFields))el(id).value=data.image[key];
+  for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
+  if(!el('admin-articles')){adminStatus('Page is from an older NewsGo build. Reload the page after restarting NewsGo v0.2.54.');return;}
   adminStatus('Server settings loaded (revision '+adminRevision+').');
  }catch(e){adminStatus('Could not load settings: '+e.message)}
 }
@@ -539,7 +563,8 @@ el('admin-reload').addEventListener('click',loadAdmin);
 el('admin-form').addEventListener('submit',async event=>{
  event.preventDefault();if(!syncConnected||!isAdmin)return;
  const image={};for(const [key,id] of Object.entries(adminFields))image[key]=Number(el(id).value);
- try{const result=await adminRequest('PUT',{revision:adminRevision,image});adminRevision=result.revision;adminStatus('Saved server settings (revision '+adminRevision+').');}
+ const articles={};for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(!field){adminStatus('Old NewsGo page detected. Reload the page.');return;}articles[key]=Number(field.value);}
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image,articles});adminRevision=result.revision;adminStatus('Saved server settings (revision '+adminRevision+').');}
  catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.')}
 });
 syncAppearance();
