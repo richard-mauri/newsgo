@@ -1,3 +1,5 @@
+**Development correction:** Fixed missing date check in the classification pipeline: articles older than the selected maximum age are now marked `too-old` before invoking ScraperGo. Added `article_age_pipeline_test.go` to prevent recurrence. Pending CI/Mac verification.
+
 ## User reading preference: Maximum Article Age (development)
 
 The Reading Preferences panel offers All (default), 1, 3, 7, 14, 30, or 60 days. Selected age is stored per browser and synchronized with the authenticated user's existing Server Sync profile. Older dated feed items are excluded before expensive ScraperGo classification and appear in the Filtered / unprocessed articles card with reason `too-old`. Undated entries are retained. Existing subscriptions, exclusions, and Admin Settings are unchanged. CI and live Safari acceptance are required before merging to main.
