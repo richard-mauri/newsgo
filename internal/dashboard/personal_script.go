@@ -451,7 +451,7 @@ function resolveConnectDifference(){
   const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
   dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','sync-choice-title');
   const h=document.createElement('h3');h.id='sync-choice-title';h.textContent='Choose your subscription preferences';
-  const p=document.createElement('p');p.textContent='This browser has different subscriptions or exclusions than your saved server profile. Choose whether to replace or merge your subscriptions, excluded publishers, and excluded article domains.';
+  const p=document.createElement('p');p.textContent='This browser has different reading preferences, subscriptions, or exclusions than your saved server profile. Choose whether to load the server settings or merge saved subscriptions and exclusions while retaining the local article-age preference.';
   const actions=document.createElement('div');actions.className='sync-choice-actions';
   function add(label,value){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{shade.remove();resolve(value)});actions.append(b);return b}
   const useServer=add('Use Server Preferences','server');
