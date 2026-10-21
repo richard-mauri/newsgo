@@ -22,6 +22,15 @@ type personalResult struct {
 	Source   feeds.Source      `json:"source"`
 	Articles []personalArticle `json:"articles,omitempty"`
 	Error    string            `json:"error,omitempty"`
+ Filtered []filteredArticle `json:"filtered,omitempty"`
+ NotProcessed int `json:"notProcessed,omitempty"`
+ FeedEntries int `json:"feedEntries,omitempty"`
+}
+type filteredArticle struct {
+ Title string `json:"title"`
+ URL string `json:"url"`
+ Source string `json:"source"`
+ Reason string `json:"reason"`
 }
 type personalArticle struct {
 	Title     string `json:"title"`
@@ -106,7 +115,7 @@ func personalCacheTTL(entry cacheEntry) time.Duration {
 	if entry.err != "" {
 		return 20 * time.Second
 	}
-	return 10 * time.Minute
+	return time.Duration(currentArticleSettings().FeedCacheMinutes) * time.Minute
 }
 
 func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, string) {
@@ -180,12 +189,16 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			seen[src.URL] = true
 			articles, msg := personalFetch(r.Context(), src)
 			res.Error = msg
-			decisions := classifyFeedArticles(r.Context(), s.reader, articles)
+			cfg := currentArticleSettings()
+   res.FeedEntries = len(articles)
+   if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
+   decisions := classifyFeedArticles(r.Context(), s.reader, articles)
 			for i, a := range articles {
-				if i >= 60 {
+				if i >= cfg.MaxArticlesPerFeed {
 					break
 				}
 				if decisions[i] != "article" {
+      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i]})
 					continue
 				}
 				date := "Date unavailable"
@@ -194,7 +207,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 				}
 				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
 			}
-			if msg == "" && len(res.Articles) == 0 {
+			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
 			}
 		}
@@ -235,17 +248,18 @@ var newsClassificationCache = struct {
 	sync.Mutex
 	entries map[string]newsClassificationEntry
 }{entries: make(map[string]newsClassificationEntry)}
-var newsClassificationSlots = make(chan struct{}, 8)
+var newsClassificationSlots = make(chan struct{}, 16)
 
 func classifyFeedArticles(ctx context.Context, reader string, articles []feeds.Article) []string {
 	out := make([]string, len(articles))
+ limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
 	for i, a := range articles {
-		if i >= 60 {
+		if i >= currentArticleSettings().MaxArticlesPerFeed {
 			break
 		}
 		wg.Add(1)
-		go func(i int, article string) { defer wg.Done(); out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
+		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
 	}
 	wg.Wait()
 	return out
@@ -267,7 +281,7 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	case <-ctx.Done():
 		return "unknown"
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, 7*time.Second)
+	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(currentArticleSettings().ClassificationTimeoutSeconds)*time.Second)
 	defer cancel()
 	body, _ := json.Marshal(map[string]string{"url": article})
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(reader, "/")+"/api/classify", bytes.NewReader(body))
@@ -275,7 +289,7 @@ func newsClassify(ctx context.Context, reader, article string) string {
 		return "unknown"
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 7 * time.Second}
+	client := &http.Client{Timeout: time.Duration(currentArticleSettings().ClassificationTimeoutSeconds)*time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "unknown"
