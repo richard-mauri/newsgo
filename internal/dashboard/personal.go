@@ -17,6 +17,7 @@ import (
 
 type personalRequest struct {
 	Feeds []feeds.Source `json:"feeds"`
+ MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
 }
 type personalResult struct {
 	Source   feeds.Source      `json:"source"`
@@ -31,6 +32,7 @@ type filteredArticle struct {
  URL string `json:"url"`
  Source string `json:"source"`
  Reason string `json:"reason"`
+ Published string `json:"published,omitempty"`
 }
 type personalArticle struct {
 	Title     string `json:"title"`
@@ -39,6 +41,7 @@ type personalArticle struct {
 	Source    string `json:"source"`
 	Category  string `json:"category"`
 	Date      string `json:"date"`
+ DateWarning string `json:"dateWarning,omitempty"`
 	Published string `json:"published"`
 	Image     string `json:"image,omitempty"`
 }
@@ -170,7 +173,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	var req personalRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Feeds) > 8 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Feeds) > 8 || !validArticleAgeDays(req.MaxArticleAgeDays) {
 		http.Error(w, "Expected up to 8 feeds", 400)
 		return
 	}
@@ -192,20 +195,24 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			cfg := currentArticleSettings()
    res.FeedEntries = len(articles)
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
-   decisions := classifyFeedArticles(r.Context(), s.reader, articles)
+   decisions := classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
 					break
 				}
 				if decisions[i] != "article" {
-      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i]})
+      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i], Published:a.Published.Format(time.RFC3339)})
 					continue
 				}
 				date := "Date unavailable"
-				if !a.Published.IsZero() {
-					date = a.Published.Local().Format("Jan 2, 3:04 PM")
-				}
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
+                warning := ""
+                if !a.Published.IsZero() {
+                    date = a.Published.Local().Format("Jan 2, 3:04 PM")
+                } else if strings.TrimSpace(a.RawDate) != "" {
+                    date = a.RawDate
+                    warning = "Unrecognized date format"
+                }
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
 			}
 			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -250,13 +257,25 @@ var newsClassificationCache = struct {
 }{entries: make(map[string]newsClassificationEntry)}
 var newsClassificationSlots = make(chan struct{}, 16)
 
+func validArticleAgeDays(n int) bool { return n==0 || n==1 || n==3 || n==7 || n==14 || n==30 || n==60 }
+
+func articleTooOld(published time.Time, days int, now time.Time) bool {
+ return days > 0 && !published.IsZero() && published.Before(now.AddDate(0,0,-days))
+}
 func classifyFeedArticles(ctx context.Context, reader string, articles []feeds.Article) []string {
+ return classifyFeedArticlesWithAge(ctx, reader, articles, 0)
+}
+func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []feeds.Article, days int) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
 	for i, a := range articles {
 		if i >= currentArticleSettings().MaxArticlesPerFeed {
 			break
+		}
+		if articleTooOld(a.Published, days, time.Now()) {
+			out[i] = "too-old"
+			continue
 		}
 		wg.Add(1)
 		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
