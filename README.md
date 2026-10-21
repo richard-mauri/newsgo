@@ -1,3 +1,7 @@
+## Raw publication date fallback (release candidate)
+
+When an RSS, Atom, JSON Feed, or RDF item provides a nonempty publication-date string that NewsGo cannot parse, the article card displays that original text with “Unrecognized date format” and a tooltip explaining that article age cannot be determined. Missing dates still show “Date unavailable”. Unrecognized dates remain visible rather than receiving a fabricated age. The parser continues to use parsed dates for cutoff and sorting; the raw text is preserved independently. Regression tests cover missing, unrecognized, and Investing.com dates.
+
 **Development correction:** Fixed missing date check in the classification pipeline: articles older than the selected maximum age are now marked `too-old` before invoking ScraperGo. Added `article_age_pipeline_test.go` to prevent recurrence. Pending CI/Mac verification.
 
 ## User reading preference: Maximum Article Age (development)
