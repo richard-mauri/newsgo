@@ -32,6 +32,7 @@ type filteredArticle struct {
  URL string `json:"url"`
  Source string `json:"source"`
  Reason string `json:"reason"`
+ Published string `json:"published,omitempty"`
 }
 type personalArticle struct {
 	Title     string `json:"title"`
@@ -199,7 +200,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				if decisions[i] != "article" {
-      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i]})
+      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i], Published:a.Published.Format(time.RFC3339)})
 					continue
 				}
 				date := "Date unavailable"
