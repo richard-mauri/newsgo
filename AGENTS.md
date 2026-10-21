@@ -1,3 +1,7 @@
+# ACTIVE NewsGo dev candidate v0.2.53 — 2026-10-21
+
+NewsGo /api/personal now reports filtered classification entries and per-feed unprocessed counts; the dashboard renders a collapsed Filtered / unprocessed articles card, also showing user excluded domains among fetched entries. Admin Settings now persists and actively applies maxArticlesPerFeed (1–250, default 60), classificationTimeoutSeconds (2–30, default 7), classificationConcurrency (1–16, default 8) and feedCacheMinutes (1–60, default 10). Legacy image-enrichment settings remain accepted/preserved but are inactive for ScraperGo thumbnails. Existing settings files without articles section are migrated with defaults on load. Feed API request batch cap remains 8, and feed download cap remains 4 MiB; these security constraints are not editable. Keep existing subscription and exclusion persistence, server sync, startup behavior and launchers untouched. CI passed; Mac Safari acceptance pending. Do not merge to main without approval.
+
 # NewsGo v0.2.52 development handoff
 Only a confirmed `article` classification renders. Preserve v0.2.51 eager loading and explicit startup selection. No commit or push; require Mac acceptance.
 
