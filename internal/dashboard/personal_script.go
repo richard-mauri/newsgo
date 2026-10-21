@@ -551,7 +551,8 @@ async function loadAdmin(){
  if(!syncConnected||!isAdmin)return;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
   for(const [key,id] of Object.entries(adminFields))el(id).value=data.image[key];
-  for(const [key,id] of Object.entries(articleAdminFields))el(id).value=data.articles[key];
+  for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
+  if(!el('admin-articles')){adminStatus('Page is from an older NewsGo build. Reload the page after restarting NewsGo v0.2.54.');return;}
   adminStatus('Server settings loaded (revision '+adminRevision+').');
  }catch(e){adminStatus('Could not load settings: '+e.message)}
 }
@@ -561,7 +562,7 @@ el('admin-reload').addEventListener('click',loadAdmin);
 el('admin-form').addEventListener('submit',async event=>{
  event.preventDefault();if(!syncConnected||!isAdmin)return;
  const image={};for(const [key,id] of Object.entries(adminFields))image[key]=Number(el(id).value);
- const articles={};for(const [key,id] of Object.entries(articleAdminFields))articles[key]=Number(el(id).value);
+ const articles={};for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(!field){adminStatus('Old NewsGo page detected. Reload the page.');return;}articles[key]=Number(field.value);}
  try{const result=await adminRequest('PUT',{revision:adminRevision,image,articles});adminRevision=result.revision;adminStatus('Saved server settings (revision '+adminRevision+').');}
  catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.')}
 });
