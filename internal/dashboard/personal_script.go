@@ -551,7 +551,7 @@ el('sync-disconnect').addEventListener('click',()=>{
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache'};
-const adminFields={metadataTimeoutMs:'admin-timeout',maxHTMLKiB:'admin-html',parallelRequests:'admin-parallel',enrichmentDeadlineSeconds:'admin-deadline',missingImageCacheSeconds:'admin-cache'};
+let retainedLegacyImageSettings=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
 async function adminRequest(method,payload){
  const response=await fetch('/api/admin/settings',{method,headers:{Authorization:'Bearer '+syncToken,...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
@@ -560,7 +560,7 @@ async function adminRequest(method,payload){
 async function loadAdmin(){
  if(!syncConnected||!isAdmin)return;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
-  for(const [key,id] of Object.entries(adminFields))el(id).value=data.image[key];
+  retainedLegacyImageSettings=data.image;
   for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
   if(!el('admin-articles')){adminStatus('Page is from an older NewsGo build. Reload the page after restarting NewsGo v0.2.54.');return;}
   adminStatus('Server settings loaded (revision '+adminRevision+').');
@@ -575,9 +575,10 @@ el('close-admin').addEventListener('click',()=>showView('news'));
 el('admin-reload').addEventListener('click',loadAdmin);
 el('admin-form').addEventListener('submit',async event=>{
  event.preventDefault();if(!syncConnected||!isAdmin)return;
- const image={};for(const [key,id] of Object.entries(adminFields))image[key]=Number(el(id).value);
+ if(!retainedLegacyImageSettings){adminStatus('Reload server settings before saving.');return;}
+ const image=retainedLegacyImageSettings;
  const articles={};for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(!field){adminStatus('Old NewsGo page detected. Reload the page.');return;}articles[key]=Number(field.value);}
- try{const result=await adminRequest('PUT',{revision:adminRevision,image,articles});adminRevision=result.revision;adminStatus('Saved server settings (revision '+adminRevision+').');}
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image,articles});adminRevision=result.revision;retainedLegacyImageSettings=result.image;adminStatus('Saved server settings (revision '+adminRevision+').');}
  catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.')}
 });
 syncAppearance();
