@@ -40,6 +40,7 @@ type Report struct {
 type item struct {
 	title, link, image string
 	date               time.Time
+ rawDate string
 }
 type rss struct {
 	XMLName xml.Name `xml:"rss"`
@@ -133,7 +134,7 @@ func Parse(data []byte) (string, []item, error) {
 			if d == "" {
 				d = v.Modified
 			}
-			out = append(out, item{title: v.Title, link: l, image: firstImage(v.Image, v.BannerImage), date: parseDate(d)})
+			out = append(out, item{title: v.Title, link: l, image: firstImage(v.Image, v.BannerImage), date: parseDate(d), rawDate: strings.TrimSpace(d)})
 		}
 		return "JSON Feed", out, nil
 	}
@@ -173,7 +174,7 @@ func Parse(data []byte) (string, []item, error) {
 				image = firstImage(image, v.Enclosure.URL)
 			}
 			image = firstImage(image, v.ITunesImage.Href, imageFromHTML(v.ContentEncoded, l), imageFromHTML(v.Description, l))
-			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d)})
+			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d), rawDate: strings.TrimSpace(d)})
 		}
 		return "RSS", out, nil
 	case "feed":
@@ -204,7 +205,7 @@ func Parse(data []byte) (string, []item, error) {
 				}
 			}
 			image = firstImage(image, imageFromHTML(v.Content, l), imageFromHTML(v.Summary, l))
-			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d)})
+			out = append(out, item{title: v.Title, link: l, image: image, date: parseDate(d), rawDate: strings.TrimSpace(d)})
 		}
 		return "Atom", out, nil
 	case "rdf":
@@ -214,7 +215,7 @@ func Parse(data []byte) (string, []item, error) {
 		}
 		out := make([]item, 0, len(f.Items))
 		for _, v := range f.Items {
-			out = append(out, item{title: v.Title, link: v.Link, date: parseDate(v.Date)})
+			out = append(out, item{title: v.Title, link: v.Link, date: parseDate(v.Date), rawDate: strings.TrimSpace(v.Date)})
 		}
 		return "RSS RDF", out, nil
 	default:
@@ -260,7 +261,7 @@ func firstImage(values ...string) string {
 	return ""
 }
 func parseDate(s string) time.Time {
-	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, "Mon, 2 Jan 2006 15:04:05 MST", "2006-01-02T15:04:05Z0700", "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, "Mon, 2 Jan 2006 15:04:05 MST", "2006-01-02T15:04:05Z0700", "2006-01-02 15:04:05", "2006-01-02"} {
 		if t, e := time.Parse(layout, strings.TrimSpace(s)); e == nil {
 			return t
 		}
