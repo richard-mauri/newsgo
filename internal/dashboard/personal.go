@@ -41,6 +41,7 @@ type personalArticle struct {
 	Source    string `json:"source"`
 	Category  string `json:"category"`
 	Date      string `json:"date"`
+ DateWarning string `json:"dateWarning,omitempty"`
 	Published string `json:"published"`
 	Image     string `json:"image,omitempty"`
 }
@@ -204,10 +205,14 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				date := "Date unavailable"
-				if !a.Published.IsZero() {
-					date = a.Published.Local().Format("Jan 2, 3:04 PM")
-				}
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
+                warning := ""
+                if !a.Published.IsZero() {
+                    date = a.Published.Local().Format("Jan 2, 3:04 PM")
+                } else if strings.TrimSpace(a.RawDate) != "" {
+                    date = a.RawDate
+                    warning = "Unrecognized date format"
+                }
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
 			}
 			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
