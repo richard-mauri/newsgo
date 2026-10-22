@@ -79,6 +79,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveFeedSearch(w, r)
 		return
 	}
+	if r.URL.Path == "/api/diagnostic/feed-trace" { s.serveFeedTrace(w,r); return }
 	if r.URL.Path == "/api/personal" {
 		s.servePersonal(w, r)
 		return
