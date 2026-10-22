@@ -16,6 +16,7 @@ type Article struct {
 	Source    string
 	Category  string
 	Published time.Time
+ RawDate string
 	Image     string
 }
 
@@ -54,7 +55,7 @@ func FetchArticles(ctx context.Context, client *http.Client, src Source) ([]Arti
 		if strings.TrimSpace(e.title) == "" || !ValidURL(e.link) {
 			continue
 		}
-		out = append(out, Article{Title: strings.TrimSpace(e.title), URL: strings.TrimSpace(e.link), Source: src.Name, Category: src.Category, Published: e.date, Image: e.image})
+		out = append(out, Article{Title: strings.TrimSpace(e.title), URL: strings.TrimSpace(e.link), Source: src.Name, Category: src.Category, Published: e.date, RawDate: e.rawDate, Image: e.image})
 	}
 	return out, nil
 }
