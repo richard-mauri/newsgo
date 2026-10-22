@@ -1,3 +1,28 @@
+# CURRENT HANDOFF — missing NPR article in NewsGo (2026-10-21)
+
+This is the active investigation for the next session. The user asked to preserve it, not to guess a feed URL or change filtering rules without evidence.
+
+## User-visible evidence and open issue
+- The NPR story "Israel frees dozens of Americans, including U.S. Congress nominee, after West Bank detention" (https://www.npr.org/2026/10/21/nx-s1-6010460/brad-lander-detained-west-bank-israel-palestinians) was previously visible in NewsGo, initially with an inappropriate thumbnail, then with the correct Israeli security-forces photo after ScraperGo image classification was repaired. It subsequently disappeared from NewsGo.
+- The user confirmed it is **not present in NewsGo's Filtered / unprocessed articles section** and increasing their maximum article age from 15 to 30 days did **not** restore it. The date is October 21, 2026; therefore routine 30-day expiration is not an established explanation.
+- The only NPR feed information provided by the user was the **domain** `feeds.npr.org`. The exact subscribed RSS URL/path was **not established**. Earlier assistant suggestions of `/1001/rss.xml` and `/1009/rss.xml` were possibilities, NOT confirmed subscriptions. Never treat either as NewsGo's configured feed without examining actual subscriptions.
+- The article's absence may occur before classification: upstream feed rotation, wrong feed/subscription, parser, deduplication, selected feed set, fetch/cache, per-feed processing limits, or a later pipeline stage. Neither source nor cause has been verified. The audit panel cannot show entries absent from the fetched RSS.
+
+## Next investigative work
+- Inspect NewsGo's real current subscription configuration and selected-feed behavior WITHOUT changing or exposing user settings; determine the exact `feeds.npr.org` URL from the application/config/API, not from a generic NPR feed guess. If live Mac configuration is inaccessible, request the precise configured URL or narrowly targeted local API output.
+- Trace this exact article through: HTTP RSS fetch -> raw RSS item existence -> parser -> normalization/deduplication -> max-articles-per-feed limits -> date/age gate -> ScraperGo classification -> filters -> response/display. Report which stage excluded it or explicitly state if undetermined.
+- Prefer a **read-only diagnostic endpoint** matching the app's actual pipeline and reporting per-stage presence/decision and counts. Keep diagnostic access loopback-only where appropriate; don't retrieve arbitrary unrelated user data or change feed processing merely to make the item reappear. Write fixture-based regression tests only after obtaining evidence.
+- Before coding, inspect `AGENTS.md`, `README.md`, current `dev` files, existing endpoints and CI. Work on `dev` under the established workflow; leave `main` unchanged unless explicitly authorized. Run Go tests/build and get Mac/Safari acceptance before release.
+- NewsGo `main` was settled at v0.2.57. No NewsGo code changes have yet been made for this missing-article investigation; the user has requested a handoff. Do not infer the v0.2.57 release has the same implementation as historical dev notes without examining current source.
+
+## ScraperGo dependency and successful work to preserve
+- ScraperGo separate repo `richard-mauri/scrapergo`, active draft rewrite branch `rewrite/structured-articles`, PR #4, Mac acceptance candidate **v0.2.83**. Its `main` remains on v0.2.65, unmerged. Do not merge either repository without explicit approval.
+- On v0.2.83 the user confirmed the four contributor names are together beneath the title and the Israeli security-forces image is selected correctly. This corrected NewsGo's thumbnail earlier; it did not restore the missing feed entry. Minor article-body extras (category "Middle East", audio heading "Brad Lander West Bank", "Download") remain.
+- ScraperGo has a permanent localhost-only `POST /api/diagnostic/image-trace` endpoint (URL-only or supplied HTML), which reports source DOM, Readability, recovery, classification, normalization, and opening block representations. Key prior failure: NPR links were in `Block.Parts`, not `Block.Links`; v0.2.83 used observed Parts evidence to remove redundant contributor blocks. Preserve this endpoint and functioning image-selection behavior.
+- User's Mac startup script `./scrapergo.sh` **already stops and restarts** ScraperGo; don't instruct a separate Control-C. Their general Mac update flow is `git checkout`, `git pull --ff-only`, `go test -count=1 ./...`, `./devbuild.sh`, then the corresponding launcher.
+
+---
+
 # AUTHORITATIVE DEVELOPMENT WORKFLOW — effective 2026-10-21
 
 This section supersedes any conflicting directions in the historical handoff notes below. The notes remain for technical provenance, not as active release instructions.
