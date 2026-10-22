@@ -1,3 +1,18 @@
+## Administrator interface cleanup (v0.2.57 candidate)
+
+Admin Settings now shows only active article processing controls. Inactive legacy thumbnail enrichment fields are hidden. Existing legacy values remain preserved in server-settings.json and carried through authenticated Admin saves for backwards compatibility; image retrieval continues to be handled by ScraperGo. No server settings migration or deletion occurs.
+
+## Raw publication date fallback (release candidate)
+
+When an RSS, Atom, JSON Feed, or RDF item provides a nonempty publication-date string that NewsGo cannot parse, the article card displays that original text with “Unrecognized date format” and a tooltip explaining that article age cannot be determined. Missing dates still show “Date unavailable”. Unrecognized dates remain visible rather than receiving a fabricated age. The parser continues to use parsed dates for cutoff and sorting; the raw text is preserved independently. Regression tests cover missing, unrecognized, and Investing.com dates.
+
+**Development correction:** Fixed missing date check in the classification pipeline: articles older than the selected maximum age are now marked `too-old` before invoking ScraperGo. Added `article_age_pipeline_test.go` to prevent recurrence. Pending CI/Mac verification.
+
+## User reading preference: Maximum Article Age (development)
+
+The Reading Preferences panel offers All (default), 1, 3, 7, 14, 30, or 60 days. Selected age is stored per browser and synchronized with the authenticated user's existing Server Sync profile. Older dated feed items are excluded before expensive ScraperGo classification and appear in the Filtered / unprocessed articles card with reason `too-old`. Undated entries are retained. Existing subscriptions, exclusions, and Admin Settings are unchanged. CI and live Safari acceptance are required before merging to main.
+
+
 ## NewsGo v0.2.57 development — missing article feed trace
 
 Adds a read-only, localhost-only `POST /api/diagnostic/feed-trace` endpoint for a supplied article URL and up to eight explicitly supplied feed definitions. It uses the existing SSRF-protected `personalFetch`, current per-feed processing cap and age predicate, and ScraperGo classification only when a matching article reaches the eligible stage. Results distinguish `not-in-parsed-feed`, `feed-fetch-error`, `outside-processing-cap`, `age-filtered`, `classified-article`, and `classification-filtered`. Tracking query parameters on the target article URL do not prevent a match. It does not inspect or disclose the user's locally stored browser subscriptions automatically and does not modify subscriptions, filters, caches or settings. Because successful feeds may be cached for the configured TTL, a trace can reflect the current server cache rather than a forced fresh network fetch. For a relevant diagnosis, supply the exact NPR feed URL configured in NewsGo. Keep this endpoint off public proxies (localhost peer check). ScraperGo and production main are unchanged.
