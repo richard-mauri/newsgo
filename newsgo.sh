@@ -60,4 +60,4 @@ nohup "$CLOUDFLARED" tunnel run \
 
 disown -a
 
-echo "Started $version_output on 127.0.0.1:8084 and its dedicated Cloudflare Tunnel."
+echo "Started NewsGo on 127.0.0.1:8084 and its dedicated Cloudflare Tunnel."

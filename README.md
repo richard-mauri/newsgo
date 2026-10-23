@@ -1,3 +1,9 @@
+## Last-opened reading selection (v0.2.58 development candidate)
+
+When a subscription or **All Subscriptions** is selected, NewsGo includes `lastReadingSelection` in its existing revisioned, token-authenticated per-user Server Sync profile. This is a user preference, **not** an administrator setting. The value is `all` or the exact subscribed feed URL; the server rejects unknown feed selections, and older profiles without the property retain the original on-demand welcome state. The browser also remembers its selection locally for disconnected usage, but connected devices restore from the server copy after successful synchronization. Conflict/revision checks and local-vs-server preference reconciliation remain in force. Invalid, removed, or excluded selections are not automatically fetched.
+
+Mac acceptance: `git checkout dev && git pull --ff-only origin dev && go test -count=1 ./... && ./devbuild.sh && ./newsgo.sh`. Verify the dashboard identifies itself as **v0.2.58**, choose a feed, allow Server Sync to report saved, close and reopen Safari, then verify the feed restores. Repeat for **All Subscriptions**, a second device using the same approved token, an older profile with no selection, and a disconnected browser. This candidate must not be merged or released without owner approval.
+
 ## Administrator interface cleanup (v0.2.57 candidate)
 
 Admin Settings now shows only active article processing controls. Inactive legacy thumbnail enrichment fields are hidden. Existing legacy values remain preserved in server-settings.json and carried through authenticated Admin saves for backwards compatibility; image retrieval continues to be handled by ScraperGo. No server settings migration or deletion occurs.

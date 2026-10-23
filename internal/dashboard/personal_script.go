@@ -145,7 +145,25 @@ const suggestions=[
 const el=id=>document.getElementById(id);
 const valid=f=>f&&typeof f.name==='string'&&f.name.trim().length>0&&f.name.length<=70&&typeof f.category==='string'&&f.category.length<=40&&typeof f.url==='string'&&f.url.length<=2048&&/^https?:\/\/[^\s/]+/i.test(f.url);
 let selectedSource='';
-let activeReadingSelection=null; // null until user explicitly chooses a feed or All
+const readingSelectionKey='newsgo.lastReadingSelection.v1';
+let activeReadingSelection=null; // null until user chooses a feed, All, or restores a saved choice
+function validReadingSelection(value){
+ if(value==='all')return 'all';
+ return typeof value==='string'&&feeds.some(f=>f.url===value&&!excludedURL(publisherForFeed(f)))?value:null;
+}
+function restoreReadingSelection(value){
+ const selection=validReadingSelection(value);
+ activeReadingSelection=selection;
+ selectedSource=selection&&selection!=='all'?selection:'';
+ el('read-source').value=selectedSource?'personal:'+selectedSource:'';
+ renderReading();
+ if(selection!==null){showView('news');refresh()}
+ else{allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];renderPersonalArticles()}
+}
+function rememberReadingSelection(value){
+ localStorage.setItem(readingSelectionKey,value);
+ scheduleServerSave();
+}
 
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',handler);return b}
@@ -202,13 +220,13 @@ function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following})}
 function chooseAllSubscriptions(){
- activeReadingSelection='all';el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
+ activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
 }
 function chooseSource(url){
  const source=feeds.find(f=>f.url===url);
  if(source&&excludedURL(publisherForFeed(source))){chooseAllSubscriptions();return}
- activeReadingSelection=url;selectedSource=url;el('read-source').value='personal:'+url;renderReading();showView('news');refresh();
+ activeReadingSelection=url;rememberReadingSelection(url);selectedSource=url;el('read-source').value='personal:'+url;renderReading();showView('news');refresh();
  el('reading-title').scrollIntoView({block:'start',behavior:'smooth'});
 }
 function renderSourceSelector(){
@@ -422,7 +440,7 @@ function syncAppearance(){
  el('manage-admin').hidden=!(syncConnected&&isAdmin);
  if(!(syncConnected&&isAdmin)&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
 }
-function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays}}
+function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 async function syncRequest(method,body){
  const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
  if(response.status===404){const data=await response.json();return {...data,notFound:true}}
@@ -435,6 +453,8 @@ function applyServerPreferences(data){
  const migrated=convertLegacy(data.subscriptions);
  localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));localStorage.setItem(articleExclusionKey,JSON.stringify(data.excludedArticleDomains||[]));
  registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);syncRevision=data.revision;
+ const restored=validReadingSelection(data.lastReadingSelection);if(restored===null)localStorage.removeItem(readingSelectionKey);else localStorage.setItem(readingSelectionKey,restored);
+ restoreReadingSelection(restored);
  syncDirty=false;syncPending=false;syncConflict=false;
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
@@ -443,7 +463,7 @@ function samePreferences(data){
  const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
  const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
  const domains=x=>[...new Set(x)].sort().join('\n');
- return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays;
+ return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays&&(activeReadingSelection===null||validReadingSelection(data.lastReadingSelection)===validReadingSelection(activeReadingSelection));
 }
 function resolveConnectDifference(){
  return new Promise(resolve=>{
@@ -483,11 +503,15 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
      // Only replace local storage once both lists are validated.
      localStorage.setItem(unifiedKey,JSON.stringify(combined));localStorage.setItem(exclusionKey,JSON.stringify(domains));localStorage.setItem(articleExclusionKey,JSON.stringify(articles));
      registry=combined;syncDerived();excludedDomains=domains;articleDomains=articles;syncRevision=data.revision;
+     // Merge keeps an explicit local selection; otherwise adopts the server choice.
+     const mergedSelection=validReadingSelection(activeReadingSelection)||validReadingSelection(data.lastReadingSelection);
+     if(mergedSelection!==null)localStorage.setItem(readingSelectionKey,mergedSelection);
+     restoreReadingSelection(mergedSelection);
      refreshExclusionViews();renderManager();refresh();
      syncConnected=true;syncDirty=true;needsSave=true;
      syncStatus('Connected · saving merged preferences…');
     }else{applyServerPreferences(data);syncConnected=true;syncStatus('Connected · server preferences loaded (revision '+syncRevision+')')}
-   }else{syncRevision=data.revision;syncConnected=true;syncDirty=false;syncStatus('Connected · up to date (revision '+syncRevision+')')}
+   }else{syncRevision=data.revision;syncConnected=true;syncDirty=false;restoreReadingSelection(validReadingSelection(data.lastReadingSelection));syncStatus('Connected · up to date (revision '+syncRevision+')')}
   }
   if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
   el('sync-token').value='';syncAppearance();
@@ -514,7 +538,7 @@ async function saveSync(){
  const snap=syncSnapshot();
  try{
   const data=await syncRequest('PUT',snap);syncRevision=data.revision;
-  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains)||JSON.stringify(snap.excludedArticleDomains)!==JSON.stringify(articleDomains)||snap.maxArticleAgeDays!==maxArticleAgeDays;
+  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains)||JSON.stringify(snap.excludedArticleDomains)!==JSON.stringify(articleDomains)||snap.maxArticleAgeDays!==maxArticleAgeDays||snap.lastReadingSelection!==(validReadingSelection(activeReadingSelection)||'');
   syncDirty=changed;if(changed)syncPending=true;
   syncStatus(changed?'Connected · saving newer changes…':'Connected · all changes saved');
  }catch(e){
@@ -584,6 +608,7 @@ el('admin-form').addEventListener('submit',async event=>{
 syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
+else restoreReadingSelection(localStorage.getItem(readingSelectionKey));
 setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
