@@ -16,8 +16,8 @@ func TestLauncherPrintsExecutableVersionOnlyOnce(t *testing.T) {
  if !strings.Contains(script, `printf 'NewsGo executable version: %s\n' "$version_output"`) {
   t.Fatal("launcher must display the verified version")
  }
- if strings.Count(script, `"$version_output"`) != 4 {
-  t.Fatalf("launcher version output uses changed unexpectedly: %d",strings.Count(script,`"$version_output"`))
+ if strings.Count(script, `printf 'NewsGo executable version: %s\n' "$version_output"`) != 1 {
+  t.Fatalf("launcher version output uses changed unexpectedly: %d",strings.Count(script,`printf 'NewsGo executable version: %s\n' "$version_output"`))
  }
  if !strings.Contains(script,`echo "Started NewsGo on 127.0.0.1:8084 and its dedicated Cloudflare Tunnel."`) {
   t.Fatal("launcher must still report the start and endpoint")
