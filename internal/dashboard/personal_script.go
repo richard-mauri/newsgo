@@ -511,7 +511,7 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
      syncConnected=true;syncDirty=true;needsSave=true;
      syncStatus('Connected · saving merged preferences…');
     }else{applyServerPreferences(data);syncConnected=true;syncStatus('Connected · server preferences loaded (revision '+syncRevision+')')}
-   }else{syncRevision=data.revision;syncConnected=true;syncDirty=false;syncStatus('Connected · up to date (revision '+syncRevision+')')}
+   }else{syncRevision=data.revision;syncConnected=true;syncDirty=false;restoreReadingSelection(validReadingSelection(data.lastReadingSelection));syncStatus('Connected · up to date (revision '+syncRevision+')')}
   }
   if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
   el('sync-token').value='';syncAppearance();
