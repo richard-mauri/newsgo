@@ -33,6 +33,7 @@ type storedPrefs struct {
 	ExcludedDomains        []string           `json:"excludedDomains"`
 	ExcludedArticleDomains []string           `json:"excludedArticleDomains"`
  MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
+ LastReadingSelection string `json:"lastReadingSelection,omitempty"`
 	UpdatedAt              string             `json:"updatedAt"`
 }
 type syncSubscription struct {
@@ -168,6 +169,11 @@ func (s *SyncStore) Revoke(user string) error {
 	return atomicJSON(s.file("approved-tokens.json"), out)
 }
 func validPrefs(p storedPrefs) bool {
+ if p.LastReadingSelection != "" && p.LastReadingSelection != "all" {
+  found := false
+  for _, sub := range p.Subscriptions { if sub.Kind == "feed" && sub.URL == p.LastReadingSelection { found = true; break } }
+  if !found { return false }
+ }
 	if p.MaxArticleAgeDays != 0 && p.MaxArticleAgeDays != 1 && p.MaxArticleAgeDays != 3 && p.MaxArticleAgeDays != 7 && p.MaxArticleAgeDays != 14 && p.MaxArticleAgeDays != 30 && p.MaxArticleAgeDays != 60 { return false }
  if len(p.Subscriptions) > 250 || len(p.ExcludedDomains) > 500 || len(p.ExcludedArticleDomains) > 500 {
 		return false
