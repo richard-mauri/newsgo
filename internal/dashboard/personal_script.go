@@ -30,22 +30,37 @@ function exclusionDomain(value){
  const host=hostOf(value);
  return host&&/^[a-z0-9.-]+$/.test(host)&&host.includes('.')&&!host.startsWith('.')&&!host.endsWith('.')&&!host.includes('..')?host:'';
 }
+// NewsGo's publisher identity groups agency subdomains under a gov.au agency.
+ // Other domains retain their existing exact-host behavior; don't guess public suffixes.
+function publisherScope(value){
+ const d=exclusionDomain(value);
+ if(!d)return '';
+ const parts=d.split('.');
+ return d.endsWith('.gov.au')&&parts.length>3?parts.slice(-3).join('.'):d;
+}
+function publisherExcluded(value){
+ const scope=publisherScope(value);
+ return !!scope&&excludedDomains.some(d=>{
+  const saved=publisherScope(d);
+  return scope===saved||scope.endsWith('.'+saved);
+ });
+}
 function articleDomain(value){const d=exclusionDomain(value);return d==='youtu.be'?'youtube.com':d}
 function articleExcluded(value){const h=hostOf(value);return !!h&&articleDomains.some(d=>h===d||h.endsWith('.'+d)||(d==='youtube.com'&&h==='youtu.be'))}
 function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
 function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleServerSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
 function toggleArticleDomain(value){const d=articleDomain(value);if(!d){message('Enter a valid article domain.');return}saveArticleExclusions(articleDomains.includes(d)?articleDomains.filter(x=>x!==d):[...articleDomains,d])}
-function excludedURL(value){const h=hostOf(value);return !!h&&excludedDomains.some(d=>h===d||h.endsWith('.'+d))}
+function excludedURL(value){return publisherExcluded(value)}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
 function saveExclusions(list){
  try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleServerSave();return true}
  catch(e){message('Could not save exclusions: '+e.message);return false}
 }
-function excludeDomain(value){const domain=exclusionDomain(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedDomains.includes(domain))saveExclusions([...excludedDomains,domain]);else message(domain+' is already excluded.')}
-function toggleDomain(value){const domain=exclusionDomain(value);if(!domain){message('Could not identify a website domain.');return}if(excludedDomains.includes(domain))saveExclusions(excludedDomains.filter(x=>x!==domain));else excludeDomain(domain)}
-function publisherForFeed(feed){return exclusionDomain(feed.website||feed.url||'')}
+function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedDomains.includes(domain))saveExclusions([...excludedDomains,domain]);else message(domain+' is already excluded.')}
+function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}if(excludedURL(domain))saveExclusions(excludedDomains.filter(x=>publisherScope(x)!==domain));else excludeDomain(domain)}
+function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
-function excludeButton(domain){const d=exclusionDomain(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
+function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
 function markSite(info,domain){if(!domain)return;const badge=document.createElement('small');badge.className='exclusion-label';badge.textContent=statusLabel(domain);info.append(badge)}
 // Compare against the specific excluded entry, not against every exclusion.
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
