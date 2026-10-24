@@ -533,6 +533,8 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
   }
   if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
   el('sync-token').value='';syncAppearance();
+  // Update counters and management list even when the server profile is already current.
+  if(syncConnected)renderManager();
  }catch(e){syncToken='';syncConnected=false;isAdmin=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
  finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
 }
