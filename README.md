@@ -1,3 +1,11 @@
+## Admin classification diagnostics and Exit Admin Mode (development)
+
+For authenticated administrators, filtered article rows can display an on-demand **Admin diagnostics** section. Opening it calls `POST /api/admin/classification-diagnostic` with the current admin token and article URL, runs a fresh ScraperGo `/api/classify` request without changing the ordinary feed-classification cache or eligibility rules, and displays the classification, structured failure category, upstream HTTP status when available, elapsed milliseconds and timeout. The server requires an authenticated admin role; regular tokens cannot use this API. Error responses do not include cookies, tokens, arbitrary upstream response bodies or raw transport error strings. This diagnostic deliberately does not reclassify or restore filtered headlines.
+
+Admin Settings also has **Exit Admin Mode**, which triggers the existing Server Sync disconnect path. It drops the token from browser memory and localStorage, hides admin controls and preserves local reader preferences. It does not revoke the token; reconnect through Server Sync to regain admin permissions.
+
+Test the Seahorse Magazine `Control from the cockpit` `unknown` classification with and without an admin token, verify error details are available only to admins, then exercise Exit Admin Mode, reconnect and inspect subscriptions/reading preferences. Full local Mac/Safari acceptance is required; no semantic-version promotion without owner approval.
+
 ## Last-opened reading selection (v0.2.58 development candidate)
 
 When a subscription or **All Subscriptions** is selected, NewsGo includes `lastReadingSelection` in its existing revisioned, token-authenticated per-user Server Sync profile. This is a user preference, **not** an administrator setting. The value is `all` or the exact subscribed feed URL; the server rejects unknown feed selections, and older profiles without the property retain the original on-demand welcome state. The browser also remembers its selection locally for disconnected usage, but connected devices restore from the server copy after successful synchronization. Conflict/revision checks and local-vs-server preference reconciliation remain in force. Invalid, removed, or excluded selections are not automatically fetched.
