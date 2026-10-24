@@ -574,6 +574,12 @@ el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
+el('admin-exit').addEventListener('click',()=>{
+ if(!syncConnected||!isAdmin)return;
+ // Reuse the existing Server Sync credential-clearing path.
+ el('sync-disconnect').click();
+ showView('news');
+});
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache'};
 let retainedLegacyImageSettings=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
