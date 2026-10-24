@@ -11,7 +11,7 @@ func TestExcludedSubscriptionRetainsActionToAllowPublisher(t *testing.T) {
 	for _, marker := range []string{
 		"function excludeButton(domain)",
 		"excludedURL(d)?'Allow this site':'Exclude this site'",
-		"const exclude=excludeButton(domain);if(exclude)actions.append(exclude);row.append(info,actions);root.append(row)",
+		"if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)",
 		"if(!domain||!excludedURL(domain))actions.append(button('Read Articles'",
 	} {
 		if !strings.Contains(personalJS, marker) {
