@@ -1,5 +1,12 @@
 # NewsGo — current development state
 
+## Issue #14 draft candidate (2026-10-24)
+
+- Branch `fix/14-search-exclusion-feedback` from `main` at `08ee9ef`; scoped to Issue #14, search candidate exclusion feedback.
+- The search candidate buttons already invoke `toggleDomain`, but a successful exclusion previously refreshed the exclusions and subscriptions panels without updating visible search cards. Added `refreshSearchExclusionCards()` to update all currently visible candidates, labels, exclusion badges, and card state.
+- Added a source-contract regression test. GitHub CI and Mac/Safari acceptance must be verified at final PR head; no runtime data, subscriptions or exclusions are intentionally changed by this patch.
+- This candidate is not merged; owner must review Safari behavior before approving promotion. The established semantic version remains unchanged.
+
 ## Current documentation-only branch (2026-10-24)
 
 - Working branch: `docs/branch-lifecycle-20261024` → `main`. Scope: document safe post-merge branch deletion, prevent accumulated stale heads, preserve owner-controlled releases.
