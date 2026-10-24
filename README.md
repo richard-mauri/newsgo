@@ -1,3 +1,7 @@
+## Local sequential build identification (development)
+
+`./devbuild.sh` increments a six-digit counter stored in private Git metadata (`git rev-parse --git-path newsgo-build-counter`) and embeds the same build number in both macOS binaries. Each successfully completed build advances the local counter once; it is not committed, synchronized to GitHub or coupled to the semantic application version. The CLI `-version`, startup log, launcher report, and dashboard header display `NewsGo v0.2.58 · Build NNNNNN`. First build on a Mac without a previous counter starts at `000001`. Do not reset or commit the counter; `go run` and unnumbered builds use the development placeholder `000000`.
+
 ## Admin classification diagnostics and Exit Admin Mode (development)
 
 For authenticated administrators, filtered article rows can display an on-demand **Admin diagnostics** section. Opening it calls `POST /api/admin/classification-diagnostic` with the current admin token and article URL, runs a fresh ScraperGo `/api/classify` request without changing the ordinary feed-classification cache or eligibility rules, and displays the classification, structured failure category, upstream HTTP status when available, elapsed milliseconds and timeout. The server requires an authenticated admin role; regular tokens cannot use this API. Error responses do not include cookies, tokens, arbitrary upstream response bodies or raw transport error strings. This diagnostic deliberately does not reclassify or restore filtered headlines.
