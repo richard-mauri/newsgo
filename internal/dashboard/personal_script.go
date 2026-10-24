@@ -57,7 +57,7 @@ function confirmDomainRemoval(domain,affected){
 function setUnifiedDomain(domain,allow){
  const nextPublishers=excludedDomains.filter(d=>publisherScope(d)!==domain);
  const nextArticles=articleDomains.filter(d=>publisherScope(d)!==domain);
- const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&publisherScope(r.url)===domain);
+ const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&(publisherScope(r.url)===domain||publisherScope(r.url).endsWith('.'+domain)));
  if(!allow&&!confirmDomainRemoval(domain,affected))return false;
  const nextRegistry=allow?registry:registry.filter(r=>!affected.includes(r));
  const prev=[localStorage.getItem(exclusionKey),localStorage.getItem(articleExclusionKey),localStorage.getItem(unifiedKey)];
