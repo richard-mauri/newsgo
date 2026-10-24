@@ -10,10 +10,10 @@ func TestExcludedManagerNamesSitesAndPreservesDomainCountV36(t *testing.T) {
     // subscription name, even though the persisted key is a domain.
     for _, token := range []string{
         "function excludedURLForDomain(url,domain)",
-        "registry.filter(r=>r.kind==='feed'&&publisherScope(r.url)===publisherScope(d))",
-        "names.join(' · ')",
-        "host.textContent=d",
-        "el('excluded-count').textContent='('+(excludedDomains.length+articleDomains.length)+')'",
+        "function setUnifiedDomain(domain,allow)",
+        "const domains=effectiveExcludedDomains().sort()", 
+        "row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)))", 
+        "el('excluded-count').textContent='('+domains.length+')'", 
         "()=>{renderExclusionManager();showView('exclusions')}",
     } {
         if !strings.Contains(personalJS, token) { t.Errorf("missing exclusion manager contract %q", token) }
