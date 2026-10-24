@@ -50,15 +50,30 @@ function effectiveExcludedDomains(){return [...new Set([...excludedDomains,...ar
 function domainIsExcluded(value){const scope=publisherScope(value);return !!scope&&effectiveExcludedDomains().some(d=>scope===d||scope.endsWith('.'+d))}
 function articleExcluded(value){return domainIsExcluded(value)||(articleDomains.includes('youtube.com')&&hostOf(value)==='youtu.be')}
 function confirmDomainRemoval(domain,affected){
- if(!affected.length)return true;
- const names=affected.map(x=>'• '+x.name).join('\n');
- return window.confirm('Excluding '+domain+' will remove '+affected.length+' subscription(s) from My Subscriptions:\n\n'+names+'\n\nContinue?');
+ if(!affected.length)return Promise.resolve(true);
+ return new Promise(resolve=>{
+  const previous=document.activeElement;
+  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
+  const dialog=document.createElement('section');dialog.className='sync-choice-dialog';dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','exclude-confirm-title');
+  const title=document.createElement('h3');title.id='exclude-confirm-title';title.textContent='Exclude '+domain+'?';
+  const explanation=document.createElement('p');explanation.textContent='This will remove '+affected.length+' subscription(s) from My Subscriptions and block article links from this domain and its subdomains:';
+  const list=document.createElement('ul');list.className='exclusion-confirm-list';
+  affected.forEach(r=>{const item=document.createElement('li');item.textContent=r.name;list.append(item)});
+  const note=document.createElement('p');note.textContent='Allowing the domain later will not restore removed subscriptions.';
+  const actions=document.createElement('div');actions.className='sync-choice-actions';
+  function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
+  function onKey(e){if(e.key==='Escape'){e.preventDefault();finish(false)}}
+  const cancel=button('Cancel',()=>finish(false));const confirm=button('Exclude domain and remove subscriptions',()=>finish(true));
+  confirm.className='exclusion-confirm-action';
+  actions.append(cancel,confirm);dialog.append(title,explanation,list,note,actions);shade.append(dialog);document.body.append(shade);
+  document.addEventListener('keydown',onKey);cancel.focus();
+ });
 }
-function setUnifiedDomain(domain,allow){
+async function setUnifiedDomain(domain,allow){
  const nextPublishers=excludedDomains.filter(d=>publisherScope(d)!==domain);
  const nextArticles=articleDomains.filter(d=>publisherScope(d)!==domain);
  const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&(publisherScope(r.url)===domain||publisherScope(r.url).endsWith('.'+domain)));
- if(!allow&&!confirmDomainRemoval(domain,affected))return false;
+ if(!allow&&!(await confirmDomainRemoval(domain,affected)))return false;
  const nextRegistry=allow?registry:registry.filter(r=>!affected.includes(r));
  const prev=[localStorage.getItem(exclusionKey),localStorage.getItem(articleExclusionKey),localStorage.getItem(unifiedKey)];
  try{
@@ -88,7 +103,7 @@ function excludeDomain(value){const domain=publisherScope(value);if(!domain){mes
 function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
 function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
-function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
+function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow domain':'Exclude This Domain',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
 function markSite(info,domain){if(!domain)return;const badge=document.createElement('small');badge.className='exclusion-label';badge.textContent=statusLabel(domain);info.append(badge)}
 // Compare against the specific excluded entry, not against every exclusion.
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
@@ -120,7 +135,7 @@ function refreshSearchExclusionCards(){
   if(!action)return;
   const domain=action.dataset.publisherDomain;
   const excluded=excludedURL(domain);
-  action.textContent=excluded?'Allow this site':'Exclude this site';
+  action.textContent=excluded?'Allow domain':'Exclude This Domain';
   card.dataset.excluded=excluded?'true':'false';
   let badge=card.querySelector('.exclusion-label');
   if(!badge){badge=document.createElement('small');badge.className='exclusion-label';card.querySelector('div')?.append(badge)}
