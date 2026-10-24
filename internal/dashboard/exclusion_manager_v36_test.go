@@ -10,7 +10,7 @@ func TestExcludedManagerNamesSitesAndPreservesDomainCountV36(t *testing.T) {
     // subscription name, even though the persisted key is a domain.
     for _, token := range []string{
         "function excludedURLForDomain(url,domain)",
-        "registry.filter(r=>r.kind==='feed'&&excludedURLForDomain(r.url,d))",
+        "registry.filter(r=>r.kind==='feed'&&publisherScope(r.url)===publisherScope(d))",
         "names.join(' · ')",
         "host.textContent=d",
         "el('excluded-count').textContent='('+(excludedDomains.length+articleDomains.length)+')'",
