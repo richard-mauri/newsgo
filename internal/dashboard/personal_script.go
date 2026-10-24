@@ -71,7 +71,7 @@ function renderExclusionManager(){
  excludedDomains.slice().sort().forEach(d=>{
   const row=document.createElement('div');row.className='personal-row';
   const info=document.createElement('div');
-  const matches=registry.filter(r=>r.kind==='feed'&&excludedURLForDomain(r.url,d));
+  const matches=registry.filter(r=>r.kind==='feed'&&publisherScope(r.url)===publisherScope(d));
   const names=[...new Set(matches.map(r=>r.name))];
   const title=document.createElement('strong');title.textContent=names.length?names.join(' · '):d;
   info.append(title);
