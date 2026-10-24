@@ -19,7 +19,7 @@
 - Seven obsolete root-level historical/evaluation Markdown files were deleted from `dev`; they remain recoverable through Git history.
 
 ## Outstanding work and acceptance
-- **UI styling defect still open:** the **Exit Admin Mode** button renders Safari's gray/default styling rather than matching the Save Server Settings and Reload buttons. Fix only styling; preserve the owner-accepted disconnect behavior.
+- **Exit Admin Mode styling correction implemented on dev:** the button now sits inside the existing admin form and inherits the same visual styling as Save Server Settings and Reload. This preserves its owner-accepted click handler and disconnect behavior. **Safari visual acceptance remains pending.**
 - Check whether the draft PR remains non-mergeable and inspect/resolve branch conflicts **without merging, force-pushing or rewriting history without owner authorization**.
 - After final changes, verify latest-head GitHub Actions, refresh the PR title/body to match work and evidence, and obtain any remaining Mac/Safari acceptance. Ensure current documentation and PR status agree.
 - Documentation consolidation into README / AGENTS / ARCHITECTURE / CURRENT_WORK is being performed in this task; note its final commit/CI result before handoff.
@@ -28,7 +28,7 @@
 ## Verified automation and live checks
 - At previous code head `adb3982`, GitHub Actions passed for the fragment/classification regression tests.
 - At documentation-cleanup head `51d81b2`, GitHub Actions passed ([run 40104223344](https://github.com/richard-mauri/newsgo/actions/runs/40104223344)).
-- The owner independently verified the classification/subscription fixes and Exit Admin Mode behavior in Safari. **The Exit Admin Mode styling correction has not yet been implemented or tested.** Passing CI does not establish visual acceptance.
+- The owner independently verified the classification/subscription fixes and Exit Admin Mode behavior in Safari. **The Exit Admin Mode styling correction is committed; Safari visual acceptance has not yet been performed.** Passing CI does not establish visual acceptance.
 
 ## Mac reproduction and next acceptance
 ```bash
@@ -41,6 +41,6 @@ go test -count=1 ./...
 ./newsgo.sh
 ```
 
-In Safari: confirm the current build label and 11 subscriptions; open Sailing Anarchy and verify “Control from the cockpit” is in headlines, not the filtered audit. Connect an admin token via Server Sync, inspect a filtered article if present, then use Exit Admin Mode and reconnect. Once button styling is fixed, compare its appearance with adjacent controls. **Do not reset/import preferences or overwrite user profiles merely to repair UI counts.**
+In Safari: confirm the current build label and 11 subscriptions; open Sailing Anarchy and verify “Control from the cockpit” is in headlines, not the filtered audit. Connect an admin token via Server Sync, inspect a filtered article if present, then use Exit Admin Mode and reconnect. Compare Exit Admin Mode appearance with Save Server Settings and Reload, and verify disconnect still works. **Do not reset/import preferences or overwrite user profiles merely to repair UI counts.**
 
 For rules see [AGENTS.md](AGENTS.md), for operation see [README.md](README.md), and for design see [ARCHITECTURE.md](ARCHITECTURE.md).
