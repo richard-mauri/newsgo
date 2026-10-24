@@ -284,6 +284,7 @@ func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []
 	return out
 }
 func newsClassify(ctx context.Context, reader, article string) string {
+ article = normalizeClassificationURL(article)
 	if !safeURL(article) {
 		return "unknown"
 	}
@@ -338,4 +339,14 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	newsClassificationCache.entries[key] = newsClassificationEntry{result.Classification, time.Now().Add(ttl)}
 	newsClassificationCache.Unlock()
 	return result.Classification
+}
+
+// HTTP fragments are browser-only and must not invalidate otherwise safe article URLs.
+// Keep the original feed URL for navigation; canonicalize only classification input.
+func normalizeClassificationURL(raw string) string {
+ u, err := url.Parse(raw)
+ if err != nil { return raw }
+ u.Fragment = ""
+ u.RawFragment = ""
+ return u.String()
 }
