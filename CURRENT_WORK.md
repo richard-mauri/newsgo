@@ -1,13 +1,22 @@
 # NewsGo — current development state
 
+## Current documentation-only branch (2026-10-24)
+
+- Working branch: `docs/branch-lifecycle-20261024` → `main`. Scope: document safe post-merge branch deletion, prevent accumulated stale heads, preserve owner-controlled releases.
+- Added `DEVELOPMENT.md`; updated `AGENTS.md` to delegate workflow details.
+- Existing historical branches are **not deleted**. ScraperGo currently has 66 remote branches, 63 matching heads of merged PRs; bulk cleanup requires a separately approved safety audit.
+- No runtime code or user state changes. Check final-head CI before handoff; owner approval required to merge this documentation PR.
+- Previous PR-cycle notes below are historical context and should be reconciled with live GitHub state, not treated as current open PRs.
+
+
 **As of 2026-10-24. Update this file when work or acceptance changes. This is not a release-history log.**
 
 ## Authority and candidate
 - Repository: `richard-mauri/newsgo`.
 - **Authoritative baseline for future work:** `main`. New work must use issue-specific branches from current `main`, with one draft PR per issue. Legacy `dev` remains only to reconcile existing PR #10; do not reuse it for new features.
-- **Open draft PR:** [#10 — Admin diagnostics, Exit Admin Mode and build identification](https://github.com/richard-mauri/newsgo/pull/10), `dev` → `main`. Related [issue #9](https://github.com/richard-mauri/newsgo/issues/9).
+- **Merged PR:** [#10 — NewsGo v0.2.58 fixes](https://github.com/richard-mauri/newsgo/pull/10), `dev` → `main` (merged 2026-10-24). Related [issue #9](https://github.com/richard-mauri/newsgo/issues/9).
 - Dashboard semantic version remains **v0.2.58**. Mac-local **Build NNNNNN** increments with `./devbuild.sh`; numbers vary by Mac and are not committed.
-- **Owner authorized and completed a controlled reconciliation of `main` into legacy `dev` at merge commit `25892f6`; PR #10 is now mergeable according to GitHub.** This does **not** authorize promoting PR #10 to `main`. Preserve its tested behavior and four-document structure, check CI and obtain explicit final owner merge approval.
+- **PR #10 has merged into `main`.** Its earlier integration conflicts were resolved in legacy `dev`; all future work starts from current `main`. Preserve its tested behavior and four-document structure, check CI and obtain explicit final owner merge approval.
 
 ## Implemented on dev and observed in Mac/Safari
 - Admin-only expandable classification diagnostics for filtered entries, backed by a server-authorized on-demand classification endpoint. Earlier diagnostic returned HTTP 400 for the Seahorse Magazine feed link ending `#new_tab`.
