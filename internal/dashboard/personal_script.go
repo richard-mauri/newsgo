@@ -364,7 +364,7 @@ function renderManager(){
   if(action)action.textContent=excludedURL(domain)?'Allow this site':'Exclude this site';
  });
  feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);const actions=document.createElement('div');actions.className='subscription-actions';if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseSource(f.url)));actions.append(button('Unsubscribe',()=>{if(!unsubscribeRecord(feedIdentity(f.url)))return;
- if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));const exclude=excludeButton(domain);if(exclude)actions.append(exclude);row.append(info,actions);root.append(row)});
+ if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)});
  syncFollowButtons();renderReading();
 }
 function showView(view){
