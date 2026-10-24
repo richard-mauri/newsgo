@@ -30,43 +30,93 @@ function exclusionDomain(value){
  const host=hostOf(value);
  return host&&/^[a-z0-9.-]+$/.test(host)&&host.includes('.')&&!host.startsWith('.')&&!host.endsWith('.')&&!host.includes('..')?host:'';
 }
+// NewsGo's publisher identity groups agency subdomains under a gov.au agency.
+ // Other domains retain their existing exact-host behavior; don't guess public suffixes.
+function publisherScope(value){
+ const d=exclusionDomain(value);
+ if(!d)return '';
+ const parts=d.split('.');
+ return d.endsWith('.gov.au')&&parts.length>3?parts.slice(-3).join('.'):d;
+}
+function publisherExcluded(value){
+ const scope=publisherScope(value);
+ return !!scope&&excludedDomains.some(d=>{
+  const saved=publisherScope(d);
+  return scope===saved||scope.endsWith('.'+saved);
+ });
+}
 function articleDomain(value){const d=exclusionDomain(value);return d==='youtu.be'?'youtube.com':d}
-function articleExcluded(value){const h=hostOf(value);return !!h&&articleDomains.some(d=>h===d||h.endsWith('.'+d)||(d==='youtube.com'&&h==='youtu.be'))}
+function effectiveExcludedDomains(){return [...new Set([...excludedDomains,...articleDomains].map(publisherScope).filter(Boolean))]}
+function domainIsExcluded(value){const scope=publisherScope(value);return !!scope&&effectiveExcludedDomains().some(d=>scope===d||scope.endsWith('.'+d))}
+function articleExcluded(value){return domainIsExcluded(value)||(articleDomains.includes('youtube.com')&&hostOf(value)==='youtu.be')}
+function confirmDomainRemoval(domain,affected){
+ if(!affected.length)return Promise.resolve(true);
+ return new Promise(resolve=>{
+  const previous=document.activeElement;
+  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
+  const dialog=document.createElement('section');dialog.className='sync-choice-dialog';dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','exclude-confirm-title');
+  const title=document.createElement('h3');title.id='exclude-confirm-title';title.textContent='Exclude '+domain+'?';
+  const explanation=document.createElement('p');explanation.textContent='This will remove '+affected.length+' subscription(s) from My Subscriptions and block article links from this domain and its subdomains:';
+  const list=document.createElement('ul');list.className='exclusion-confirm-list';
+  affected.forEach(r=>{const item=document.createElement('li');item.textContent=r.name;list.append(item)});
+  const note=document.createElement('p');note.textContent='Allowing the domain later will not restore removed subscriptions.';
+  const actions=document.createElement('div');actions.className='sync-choice-actions';
+  function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
+  function onKey(e){if(e.key==='Escape'){e.preventDefault();finish(false)}}
+  const cancel=button('Cancel',()=>finish(false));const confirm=button('Exclude domain and remove subscriptions',()=>finish(true));
+  confirm.className='exclusion-confirm-action';
+  actions.append(cancel,confirm);dialog.append(title,explanation,list,note,actions);shade.append(dialog);document.body.append(shade);
+  document.addEventListener('keydown',onKey);cancel.focus();
+ });
+}
+async function setUnifiedDomain(domain,allow){
+ const nextPublishers=excludedDomains.filter(d=>publisherScope(d)!==domain);
+ const nextArticles=articleDomains.filter(d=>publisherScope(d)!==domain);
+ const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&(publisherScope(r.url)===domain||publisherScope(r.url).endsWith('.'+domain)));
+ if(!allow&&!(await confirmDomainRemoval(domain,affected)))return false;
+ const nextRegistry=allow?registry:registry.filter(r=>!affected.includes(r));
+ const prev=[localStorage.getItem(exclusionKey),localStorage.getItem(articleExclusionKey),localStorage.getItem(unifiedKey)];
+ try{
+  localStorage.setItem(exclusionKey,JSON.stringify(allow?nextPublishers:[...nextPublishers,domain]));
+  localStorage.setItem(articleExclusionKey,JSON.stringify(allow?nextArticles:[...nextArticles,domain]));
+  localStorage.setItem(unifiedKey,JSON.stringify(nextRegistry));
+ }catch(e){
+  [exclusionKey,articleExclusionKey,unifiedKey].forEach((k,i)=>{try{if(prev[i]===null)localStorage.removeItem(k);else localStorage.setItem(k,prev[i])}catch(_){}});
+  message('Exclusion not saved; preferences left unchanged: '+e.message);return false;
+ }
+ excludedDomains=allow?nextPublishers:[...nextPublishers,domain];articleDomains=allow?nextArticles:[...nextArticles,domain];
+ registry=nextRegistry;syncDerived();
+ refreshExclusionViews();renderPersonalArticles();scheduleServerSave();refresh();
+ message(allow?'Allowed '+domain:'Excluded '+domain+(affected.length?' and removed '+affected.length+' subscription(s)':''));
+ return true;
+}
 function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
 function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleServerSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
-function toggleArticleDomain(value){const d=articleDomain(value);if(!d){message('Enter a valid article domain.');return}saveArticleExclusions(articleDomains.includes(d)?articleDomains.filter(x=>x!==d):[...articleDomains,d])}
-function excludedURL(value){const h=hostOf(value);return !!h&&excludedDomains.some(d=>h===d||h.endsWith('.'+d))}
+function toggleArticleDomain(value){toggleDomain(value)}
+function excludedURL(value){return domainIsExcluded(value)}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
 function saveExclusions(list){
  try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleServerSave();return true}
  catch(e){message('Could not save exclusions: '+e.message);return false}
 }
-function excludeDomain(value){const domain=exclusionDomain(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedDomains.includes(domain))saveExclusions([...excludedDomains,domain]);else message(domain+' is already excluded.')}
-function toggleDomain(value){const domain=exclusionDomain(value);if(!domain){message('Could not identify a website domain.');return}if(excludedDomains.includes(domain))saveExclusions(excludedDomains.filter(x=>x!==domain));else excludeDomain(domain)}
-function publisherForFeed(feed){return exclusionDomain(feed.website||feed.url||'')}
+function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedURL(domain))setUnifiedDomain(domain,false);else message(domain+' is already excluded.')}
+function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
+function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
-function excludeButton(domain){const d=exclusionDomain(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
+function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow domain':'Exclude This Domain',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
 function markSite(info,domain){if(!domain)return;const badge=document.createElement('small');badge.className='exclusion-label';badge.textContent=statusLabel(domain);info.append(badge)}
 // Compare against the specific excluded entry, not against every exclusion.
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
 function renderExclusionManager(){
  const root=el('excluded-list');root.replaceChildren();
- el('excluded-count').textContent='('+(excludedDomains.length+articleDomains.length)+')';
- if(!excludedDomains.length){const p=document.createElement('p');p.textContent='No publishers excluded.';root.append(p)}
- excludedDomains.slice().sort().forEach(d=>{
+ const domains=effectiveExcludedDomains().sort();
+ el('excluded-count').textContent='('+domains.length+')';
+ if(!domains.length){const p=document.createElement('p');p.textContent='No domains excluded.';root.append(p)}
+ domains.forEach(d=>{
   const row=document.createElement('div');row.className='personal-row';
-  const info=document.createElement('div');
-  const matches=registry.filter(r=>r.kind==='feed'&&excludedURLForDomain(r.url,d));
-  const names=[...new Set(matches.map(r=>r.name))];
-  const title=document.createElement('strong');title.textContent=names.length?names.join(' · '):d;
-  info.append(title);
-  if(names.length){const host=document.createElement('small');host.textContent=d;info.append(host)}
-  row.append(info,button('Allow site',()=>toggleDomain(d)));root.append(row);
+  const info=document.createElement('strong');info.textContent=d;
+  row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)));root.append(row);
  });
- const heading=document.createElement('h3');heading.textContent='Excluded Article Domains';root.append(heading);
- const desc=document.createElement('p');desc.textContent='Hide links to these domains from every subscribed feed. Subscriptions remain intact.';root.append(desc);
- if(!articleDomains.length){const none=document.createElement('p');none.textContent='No article domains excluded.';root.append(none)}
- articleDomains.slice().sort().forEach(d=>{const row=document.createElement('div');row.className='personal-row';const label=document.createElement('strong');label.textContent=d;row.append(label,button('Allow articles',()=>toggleArticleDomain(d)));root.append(row)})
 }
 function selectedPublisherExcluded(){
  const value=el('read-source').value;
@@ -77,7 +127,21 @@ function refreshExclusionViews(){
  // If the user just excluded the publication they are reading, show the
  // remaining subscriptions rather than an empty publisher page.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}
- renderExclusionManager();renderManager();
+ renderExclusionManager();renderManager();refreshSearchExclusionCards();
+}
+function refreshSearchExclusionCards(){
+ document.querySelectorAll('#catalog-list .catalog-card').forEach(card=>{
+  const action=card.querySelector('button.exclude-site');
+  if(!action)return;
+  const domain=action.dataset.publisherDomain;
+  const excluded=excludedURL(domain);
+  action.textContent=excluded?'Allow domain':'Exclude This Domain';
+  card.dataset.excluded=excluded?'true':'false';
+  let badge=card.querySelector('.exclusion-label');
+  if(!badge){badge=document.createElement('small');badge.className='exclusion-label';card.querySelector('div')?.append(badge)}
+  if(badge)badge.textContent=statusLabel(domain);
+ });
+ syncFollowButtons();
 }
 readExclusions();readArticleExclusions();
 let registry=[], storageError='';
@@ -204,9 +268,10 @@ async function searchCatalog(){
    name.textContent=f.name;detail.textContent=f.website||new URL(f.url).hostname;
    info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);
    const followed=feeds.some(x=>x.url===f.url);
-   const b=button(followed?'Subscribed':'Subscribe',()=>add({name:f.name,category:'Other',url:f.url},b));b.dataset.feedUrl=f.url;b.disabled=followed;
+   const b=button(followed?'Subscribed':'Subscribe',()=>add({name:f.name,category:'Other',url:f.url},b));b.dataset.feedUrl=f.url;b.dataset.publisherDomain=domain;b.disabled=followed||excludedURL(domain);
    const exclude=excludeButton(domain);row.append(info,b);if(exclude)row.append(exclude);root.append(row);
   });
+  syncFollowButtons();
   status.textContent=data.feeds.length+' candidate sources. Each feed is validated when you select Subscribe.';
  }catch(err){if(seq===searchSeq)status.textContent='Search failed: '+err.message+' Previous results remain visible; try again shortly.'}
  finally{searchInFlight=false;el('catalog-submit').disabled=false}
@@ -218,7 +283,7 @@ function queryEdited(){
 }
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
-function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following})}
+function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
 function chooseAllSubscriptions(){
  activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
@@ -296,7 +361,7 @@ function renderPersonalArticles(){
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
  const sources=new Set(feeds.filter(f=>activeReadingSelection!==null&&(!selectedSource||f.url===selectedSource)).map(f=>f.name));
- const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!excludedURL(a.url)&&!articleExcluded(a.url));
+ const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!articleExcluded(a.url));
  const seen=new Set();articles.sort((a,b)=>new Date(b.published)-new Date(a.published));
  let count=0;
  articles.forEach(a=>{
@@ -349,7 +414,7 @@ function renderManager(){
   if(action)action.textContent=excludedURL(domain)?'Allow this site':'Exclude this site';
  });
  feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);const actions=document.createElement('div');actions.className='subscription-actions';if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseSource(f.url)));actions.append(button('Unsubscribe',()=>{if(!unsubscribeRecord(feedIdentity(f.url)))return;
- if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));const exclude=excludeButton(domain);if(exclude)actions.append(exclude);row.append(info,actions);root.append(row)});
+ if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)});
  syncFollowButtons();renderReading();
 }
 function showView(view){
@@ -401,10 +466,10 @@ async function refresh(){
  }
 }
 
-function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
+function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);const domain=publisherForFeed(f);markSite(info,domain);row.append(info,button('Subscribe',()=>add(f)));const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');

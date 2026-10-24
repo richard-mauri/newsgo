@@ -35,3 +35,14 @@ func TestReaderURLValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestExclusionDialogBackdropCSS(t *testing.T) {
+ body := page.Tree.Root.String()
+ if strings.Contains(body, `\\n.sync-choice-backdrop`) {
+  t.Fatal("literal escaped newline breaks backdrop CSS selector")
+ }
+ if !strings.Contains(body, ".sync-choice-backdrop{position:fixed;inset:0;z-index:9999;") ||
+  !strings.Contains(body, "align-items:center;justify-content:center;padding:16px") {
+  t.Fatal("missing centered confirmation overlay CSS")
+ }
+}

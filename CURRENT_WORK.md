@@ -1,5 +1,20 @@
 # NewsGo — current development state
 
+## Unified exclusions candidate (Issues #14 and #16, 2026-10-24)
+
+- Owner explicitly authorized widening draft PR #15 to resolve unified exclusions, rather than opening a second PR.
+- Combined Excluded Sites and Excluded Article Domains into a single visible Excluded Domains manager. Both legacy storage fields and sync data remain readable; opening an old profile does not delete subscriptions.
+- A new exclusion checks affected feed subscriptions and asks for explicit confirmation naming them; on confirmation, it stores the exclusion and removes the affected subscriptions. Cancel preserves both. Allowing does not restore deleted subscriptions.
+- Article destinations and feed publishers both observe the effective exclusions. Migration behavior requires owner Mac/Safari acceptance, including local preferences, imports, server synchronization, and domain submatch cases.
+- PR #15 remains draft; CI exact head and Safari acceptance pending. Do not merge or release without owner approval.
+
+## Issue #14 draft candidate (2026-10-24)
+
+- Branch `fix/14-search-exclusion-feedback` from `main` at `08ee9ef`; scoped to Issue #14, search candidate exclusion feedback.
+- The search candidate buttons already invoke `toggleDomain`, but a successful exclusion previously refreshed the exclusions and subscriptions panels without updating visible search cards. Added `refreshSearchExclusionCards()` to update all currently visible candidates, labels, exclusion badges, and card state. Following owner Safari feedback, excluded candidates also disable Subscribe until allowed again, with guards against in-flight subscription validation. For My Subscriptions, excluded entries now show their Excluded status without a redundant exclusion button; re-allowing remains available in Excluded Sites. Owner screenshots revealed a second mismatch: `reg.bom.gov.au` is excluded while a subscribed feed displays `www.bom.gov.au`. The current candidate now groups sibling `*.bom.gov.au` hosts by their `bom.gov.au` agency domain, without broadly collapsing unrelated public suffixes; existing stored exclusion values are preserved and reversible.
+- Added a source-contract regression test. GitHub CI and Mac/Safari acceptance must be verified at final PR head; no runtime data, subscriptions or exclusions are intentionally changed by this patch.
+- This candidate is not merged; owner must review Safari behavior before approving promotion. The established semantic version remains unchanged.
+
 ## Current documentation-only branch (2026-10-24)
 
 - Working branch: `docs/branch-lifecycle-20261024` → `main`. Scope: document safe post-merge branch deletion, prevent accumulated stale heads, preserve owner-controlled releases.
