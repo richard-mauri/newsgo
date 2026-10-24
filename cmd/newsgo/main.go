@@ -23,7 +23,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the executable version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("NewsGo v%s\n", dashboard.Version())
+		fmt.Printf("NewsGo v%s · %s\n", dashboard.Version(), dashboard.BuildLabel())
 		return
 	}
 	b, e := os.ReadFile(*feedPath)
@@ -62,7 +62,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(shutdown)
 	}()
-	log.Printf("NewsGo v%s: http://%s", dashboard.Version(), *addr)
+	log.Printf("NewsGo v%s · %s: http://%s", dashboard.Version(), dashboard.BuildLabel(), *addr)
 	if e = srv.ListenAndServe(); e != nil && e != http.ErrServerClosed {
 		log.Fatal(e)
 	}
