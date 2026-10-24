@@ -1,156 +1,40 @@
-## Local sequential build identification (development)
+# NewsGo — subscription-based news reader
 
-`./devbuild.sh` increments a six-digit counter stored in private Git metadata (`git rev-parse --git-path newsgo-build-counter`) and embeds the same build number in both macOS binaries. Each successfully completed build advances the local counter once; it is not committed, synchronized to GitHub or coupled to the semantic application version. The CLI `-version`, startup log, launcher report, and dashboard header display `NewsGo v0.2.58 · Build NNNNNN`. First build on a Mac without a previous counter starts at `000001`. Do not reset or commit the counter; `go run` and unnumbered builds use the development placeholder `000000`.
+NewsGo is a Go web service with a Safari-friendly dashboard for following RSS/Atom/JSON news feeds. It shows selected subscriptions and links articles to ScraperGo for clean reading. NewsGo does not replace ScraperGo's article extraction.
 
-## Admin classification diagnostics and Exit Admin Mode (development)
+## Using the dashboard
+Open `http://127.0.0.1:8084/` on the Mac running NewsGo, or use the separately configured NewsGo public hostname. Use **Find Subscriptions** to discover or add feeds, **My Subscriptions** to select a source or all sources, **Reading Preferences** to choose maximum article age, and **Excluded Sites** to manage publisher and article-destination exclusions. A selection starts fetching headlines; initial landing does not fetch every subscription automatically.
 
-For authenticated administrators, filtered article rows can display an on-demand **Admin diagnostics** section. Opening it calls `POST /api/admin/classification-diagnostic` with the current admin token and article URL, runs a fresh ScraperGo `/api/classify` request without changing the ordinary feed-classification cache or eligibility rules, and displays the classification, structured failure category, upstream HTTP status when available, elapsed milliseconds and timeout. The server requires an authenticated admin role; regular tokens cannot use this API. Error responses do not include cookies, tokens, arbitrary upstream response bodies or raw transport error strings. This diagnostic deliberately does not reclassify or restore filtered headlines.
+NewsGo shows only articles classified `article` by ScraperGo. The collapsed **Filtered / unprocessed articles** section lists rejected or out-of-range entries and entries beyond the per-feed processing cap. Selecting an article opens the ScraperGo reader; original links open the publisher.
 
-Admin Settings also has **Exit Admin Mode**, which triggers the existing Server Sync disconnect path. It drops the token from browser memory and localStorage, hides admin controls and preserves local reader preferences. It does not revoke the token; reconnect through Server Sync to regain admin permissions.
+Subscriptions and preferences are stored in the browser. **Server Sync** optionally uses an approved token to synchronize a profile between devices. On a difference, choose whether to use server preferences or merge carefully; don't overwrite a desired profile. An authenticated administrator can manage server-wide article settings, inspect fresh per-article diagnostics under filtered entries, and **Exit Admin Mode** to disconnect the current browser. Disconnecting preserves locally held reading preferences and does not revoke the token. Reconnect through Server Sync to regain access.
 
-Test the Seahorse Magazine `Control from the cockpit` `unknown` classification with and without an admin token, verify error details are available only to admins, then exercise Exit Admin Mode, reconnect and inspect subscriptions/reading preferences. Full local Mac/Safari acceptance is required; no semantic-version promotion without owner approval.
+## Build and run on the owner's Intel Mac
 
-## Last-opened reading selection (v0.2.58 development candidate)
+From the project folder:
 
-When a subscription or **All Subscriptions** is selected, NewsGo includes `lastReadingSelection` in its existing revisioned, token-authenticated per-user Server Sync profile. This is a user preference, **not** an administrator setting. The value is `all` or the exact subscribed feed URL; the server rejects unknown feed selections, and older profiles without the property retain the original on-demand welcome state. The browser also remembers its selection locally for disconnected usage, but connected devices restore from the server copy after successful synchronization. Conflict/revision checks and local-vs-server preference reconciliation remain in force. Invalid, removed, or excluded selections are not automatically fetched.
-
-Mac acceptance: `git checkout dev && git pull --ff-only origin dev && go test -count=1 ./... && ./devbuild.sh && ./newsgo.sh`. Verify the dashboard identifies itself as **v0.2.58**, choose a feed, allow Server Sync to report saved, close and reopen Safari, then verify the feed restores. Repeat for **All Subscriptions**, a second device using the same approved token, an older profile with no selection, and a disconnected browser. This candidate must not be merged or released without owner approval.
-
-## Administrator interface cleanup (v0.2.57 candidate)
-
-Admin Settings now shows only active article processing controls. Inactive legacy thumbnail enrichment fields are hidden. Existing legacy values remain preserved in server-settings.json and carried through authenticated Admin saves for backwards compatibility; image retrieval continues to be handled by ScraperGo. No server settings migration or deletion occurs.
-
-## Raw publication date fallback (release candidate)
-
-When an RSS, Atom, JSON Feed, or RDF item provides a nonempty publication-date string that NewsGo cannot parse, the article card displays that original text with “Unrecognized date format” and a tooltip explaining that article age cannot be determined. Missing dates still show “Date unavailable”. Unrecognized dates remain visible rather than receiving a fabricated age. The parser continues to use parsed dates for cutoff and sorting; the raw text is preserved independently. Regression tests cover missing, unrecognized, and Investing.com dates.
-
-**Development correction:** Fixed missing date check in the classification pipeline: articles older than the selected maximum age are now marked `too-old` before invoking ScraperGo. Added `article_age_pipeline_test.go` to prevent recurrence. Pending CI/Mac verification.
-
-## User reading preference: Maximum Article Age (development)
-
-The Reading Preferences panel offers All (default), 1, 3, 7, 14, 30, or 60 days. Selected age is stored per browser and synchronized with the authenticated user's existing Server Sync profile. Older dated feed items are excluded before expensive ScraperGo classification and appear in the Filtered / unprocessed articles card with reason `too-old`. Undated entries are retained. Existing subscriptions, exclusions, and Admin Settings are unchanged. CI and live Safari acceptance are required before merging to main.
-
-
-## NewsGo v0.2.57 development — missing article feed trace
-
-Adds a read-only, localhost-only `POST /api/diagnostic/feed-trace` endpoint for a supplied article URL and up to eight explicitly supplied feed definitions. It uses the existing SSRF-protected `personalFetch`, current per-feed processing cap and age predicate, and ScraperGo classification only when a matching article reaches the eligible stage. Results distinguish `not-in-parsed-feed`, `feed-fetch-error`, `outside-processing-cap`, `age-filtered`, `classified-article`, and `classification-filtered`. Tracking query parameters on the target article URL do not prevent a match. It does not inspect or disclose the user's locally stored browser subscriptions automatically and does not modify subscriptions, filters, caches or settings. Because successful feeds may be cached for the configured TTL, a trace can reflect the current server cache rather than a forced fresh network fetch. For a relevant diagnosis, supply the exact NPR feed URL configured in NewsGo. Keep this endpoint off public proxies (localhost peer check). ScraperGo and production main are unchanged.
-
-**Development correction:** Fixed missing date check in the classification pipeline: articles older than the selected maximum age are now marked `too-old` before invoking ScraperGo. Added `article_age_pipeline_test.go` to prevent recurrence. Pending CI/Mac verification.
-
-## User reading preference: Maximum Article Age (development)
-
-The Reading Preferences panel offers All (default), 1, 3, 7, 14, 30, or 60 days. Selected age is stored per browser and synchronized with the authenticated user's existing Server Sync profile. Older dated feed items are excluded before expensive ScraperGo classification and appear in the Filtered / unprocessed articles card with reason `too-old`. Undated entries are retained. Existing subscriptions, exclusions, and Admin Settings are unchanged. CI and live Safari acceptance are required before merging to main.
-
-## NewsGo v0.2.53 development: filtered article audit and operational controls
-
-The briefing now offers a collapsible **Filtered / unprocessed articles** card. It reports headlines rejected by ScraperGo classification with their classification codes, items hidden by saved exclusion domains, and a separate count of feed entries not classified because they exceed the configured per-feed cap. It does not claim to diagnose entries absent from the RSS feed. Admin Settings now exposes four **active** persisted controls: maximum articles per feed (default 60, range 1–250), classification timeout (7 seconds, 2–30), parallel classifications (8, 1–16), and successful-feed cache TTL (10 minutes, 1–60). Older saved settings migrate transparently. Historic image enrichment settings are clearly labeled inactive because thumbnail delivery is now managed by ScraperGo. The API limit of eight feeds per request and the 4 MiB feed payload safety cap remain fixed. Changes have passed GitHub Go tests/build, but browser acceptance is pending; no production promotion intended.
-
-# NewsGo v0.2.52 — strict classification gate (development)
-
-Requires ScraperGo v0.2.65. Shows headlines and eager thumbnails only when `/api/classify` confirms `article`. Suppresses homepage, unreadable, unavailable, and unknown during the current reading session. Transient failures can be retried on subsequent selections; nothing is unsubscribed. Preserves v0.2.51 eager thumbnail loading and on-demand welcome/startup behavior. Does not repair backend image-fetch failures. Test full local suite and browser before commit.
-
-# NewsGo v0.2.51 — eager thumbnail loading (development candidate)
-
-Changes Safari card thumbnail HTML from lazy to eager loading, so all rendered images request immediately rather than appearing only when scrolled into view. Preserves ScraperGo URLs, the no-auto-fetch welcome screen, single-feed selection and v0.2.50 classification filtering. This will cause more simultaneous image requests and does not guarantee availability where ScraperGo returns an error or cannot select an image. Install direct-unzip, test/build/restart on Mac, and verify in Safari before commit.
-
-# 0.2.50 development candidate — 2026-10-21
-
-Startup waits for explicit subscription or All selection. Only selected feeds fetched; suppress confirmed homepage/unreadable classifications.
-
-Install ScraperGo before NewsGo. Run full Mac tests/build and browser acceptance prior to commit. Preserve launcher/tunnel and local runtime state.
-
-
-## Development candidate v0.2.49 — 2026-10-21
-
-NewsGo POST /api/personal now classifies up to 60 feed entries per source using ScraperGo /api/classify before response. Confirmed homepage entries are suppressed. Unknown entries are retained. Eight concurrent classification requests and a 7-second per-request timeout; classification caching 30 minutes. This adds latency on cold feeds and awaits live load testing.
-
-## v0.2.48 — ScraperGo thumbnail integration (development candidate)
-
-NewsGo delegates article-thumbnail discovery, downloading, resizing and caching to ScraperGo `/api/thumbnail`. The NewsGo `/api/personal` response now supplies a ScraperGo thumbnail URL for each valid article URL instead of inspecting publisher HTML or returning publisher image URLs. Dashboard thumbnails use lazy loading, with the existing image-error fallback. Feed fetching, subscriptions, exclusions, and server sync are unchanged. ScraperGo must have a reachable HTTPS `/api/thumbnail` route through its existing tunnel. Server image-retrieval tuning fields from v0.2.47 are retained for backward-compatible server-settings JSON, but no longer govern NewsGo thumbnail lookups; future settings cleanup should be handled separately.
-
-**Development verification:** run `go test ./...`, `./devbuild.sh`, and live Safari tests on the user's Go 1.27.1 Mac before commit or deployment. Test CNBC, Seahorse, no-image stories, and publisher exclusions. Image requests are now browser-to-ScraperGo; NewsGo does not fetch thumbnail bytes. ScraperGo cache and rate limits require attention for high headline volumes.
-
-# CURRENT CANDIDATE — NewsGo v0.2.47 admin server settings (2026-10-21)
-
-Based on authoritative user-provided source matching GitHub commit `598ec5b`. This direct-unzip candidate adds local CLI `-set-role admin` / `-set-role user` to designate an existing hashed token without rotating it, admin-guarded `/api/admin/settings` GET/PUT, separately revisioned atomic `data/server-settings.json`, and a browser Admin Settings panel revealed to the connected admin token. Image metadata timeout, maximum HTML response, concurrent lookups, enrichment deadline, and missing-image cache TTL now use bounded live server settings. No changes to user preferences or secrets. The default values remain 2500 ms, 512 KiB, 12, 25 seconds, 90 seconds. Tests passed in an isolated Go 1.23.2 compatibility run (temporary go.mod only, original go.mod retained); the required Go 1.27.1 project tests, ./devbuild.sh and live Safari acceptance remain unverified. No Git commit, push, restart or release authorized. ScraperGo and NewsValidate will be handled separately after the CNBC investigation. The existing historical handoff below is retained for context; old "next step" statements are superseded by this paragraph.
-
-## NewsGo administrator settings candidate — October 21, 2026
-
-Based on the user's clean commit `598ec5b` and source archive. Server tokens support optional `role: "admin"`, assigned locally with `go run ./cmd/newsgo-token -dir data -user richard -set-role admin` (use the existing user ID; no token rotation). `GET/PUT /api/admin/settings` require the token's admin role, use revision checks, JSON atomic writes, input bounds, and server-wide image lookup parameters. The Admin Settings browser panel is available only after admin Server Sync connection; authorization is enforced server-side. Existing subscriptions, exclusions, tokens, data files and tunnels are not replaced. Candidate requires full local tests and browser acceptance prior to commit or deployment. ScraperGo and NewsValidate remain separate projects in the planned shared extraction architecture.
-
----
-
-## v0.2.46 — Executable version reporting (development patch, October 21, 2026)
-
-The NewsGo executable now supports `-version` and prints `NewsGo v0.2.46` without loading feeds or starting a server. The launcher `newsgo.sh` reports the exact `dist/newsgo-darwin-amd64` path and checks its executable version **before** terminating any running NewsGo process. The startup log uses the dashboard's current version instead of its previous stale v0.2.34 message. This is a narrowly scoped v0.2.46 follow-up and does not alter subscriptions, sync, exclusions, or article rendering. Local full-project Go tests, Intel builds, and runtime behavior remain to be verified on the user's Mac. Use the established `./devbuild.sh` build command; its output goes to `dist/`.
-
-## v0.2.44 — Missing-thumbnail retry and lookup budget
-
-The Seahorse Magazine Finn article had no thumbnail even after the v0.2.44 body-image fallback. Preserve feed/metadata/body extraction; allow 12 parallel metadata lookups within a 25-second shared deadline so late article lookups are less likely to be abandoned. Cache successful feeds containing image-less articles for 90 seconds rather than ten minutes to recover from transient metadata failures. Regression covers the Finn lead-image HTML and retry TTL. Live publisher image retrieval remains a browser acceptance test; no ScraperGo changes or data migration.
-
-## v0.2.44 — Article image fallback
-
-NewsGo now inspects article-body image tags when the feed and social metadata have no thumbnail. This addresses the Seahorse Magazine image in Sailing Anarchy’s “Control from the cockpit” link. Existing image metadata, safe network fetching, subscriptions, and exclusions are unchanged.
-
-## v0.2.42 — exclude article destination domains
-
-**Excluded Sites** now manages two independent lists: excluded publisher domains (the existing behavior) and excluded article domains. Add `youtube.com` to **Excluded Article Domains** to hide linked YouTube stories from any subscribed RSS feed, including KCRA, without removing the subscription or hiding non-YouTube articles. `youtu.be` short links are treated as YouTube. Use **Allow articles** to undo the exclusion. The button count includes entries from both exclusion lists. Both exclusion lists are retained in local browser storage, preference export/import, and token-authenticated server-side JSON synchronization. Existing JSON user profiles require no migration; omitted `excludedArticleDomains` means no article exclusions. Automatic saves, revision/conflict checks, and safe reconnect/merge now include article domains.
-
-**v0.2.42:** Corrected the visible Server Sync token-entry placeholder to “Enter the 64-character approved token distributed by Richard.” No change to token handling, sync, subscriptions, or exclusions.
-
-**v0.2.42:** Presentation-only changes: header tagline is “NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO” and invalid/absent sync token guidance reads “Enter the 64-character approved token distributed by Richard.” No change to synchronization, subscription data, exclusions, or ScraperGo.
-
-**v0.2.38:** Removes the redundant upper-right “Updated subscribed feeds” status. The detailed line showing updated feed counts and visible headlines remains the single source of refresh progress. No changes to subscriptions, exclusions, or server sync.
-
-**v0.2.37:** Removes the redundant standalone ← All Subscriptions button from the selected-feed reading view. Use **My Subscriptions → Read All Articles** to return to the combined feed. Existing feed selection and exclusion fallback still use `chooseAllSubscriptions()` internally. No changes to browser/server persistence, sync, or ScraperGo.
-
-**v0.2.36:** Excluded Sites now shows the saved publisher name(s) (for example, Hacker News) alongside the underlying excluded domain (`news.ycombinator.com`), and refreshes the panel when opened. Domain keys, counts, preferences, and sync APIs are unchanged.
-
-# NewsGo — Subscription-Based News Reader
-
-NewsGo brings together headlines from news sources **you choose to subscribe to**. The dashboard presents one unified briefing: there is no separate built-in news stream, and no unsolicited headlines from the source catalog.
-
-To begin, open **Find Subscriptions**, browse the available sources or discover a publication's RSS feed, and choose **Subscribe**. Your selections appear in **My Subscriptions** and all their non-excluded headlines appear together in **Today's briefing**. With no subscriptions, the briefing stays empty until you choose sources.
-
-**Excluded Sites** lets you hide publishers by domain without deleting subscriptions. An excluded subscription can be restored with **Allow this site**. Preferences are kept in browser storage and may be exported and imported with the dashboard controls. They are synchronized across devices only when optional Server Sync is connected.
-
-Headlines open in [ScraperGo](https://scrapergo.themauris.org/), a separate article reader. NewsGo does not alter ScraperGo's extraction behavior.
-
-The service is written in Go, uses an RSS/Atom/JSON feed catalog (`feeds.json`) for discoverability, and presents article headlines from the feeds you have subscribed to. Provider access and publication frequencies vary. NewsGo is an aggregator, not a subscription/paywall bypass.
-
-**Development baseline:** v0.2.46 (October 21, 2026), committed on GitHub in `59322fa`, with handoff update `9766238`. Live executable version and manual-search acceptance were not established by the handoff. This patch adds version introspection; it has not yet been installed, built, or browser-tested on the Mac.
-
-**Developers and future AI agents:** See [`AGENTS.md`](AGENTS.md) for the authoritative current engineering handoff, development procedure, version synchronization rules, and Git safeguards.
-
-### v0.2.33 discovery and cleanup recap
-
-Removed the obsolete server-side catalog headline fetching and image enrichment path. Improved Feedly publisher-name lookup with a prefix fallback when no results are returned, clearer external-feed HTTP error messages, and discovery result card layout. The feed catalog remains a source of discoverable subscriptions, not an automatic headline stream.
-
-## Optional server synchronization (v0.2.34)
-
-The NewsGo server can persist **both subscriptions and excluded sites** per approved user token.
-The same token works across MacBook Safari, Docked Safari, and iPhone Safari.
-Token entry is optional; browser-only operation remains available.
-
-The server defaults to `-sync-dir data` relative to its working directory. Do not commit this directory; it holds user preferences and token digests. Back it up securely.
-
-Issue the first token on the MacBook running NewsGo:
-
-```sh
-go run ./cmd/newsgo-token -dir data -user richard -label 'Primary user'
+```bash
+cd ~/projects/newsgo
+go test -count=1 ./...
+./devbuild.sh
+./newsgo.sh
 ```
 
-Copy the printed secret token into **Server Sync** on each trusted browser once. The first connection automatically uploads both local lists if no server profile exists; existing server profiles load on Connect. Both subscriptions and excluded sites save automatically after edits. Other devices check for updates every 30 seconds while visible and when returning to the tab. **Advanced** contains optional Load from Server, Save Now and Disconnect controls. Stale revisions cannot overwrite newer server data; after a conflict use Advanced > Load from Server (with confirmation when unsaved local changes exist).
+`devbuild.sh` builds `dist/newsgo-darwin-amd64` and `dist/newsgo-darwin-arm64`; `newsgo.sh` launches the Intel binary on `127.0.0.1:8084` with NewsGo's dedicated Cloudflare tunnel. The launcher expects its established local `.cloudflared/token` and cloudflared executable; do not store tokens in Git. The ScraperGo reader defaults to `https://scrapergo.themauris.org` (override with `-scrapergo` when intentionally developing).
 
-Revoke a user token: `go run ./cmd/newsgo-token -dir data -user richard -revoke`. Reissue after revocation if necessary. Tokens are stored as SHA-256 digests; each token should be treated as a secret. The browser remembers the token in localStorage for automatic reconnection. Only enter tokens on trusted devices: browser storage is accessible to scripts running on this origin. Disconnect erases the locally remembered token, not the server account. The server must be reachable over HTTPS through your existing Cloudflare Tunnel. No additional hosted database is required.
+```bash
+./dist/newsgo-darwin-amd64 -version
+```
 
-### v0.2.42: safe reconnection
+The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NNNNNN` on the present development candidate. The six-digit build counter is local to the Mac's Git metadata and increments once after successful `./devbuild.sh` completion; it is not a semantic release version or a Git-tracked file. Builds without injected metadata show `000000`.
 
-When a valid token already has preferences on the server and the local browser lists differ, NewsGo offers **Use Server Preferences**, **Merge Preferences**, and **Cancel**. The decision applies to both subscriptions and excluded sites. Merge uses subscription IDs and unique excluded domains, and saves against the server revision; stale writes still receive HTTP 409. A new server profile is initialized from browser preferences as before. This applies to remembered-token reconnects as well as manual Connect.
+`./devbuild.sh --release vX.Y.Z` has additional release safeguards and is **not** part of ordinary development; only run it after explicit owner approval on the release branch.
 
-## v0.2.45 — Subscription search feedback
+## Configuration and care
+- `feeds.json` supplies the discovery catalog, not the user's saved subscriptions.
+- `data/` holds local tokens and synchronized profiles; treat as private persistent state.
+- `newsgo.log`, `dist/` binaries, and `.cloudflared/token` are machine-local runtime artifacts. Never publish secrets or overwrite data during updates.
+- Feed and article availability, thumbnails, and publisher blocking can vary. Live Safari checks are required even when Go CI passes.
 
-Subscription search preserves old results during new searches and shows pending/waiting/retry messages. Browser pacing reflects the existing three-second per-IP uncached-search limit, with bounded automatic retries for HTTP 429. Obsolete responses cannot replace results for a newer query. No changes to the feed-search API, subscriptions, or exclusions.
-
-### v0.2.46 corrected release gate
-Version-sensitive tests must derive expectations from the displayed application version rather than encode a release number. Tests for changed behaviors must be updated with the implementation, not suppressed. The explicit subscription search requires a button or Enter; keystrokes and initial load must not trigger discovery requests. Run the complete `go test ./...` using the actual project toolchain; build through `./devbuild.sh` so the launcher uses the new executable. Do not describe a ZIP as verified unless tests have passed.
+## Documentation map
+[AGENTS.md](AGENTS.md) specifies development rules. [ARCHITECTURE.md](ARCHITECTURE.md) describes implemented internals. [CURRENT_WORK.md](CURRENT_WORK.md) records the active candidate and acceptance status. Historical development is available through Git history rather than standalone version-note files.
