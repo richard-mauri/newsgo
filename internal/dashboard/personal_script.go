@@ -69,7 +69,7 @@ function confirmDomainRemoval(domain,affected){
   document.addEventListener('keydown',onKey);cancel.focus();
  });
 }
-async async function setUnifiedDomain(domain,allow){
+async function setUnifiedDomain(domain,allow){
  const nextPublishers=excludedDomains.filter(d=>publisherScope(d)!==domain);
  const nextArticles=articleDomains.filter(d=>publisherScope(d)!==domain);
  const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&(publisherScope(r.url)===domain||publisherScope(r.url).endsWith('.'+domain)));
