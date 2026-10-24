@@ -7,7 +7,7 @@
 - **Authoritative baseline for future work:** `main`. New work must use issue-specific branches from current `main`, with one draft PR per issue. Legacy `dev` remains only to reconcile existing PR #10; do not reuse it for new features.
 - **Open draft PR:** [#10 — Admin diagnostics, Exit Admin Mode and build identification](https://github.com/richard-mauri/newsgo/pull/10), `dev` → `main`. Related [issue #9](https://github.com/richard-mauri/newsgo/issues/9).
 - Dashboard semantic version remains **v0.2.58**. Mac-local **Build NNNNNN** increments with `./devbuild.sh`; numbers vary by Mac and are not committed.
-- **Owner authorized a controlled reconciliation of `main` into legacy `dev` and the change to dedicated feature branches.** This does **not** authorize promoting PR #10 to `main`. Preserve its tested behavior and four-document structure, check CI and obtain explicit final owner merge approval.
+- **Owner authorized and completed a controlled reconciliation of `main` into legacy `dev` at merge commit `25892f6`; PR #10 is now mergeable according to GitHub.** This does **not** authorize promoting PR #10 to `main`. Preserve its tested behavior and four-document structure, check CI and obtain explicit final owner merge approval.
 
 ## Implemented on dev and observed in Mac/Safari
 - Admin-only expandable classification diagnostics for filtered entries, backed by a server-authorized on-demand classification endpoint. Earlier diagnostic returned HTTP 400 for the Seahorse Magazine feed link ending `#new_tab`.
@@ -20,7 +20,7 @@
 
 ## Outstanding work and acceptance
 - **Exit Admin Mode styling correction implemented on dev:** the button now sits inside the existing admin form and inherits the same visual styling as Save Server Settings and Reload. This preserves its owner-accepted click handler and disconnect behavior. **Safari visual acceptance remains pending.**
-- Resolve the legacy `dev` ↔ `main` divergence using the owner's authorization, preserve current features from both histories, and confirm PR #10 mergeability. Avoid future long-lived shared development branches.
+- Legacy `dev` ↔ `main` divergence is reconciled at merge commit `25892f6` with the unchanged tested `dev` tree and both histories retained. Revalidate exact-head CI and Mac/Safari if needed. **Do not promote PR #10 until explicit owner approval.**
 - After final changes, verify latest-head GitHub Actions, refresh the PR title/body to match work and evidence, and obtain any remaining Mac/Safari acceptance. Ensure current documentation and PR status agree.
 - Four-file documentation consolidation is complete; `AGENTS.md` now mandates separate issue branches and focused draft PRs. Update exact reconciliation commit and CI outcome before handoff.
 - Existing runtime data, tokens, feed subscriptions, exclusions and Cloudflare setup must remain untouched.
