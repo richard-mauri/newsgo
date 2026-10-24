@@ -22,6 +22,7 @@ type adminClassificationDiagnostic struct {
 }
 
 func classifyDiagnostic(ctx context.Context, reader, article string) adminClassificationDiagnostic {
+ article = normalizeClassificationURL(article)
  timeout := currentArticleSettings().ClassificationTimeoutSeconds
  result := adminClassificationDiagnostic{Classification:"unknown", TimeoutSeconds:timeout}
  started:=time.Now()
@@ -66,6 +67,6 @@ func(s *State) serveAdminClassificationDiagnostic(w http.ResponseWriter,r *http.
  if token.Role!="admin" {http.Error(w,"administrator required",http.StatusForbidden);return}
  r.Body=http.MaxBytesReader(w,r.Body,4096)
  var req struct {URL string `json:"url"`}
- if json.NewDecoder(r.Body).Decode(&req)!=nil || len(req.URL)>2048 || !safeURL(req.URL) {http.Error(w,"invalid article URL",http.StatusBadRequest);return}
+ if json.NewDecoder(r.Body).Decode(&req)!=nil || len(req.URL)>2048 || !safeURL(normalizeClassificationURL(req.URL)) {http.Error(w,"invalid article URL",http.StatusBadRequest);return}
  _=json.NewEncoder(w).Encode(classifyDiagnostic(r.Context(),s.reader,req.URL))
 }
