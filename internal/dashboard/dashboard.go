@@ -55,6 +55,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(data)
 		return
 	}
+	if r.URL.Path == "/api/admin/classification-diagnostic" { s.serveAdminClassificationDiagnostic(w,r); return }
 	if r.URL.Path == "/api/admin/settings" {
 		if s.syncStore == nil {
 			http.Error(w, "Sync unavailable", 503)
