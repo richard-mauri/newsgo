@@ -77,7 +77,20 @@ function refreshExclusionViews(){
  // If the user just excluded the publication they are reading, show the
  // remaining subscriptions rather than an empty publisher page.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}
- renderExclusionManager();renderManager();
+ renderExclusionManager();renderManager();refreshSearchExclusionCards();
+}
+function refreshSearchExclusionCards(){
+ document.querySelectorAll('#catalog-list .catalog-card').forEach(card=>{
+  const action=card.querySelector('button.exclude-site');
+  if(!action)return;
+  const domain=action.dataset.publisherDomain;
+  const excluded=excludedURL(domain);
+  action.textContent=excluded?'Allow this site':'Exclude this site';
+  card.dataset.excluded=excluded?'true':'false';
+  let badge=card.querySelector('.exclusion-label');
+  if(!badge){badge=document.createElement('small');badge.className='exclusion-label';card.querySelector('div')?.append(badge)}
+  if(badge)badge.textContent=statusLabel(domain);
+ });
 }
 readExclusions();readArticleExclusions();
 let registry=[], storageError='';
