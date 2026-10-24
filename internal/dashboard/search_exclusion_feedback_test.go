@@ -16,6 +16,10 @@ func TestSearchCandidateExclusionFeedback(t *testing.T) {
   "action.textContent=excluded?'Allow this site':'Exclude this site'",
   "card.dataset.excluded=excluded?'true':'false'",
   "badge.textContent=statusLabel(domain)",
+  "b.dataset.publisherDomain=domain;b.disabled=followed||excludedURL(domain)",
+  "b.disabled=following||excludedURL(domain)",
+  "Allow this site before subscribing",
+  "syncFollowButtons();",
  } {
   if !strings.Contains(personalJS, marker) { t.Errorf("missing search exclusion refresh contract: %s", marker) }
  }
