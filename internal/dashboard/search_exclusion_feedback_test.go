@@ -22,7 +22,7 @@ func TestSearchCandidateExclusionFeedback(t *testing.T) {
   "syncFollowButtons();",
   "function publisherScope(value){",
   "return d.endsWith('.gov.au')&&parts.length>3?parts.slice(-3).join('.'):d;",
-  "if(excludedURL(domain))saveExclusions(excludedDomains.filter(x=>publisherScope(x)!==domain))",
+  "setUnifiedDomain(domain,excludedURL(domain))",
   "function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}",
  } {
   if !strings.Contains(personalJS, marker) { t.Errorf("missing search exclusion refresh contract: %s", marker) }
