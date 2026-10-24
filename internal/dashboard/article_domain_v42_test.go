@@ -10,8 +10,8 @@ import (
 func TestArticleDomainExclusionPipelineV42(t *testing.T) {
 	for _, want := range []string{
 		"function articleExcluded(value)",
-		"d==='youtube.com'&&h==='youtu.be'",
-		"sources.has(a.source)&&!excludedURL(a.url)&&!articleExcluded(a.url)",
+		"articleDomains.includes('youtube.com')&&hostOf(value)==='youtu.be'", 
+		"sources.has(a.source)&&!articleExcluded(a.url)", 
 		"excludedArticleDomains:articleDomains",
 		"function saveArticleExclusions(next)",
 		"Exclude articles from ",
@@ -21,7 +21,7 @@ func TestArticleDomainExclusionPipelineV42(t *testing.T) {
 			t.Errorf("missing article-domain logic %q", want)
 		}
 	}
-	for _, want := range []string{`id="article-exclude-domain"`, `id="article-exclude-add"`, `Excluded Sites`} {
+	for _, want := range []string{`id="article-exclude-domain"`, `id="article-exclude-add"`, `Excluded Domains`} {
 		if !strings.Contains(page.Tree.Root.String(), want) {
 			t.Errorf("missing control %q", want)
 		}
