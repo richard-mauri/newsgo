@@ -1,1 +1,0 @@
-NewsGo v0.2.20: hide generic shared headlines on initial load and show only on explicit built-in publisher selection. The personal subscription headlines load as before. Run go test ./... and ./devbuild.sh before starting NewsGo.
