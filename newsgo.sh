@@ -28,7 +28,7 @@ if ! version_output="$("$APP" -version 2>&1)"; then
     printf 'Error: NewsGo version check failed: %s\n' "$version_output" >&2
     exit 1
 fi
-if [[ ! "$version_output" =~ ^NewsGo\ v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [[ ! "$version_output" =~ ^NewsGo\ v[0-9]+\.[0-9]+\.[0-9]+\ ·\ Build\ [0-9]{6}$ ]]; then
     printf 'Error: unexpected NewsGo executable version: %s\n' "$version_output" >&2
     exit 1
 fi
