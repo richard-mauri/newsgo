@@ -1,5 +1,13 @@
 # NewsGo — current development state
 
+## Unified exclusions candidate (Issues #14 and #16, 2026-10-24)
+
+- Owner explicitly authorized widening draft PR #15 to resolve unified exclusions, rather than opening a second PR.
+- Combined Excluded Sites and Excluded Article Domains into a single visible Excluded Domains manager. Both legacy storage fields and sync data remain readable; opening an old profile does not delete subscriptions.
+- A new exclusion checks affected feed subscriptions and asks for explicit confirmation naming them; on confirmation, it stores the exclusion and removes the affected subscriptions. Cancel preserves both. Allowing does not restore deleted subscriptions.
+- Article destinations and feed publishers both observe the effective exclusions. Migration behavior requires owner Mac/Safari acceptance, including local preferences, imports, server synchronization, and domain submatch cases.
+- PR #15 remains draft; CI exact head and Safari acceptance pending. Do not merge or release without owner approval.
+
 ## Issue #14 draft candidate (2026-10-24)
 
 - Branch `fix/14-search-exclusion-feedback` from `main` at `08ee9ef`; scoped to Issue #14, search candidate exclusion feedback.
