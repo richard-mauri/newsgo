@@ -46,18 +46,46 @@ function publisherExcluded(value){
  });
 }
 function articleDomain(value){const d=exclusionDomain(value);return d==='youtu.be'?'youtube.com':d}
-function articleExcluded(value){const h=hostOf(value);return !!h&&articleDomains.some(d=>h===d||h.endsWith('.'+d)||(d==='youtube.com'&&h==='youtu.be'))}
+function effectiveExcludedDomains(){return [...new Set([...excludedDomains,...articleDomains].map(publisherScope).filter(Boolean))]}
+function domainIsExcluded(value){const scope=publisherScope(value);return !!scope&&effectiveExcludedDomains().some(d=>scope===d||scope.endsWith('.'+d))}
+function articleExcluded(value){return domainIsExcluded(value)||(articleDomains.includes('youtube.com')&&hostOf(value)==='youtu.be')}
+function confirmDomainRemoval(domain,affected){
+ if(!affected.length)return true;
+ const names=affected.map(x=>'• '+x.name).join('\n');
+ return window.confirm('Excluding '+domain+' will remove '+affected.length+' subscription(s) from My Subscriptions:\n\n'+names+'\n\nContinue?');
+}
+function setUnifiedDomain(domain,allow){
+ const nextPublishers=excludedDomains.filter(d=>publisherScope(d)!==domain);
+ const nextArticles=articleDomains.filter(d=>publisherScope(d)!==domain);
+ const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&publisherScope(r.url)===domain);
+ if(!allow&&!confirmDomainRemoval(domain,affected))return false;
+ const nextRegistry=allow?registry:registry.filter(r=>!affected.includes(r));
+ const prev=[localStorage.getItem(exclusionKey),localStorage.getItem(articleExclusionKey),localStorage.getItem(unifiedKey)];
+ try{
+  localStorage.setItem(exclusionKey,JSON.stringify(allow?nextPublishers:[...nextPublishers,domain]));
+  localStorage.setItem(articleExclusionKey,JSON.stringify(allow?nextArticles:[...nextArticles,domain]));
+  localStorage.setItem(unifiedKey,JSON.stringify(nextRegistry));
+ }catch(e){
+  [exclusionKey,articleExclusionKey,unifiedKey].forEach((k,i)=>{try{if(prev[i]===null)localStorage.removeItem(k);else localStorage.setItem(k,prev[i])}catch(_){}});
+  message('Exclusion not saved; preferences left unchanged: '+e.message);return false;
+ }
+ excludedDomains=allow?nextPublishers:[...nextPublishers,domain];articleDomains=allow?nextArticles:[...nextArticles,domain];
+ registry=nextRegistry;syncDerived();
+ refreshExclusionViews();renderPersonalArticles();scheduleServerSave();refresh();
+ message(allow?'Allowed '+domain:'Excluded '+domain+(affected.length?' and removed '+affected.length+' subscription(s)':''));
+ return true;
+}
 function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
 function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleServerSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
-function toggleArticleDomain(value){const d=articleDomain(value);if(!d){message('Enter a valid article domain.');return}saveArticleExclusions(articleDomains.includes(d)?articleDomains.filter(x=>x!==d):[...articleDomains,d])}
-function excludedURL(value){return publisherExcluded(value)}
+function toggleArticleDomain(value){toggleDomain(value)}
+function excludedURL(value){return domainIsExcluded(value)}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
 function saveExclusions(list){
  try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleServerSave();return true}
  catch(e){message('Could not save exclusions: '+e.message);return false}
 }
-function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedDomains.includes(domain))saveExclusions([...excludedDomains,domain]);else message(domain+' is already excluded.')}
-function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}if(excludedURL(domain))saveExclusions(excludedDomains.filter(x=>publisherScope(x)!==domain));else excludeDomain(domain)}
+function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedURL(domain))setUnifiedDomain(domain,false);else message(domain+' is already excluded.')}
+function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
 function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
 function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow this site':'Exclude this site',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
@@ -66,22 +94,14 @@ function markSite(info,domain){if(!domain)return;const badge=document.createElem
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
 function renderExclusionManager(){
  const root=el('excluded-list');root.replaceChildren();
- el('excluded-count').textContent='('+(excludedDomains.length+articleDomains.length)+')';
- if(!excludedDomains.length){const p=document.createElement('p');p.textContent='No publishers excluded.';root.append(p)}
- excludedDomains.slice().sort().forEach(d=>{
+ const domains=effectiveExcludedDomains().sort();
+ el('excluded-count').textContent='('+domains.length+')';
+ if(!domains.length){const p=document.createElement('p');p.textContent='No domains excluded.';root.append(p)}
+ domains.forEach(d=>{
   const row=document.createElement('div');row.className='personal-row';
-  const info=document.createElement('div');
-  const matches=registry.filter(r=>r.kind==='feed'&&publisherScope(r.url)===publisherScope(d));
-  const names=[...new Set(matches.map(r=>r.name))];
-  const title=document.createElement('strong');title.textContent=names.length?names.join(' · '):d;
-  info.append(title);
-  if(names.length){const host=document.createElement('small');host.textContent=d;info.append(host)}
-  row.append(info,button('Allow site',()=>toggleDomain(d)));root.append(row);
+  const info=document.createElement('strong');info.textContent=d;
+  row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)));root.append(row);
  });
- const heading=document.createElement('h3');heading.textContent='Excluded Article Domains';root.append(heading);
- const desc=document.createElement('p');desc.textContent='Hide links to these domains from every subscribed feed. Subscriptions remain intact.';root.append(desc);
- if(!articleDomains.length){const none=document.createElement('p');none.textContent='No article domains excluded.';root.append(none)}
- articleDomains.slice().sort().forEach(d=>{const row=document.createElement('div');row.className='personal-row';const label=document.createElement('strong');label.textContent=d;row.append(label,button('Allow articles',()=>toggleArticleDomain(d)));root.append(row)})
 }
 function selectedPublisherExcluded(){
  const value=el('read-source').value;
@@ -326,7 +346,7 @@ function renderPersonalArticles(){
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
  const sources=new Set(feeds.filter(f=>activeReadingSelection!==null&&(!selectedSource||f.url===selectedSource)).map(f=>f.name));
- const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!excludedURL(a.url)&&!articleExcluded(a.url));
+ const articles=allPersonalArticles.filter(a=>sources.has(a.source)&&!articleExcluded(a.url));
  const seen=new Set();articles.sort((a,b)=>new Date(b.published)-new Date(a.published));
  let count=0;
  articles.forEach(a=>{
