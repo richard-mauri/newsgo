@@ -15,3 +15,7 @@ func Version() string {
 	}
 	return match[1]
 }
+
+// BuildNumber is injected by devbuild.sh and never committed as a local count.
+var BuildNumber = "000000"
+func BuildLabel() string { return "Build " + BuildNumber }
