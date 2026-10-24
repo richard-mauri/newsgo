@@ -270,7 +270,25 @@ function renderFilteredArticles(){
  count.textContent='('+display.length+' filtered, '+pending.reduce((n,x)=>n+x.count,0)+' unprocessed)';
  card.hidden=activeReadingSelection===null;
  if(display.length===0&&pending.length===0){const empty=document.createElement('p');empty.className='personal-status';empty.textContent='No filtered or unprocessed entries reported for this selection.';list.append(empty);}
- for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);list.append(row)}
+ for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);
+ if(syncConnected&&isAdmin&&a.url&&a.reason!=='too-old'&&a.reason!=='publisher exclusion'&&a.reason!=='article-domain exclusion'){
+  const details=document.createElement('details');
+  const summary=document.createElement('summary');summary.textContent='Admin diagnostics (run fresh classification)';
+  const output=document.createElement('pre');output.textContent='Open to inspect a fresh classification request.';
+  details.append(summary,output);
+  details.addEventListener('toggle',async()=>{
+   if(!details.open)return;
+   output.textContent='Checking…';
+   try{
+    const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{Authorization:'Bearer '+syncToken,'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
+    if(!response.ok)throw Error('HTTP '+response.status);
+    const result=await response.json();
+    output.textContent='Classification: '+(result.classification||'unknown')+'\\nFailure: '+(result.failure||'none')+'\\nHTTP status: '+(result.httpStatus||'not available')+'\\nElapsed: '+result.elapsedMs+' ms\\nTimeout: '+result.timeoutSeconds+' seconds';
+   }catch(error){output.textContent='Diagnostic unavailable: '+error.message;}
+  });
+  row.append(details);
+ }
+ list.append(row)}
  for(const x of pending){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';list.append(p)}
 }
 
@@ -515,6 +533,8 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
   }
   if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
   el('sync-token').value='';syncAppearance();
+  // Update counters and management list even when the server profile is already current.
+  if(syncConnected)renderManager();
  }catch(e){syncToken='';syncConnected=false;isAdmin=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
  finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
 }
@@ -573,6 +593,12 @@ el('sync-save').addEventListener('click',()=>{if(!syncConnected){syncStatus('Con
 el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
+});
+el('admin-exit').addEventListener('click',()=>{
+ if(!syncConnected||!isAdmin)return;
+ // Reuse the existing Server Sync credential-clearing path.
+ el('sync-disconnect').click();
+ showView('news');
 });
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache'};
 let retainedLegacyImageSettings=null;

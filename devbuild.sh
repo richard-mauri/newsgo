@@ -66,6 +66,17 @@ if [[ -n "$VERSION" ]]; then
   fi
 fi
 
+counter_path="$(git rev-parse --git-path newsgo-build-counter)"
+[[ "$counter_path" = /* ]] || counter_path="$SCRIPT_DIR/$counter_path"
+previous=0
+if [[ -f "$counter_path" ]]; then
+  IFS= read -r saved < "$counter_path" || true
+  [[ "$saved" =~ ^[0-9]{1,6}$ ]] || { echo "Invalid local build counter" >&2; exit 1; }
+  previous=$((10#$saved))
+fi
+(( previous < 999999 )) || { echo "Build counter exhausted" >&2; exit 1; }
+next_build="$(printf '%06d' "$((previous+1))")"
+echo "NewsGo candidate Build $next_build"
 mkdir -p "$OUT_DIR"
 printf 'NewsGo build: %s\n' "$(go version)"
 printf 'Running tests...\n'
@@ -75,7 +86,7 @@ for arch in amd64 arm64; do
   output="$OUT_DIR/newsgo-darwin-$arch"
   printf 'Building darwin/%s...\n' "$arch"
   CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" \
-    go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$output" ./cmd/newsgo
+    go build -trimpath -buildvcs=false -ldflags="-s -w -X github.com/richard-mauri/newsgo/internal/dashboard.BuildNumber=$next_build" -o "$output" ./cmd/newsgo
   chmod 755 "$output"
   command -v file >/dev/null 2>&1 && file "$output"
 done
@@ -84,7 +95,8 @@ done
   cd "$OUT_DIR"
   shasum -a 256 newsgo-darwin-amd64 newsgo-darwin-arm64 > SHA256SUMS
 )
-printf '\nBuilt binaries and checksums in %s\n' "$OUT_DIR"
+printf '%s\n' "$next_build" > "$counter_path"
+printf '\nBuilt binaries and checksums in %s (Build %s)\n' "$OUT_DIR" "$next_build"
 ls -lh "$OUT_DIR/newsgo-darwin-amd64" "$OUT_DIR/newsgo-darwin-arm64" "$OUT_DIR/SHA256SUMS"
 
 if [[ -n "$VERSION" ]]; then

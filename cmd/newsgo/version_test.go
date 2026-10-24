@@ -15,7 +15,7 @@ func TestVersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("-version failed without a feed file: %v: %s", err, out)
 	}
-	expected := "NewsGo v" + dashboard.Version()
+	expected := "NewsGo v" + dashboard.Version() + " · " + dashboard.BuildLabel()
 	if got := strings.TrimSpace(string(out)); got != expected {
 		t.Fatalf("-version output = %q, want %q", got, expected)
 	}
