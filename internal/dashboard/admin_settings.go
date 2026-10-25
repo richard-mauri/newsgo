@@ -24,10 +24,11 @@ type ArticleSettings struct {
  ClassificationTimeoutSeconds int `json:"classificationTimeoutSeconds"`
  ClassificationConcurrency int `json:"classificationConcurrency"`
  FeedCacheMinutes int `json:"feedCacheMinutes"`
+ FeedSearchTimeoutSeconds int `json:"feedSearchTimeoutSeconds"`
 }
-func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10} }
+func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7} }
 func validArticleSettings(a ArticleSettings) bool {
- return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60
+ return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30
 }
 var activeArticleSettings atomic.Value
 func currentArticleSettings() ArticleSettings { if v := activeArticleSettings.Load(); v != nil { return v.(ArticleSettings) }; return defaultArticleSettings() }
@@ -76,7 +77,8 @@ func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	if e = json.Unmarshal(b, &v); e != nil {
 		return v, e
 	}
-	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() } // migrate historical saved settings
+	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() }
+ if v.Articles.FeedSearchTimeoutSeconds == 0 { v.Articles.FeedSearchTimeoutSeconds = defaultArticleSettings().FeedSearchTimeoutSeconds } // migrate historical saved settings
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
@@ -139,7 +141,8 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unexpected extra JSON", 400)
 		return
 	}
-	if candidate.Articles.MaxArticlesPerFeed == 0 { candidate.Articles = current.Articles } // old admin clients
+	if candidate.Articles.MaxArticlesPerFeed == 0 { candidate.Articles = current.Articles }
+ if candidate.Articles.FeedSearchTimeoutSeconds == 0 { candidate.Articles.FeedSearchTimeoutSeconds = current.Articles.FeedSearchTimeoutSeconds } // old admin clients
  if !validServerSettings(candidate) {
 		http.Error(w, "Out-of-range server settings", 400)
 		return
