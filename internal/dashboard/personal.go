@@ -44,6 +44,7 @@ type personalArticle struct {
  DateWarning string `json:"dateWarning,omitempty"`
 	Published string `json:"published"`
 	Image     string `json:"image,omitempty"`
+ FeedImage string `json:"feedImage,omitempty"`
  ContentStatus string `json:"contentStatus,omitempty"`
  AvailabilityStatus string `json:"availabilityStatus,omitempty"`
 }
@@ -214,7 +215,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
                     date = a.RawDate
                     warning = "Unrecognized date format"
                 }
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL), ContentStatus: decisions[i].ContentStatus, AvailabilityStatus: classificationAvailability(decisions[i])})
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL), FeedImage: safeFeedImage(a.Image), ContentStatus: decisions[i].ContentStatus, AvailabilityStatus: classificationAvailability(decisions[i])})
 			}
 			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -241,6 +242,14 @@ func scraperThumbnailURL(reader, article string) string {
 		return ""
 	}
 	return strings.TrimRight(reader, "/") + "/api/thumbnail?" + url.Values{"url": {article}, "width": {"256"}}.Encode()
+}
+
+// RSS-supplied public images remain available when the article's HTML is blocked.
+// Restrict browser fallback to HTTPS image URLs with no credentials.
+func safeFeedImage(raw string) string {
+ u, err := url.Parse(strings.TrimSpace(raw))
+ if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {return ""}
+ return u.String()
 }
 
 // Classification is authoritative only for a confirmed homepage/index. A failed
