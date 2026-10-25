@@ -332,15 +332,19 @@ function filteredSubscriptionStats(sourceName) {
  return {rejected,accepted,evaluated,offer:evaluated>=10&&rejected/evaluated>0.9};
 }
 function renderFilteredSubscriptionOffer(){
- const title=el('reading-title');
+ const anchor=el('filtered-articles-card');
+ let heading=el('selected-subscription-heading');
+ if(!heading){heading=document.createElement('h2');heading.id='selected-subscription-heading';anchor.insertAdjacentElement('beforebegin',heading);}
+ heading.hidden=true;
  let panel=el('filtered-subscription-offer');
  if(!panel){
   panel=document.createElement('div');panel.id='filtered-subscription-offer';
-  panel.className='personal-status';title.insertAdjacentElement('afterend',panel);
+  panel.className='personal-status';heading.insertAdjacentElement('afterend',panel);
  }
  panel.replaceChildren();panel.hidden=true;
  if(activeReadingSelection===null||activeReadingSelection==='all'||!selectedSource)return;
  const feed=feeds.find(f=>f.url===selectedSource);
+ if(feed){heading.textContent=feed.name;heading.hidden=false;}
  if(!feed||personalErrors.some(e=>e.startsWith(feed.name+': '))||
   notProcessedEntries.some(e=>e.source===feed.name&&e.count>0))return;
  const stats=filteredSubscriptionStats(feed.name);
