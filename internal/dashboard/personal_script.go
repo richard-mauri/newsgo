@@ -415,7 +415,12 @@ function renderFilteredArticles(){
     const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{Authorization:'Bearer '+syncToken,'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
-    output.textContent='Classification: '+(result.classification||'unknown')+'\\nFailure: '+(result.failure||'none')+'\\nHTTP status: '+(result.httpStatus||'not available')+'\\nElapsed: '+result.elapsedMs+' ms\\nTimeout: '+result.timeoutSeconds+' seconds';
+    const lines=['Classification: '+(result.classification||'unknown')];
+    if(result.reason)lines.push('Reason: '+result.reason);
+    if(Number.isInteger(result.publisherHttpStatus)&&result.publisherHttpStatus>=100&&result.publisherHttpStatus<=599)lines.push('Publisher HTTP status: '+result.publisherHttpStatus);
+    if(result.failure&&result.failure!=='none')lines.push('Diagnostic failure: '+result.failure);
+    if(Number.isFinite(result.elapsedMs))lines.push('Classification request duration: '+result.elapsedMs+' ms');
+    output.textContent=lines.join('\n');
    }catch(error){output.textContent='Diagnostic unavailable: '+error.message;}
   });
   row.append(details);
@@ -727,7 +732,22 @@ el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
-const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout'};
+const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
+// Admin control is created beside the existing feed-cache input so no server template migration is needed.
+const feedCacheInput=document.getElementById('admin-feed-cache');
+if(feedCacheInput){
+ const label=document.createElement('label');
+ label.setAttribute('for','admin-classification-cache');
+ label.textContent='Successful classification cache (minutes, 0–30)';
+ label.style.display='block';label.style.marginTop='1rem';
+ const input=document.createElement('input');
+ input.type='number';input.min='0';input.max='30';input.step='1';input.required=true;
+ input.id='admin-classification-cache';input.value='30';
+ input.style.display='block';input.style.width='100%';input.style.maxWidth='22rem';
+ label.append(input);
+ const parent=feedCacheInput.closest('label')||feedCacheInput.parentElement;
+ parent.insertAdjacentElement('afterend',label);
+}
 let retainedLegacyImageSettings=null;
 let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
