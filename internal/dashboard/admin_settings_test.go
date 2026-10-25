@@ -135,3 +135,13 @@ func TestAdminSettingsResponsiveLayoutContract(t *testing.T) {
   if !strings.Contains(html, want) { t.Errorf("missing admin settings layout %q", want) }
  }
 }
+
+func TestUnsavedAdminSettingsDialogContract(t *testing.T) {
+ html:=page.Tree.Root.String()
+ for _,want:=range []string{"admin-unsaved-dialog", "Save changes", "Discard changes", "Keep editing"} {
+  if !strings.Contains(html,want) { t.Errorf("missing unsaved settings dialog %q",want) }
+ }
+ for _,want:=range []string{"const adminDirty=", "confirmAdminLeave(", "await saveAdmin()", "beforeunload"} {
+  if !strings.Contains(personalJS,want) { t.Errorf("missing admin dirty protection %q",want) }
+ }
+}
