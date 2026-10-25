@@ -23,7 +23,10 @@ type feedSearchResponse struct {
 	Error string           `json:"error,omitempty"`
 }
 
-var feedSearchClient = &http.Client{Timeout: 7 * time.Second}
+// The feed-directory timeout is independent of article classification.
+func feedSearchClient() *http.Client {
+ return &http.Client{Timeout: time.Duration(currentArticleSettings().FeedSearchTimeoutSeconds) * time.Second}
+}
 var feedSearchState = struct {
 	sync.Mutex
 	last  map[string]time.Time
@@ -108,7 +111,7 @@ func feedlySearch(query string) ([]feedSearchItem, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "NewsGo/0.2.9 (feed discovery)")
-	resp, err := feedSearchClient.Do(req)
+	resp, err := feedSearchClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
