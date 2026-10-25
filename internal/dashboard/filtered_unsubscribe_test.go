@@ -18,6 +18,8 @@ func TestFilteredSubscriptionOfferContract(t *testing.T) {
   "heading.insertAdjacentElement('afterend',panel)",
   "anchor.insertAdjacentElement('beforebegin',heading)",
   "heading.textContent=feed.name",
+  "el('reading-title').hidden=true",
+  "action.className='exclude-article-domain'",
  }
  for _,fragment:=range required {
   if !strings.Contains(personalJS,fragment) {t.Errorf("missing UI contract: %q",fragment)}
