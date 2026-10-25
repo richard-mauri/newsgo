@@ -145,3 +145,9 @@ func TestUnsavedAdminSettingsDialogContract(t *testing.T) {
   if !strings.Contains(personalJS,want) { t.Errorf("missing admin dirty protection %q",want) }
  }
 }
+
+func TestExitAdminModeWarnsBeforeDiscardingBrowserToken(t *testing.T) {
+ for _,want:=range []string{"window.confirm('Exit Admin Mode?", "discard your saved admin token", "if(!window.confirm(", "el('sync-disconnect').click()"} {
+  if !strings.Contains(personalJS,want) { t.Errorf("admin exit must explicitly warn: %q",want) }
+ }
+}
