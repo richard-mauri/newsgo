@@ -1,5 +1,6 @@
 # Active candidate — Issue #20 (2026-10-25)
 
+- Updated 2026-10-25: Confirmed publisher denial is retained in NewsGo headline cards and marked Unavailable; ordinary errors retain prior filtering.
 - Authoritative base: GitHub main; branch `feat/20-preview-label`, dedicated draft PR pending.
 - Goal: preserve ScraperGo completeness metadata in classification/cache and present Preview label for explicit partial articles; legacy statuses map to unknown.
 - Related: ScraperGo #77, NewsGo #20. Deploy ScraperGo before NewsGo. No automatic full-text extraction or paywall circumvention.
