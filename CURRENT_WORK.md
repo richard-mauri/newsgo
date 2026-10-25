@@ -1,3 +1,14 @@
+# Active draft — Issue #28: NewsGo classification-cache setting
+
+- Base: GitHub `main`; branch `feat/28-classification-cache-setting`; draft PR #29.
+- Added Admin Settings `classificationCacheMinutes` (0–30, default 30), persist/reload with legacy records migrated to 30 while preserving explicitly saved zero.
+- 0 disables NewsGo classification cache; 1–30 caches confirmed classifications for the configured time. Failed/unavailable results are not cached by NewsGo. Changing setting clears prior NewsGo classification entries.
+- ScraperGo's independent cache is **not** controlled by this setting.
+- Static regression tests cover bounds, legacy migration, explicit zero and UI binding.
+- GitHub Actions run 40244021535 **passed** at code head a356c412. Owner Mac tests/Safari acceptance outstanding. No merge/tag/release authorization.
+
+---
+
 # Active draft work — Issue #18 (2026-10-25)
 
 - Baseline: `main`; branch `fix/18-configurable-feed-search-timeout`; no merge/release authorization.
