@@ -331,6 +331,23 @@ function filteredSubscriptionStats(sourceName) {
  const evaluated=rejected+accepted;
  return {rejected,accepted,evaluated,offer:evaluated>=10&&rejected/evaluated>0.9};
 }
+function confirmSubscriptionRemoval(name){
+ return new Promise(resolve=>{
+  const previous=document.activeElement;
+  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
+  const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
+  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','unsubscribe-confirm-title');
+  const title=document.createElement('h3');title.id='unsubscribe-confirm-title';title.textContent='Unsubscribe from '+name+'?';
+  const description=document.createElement('p');description.textContent='This removes the subscription from My Subscriptions. It does not exclude the publisher or any article domain.';
+  const actions=document.createElement('div');actions.className='sync-choice-actions';
+  function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
+  function onKey(event){if(event.key==='Escape'){event.preventDefault();finish(false)}}
+  const cancel=button('Cancel',()=>finish(false));
+  const confirm=button('Unsubscribe',()=>finish(true),'exclusion-confirm-action');
+  actions.append(cancel,confirm);dialog.append(title,description,actions);shade.append(dialog);document.body.append(shade);
+  document.addEventListener('keydown',onKey);cancel.focus();
+ });
+}
 function renderFilteredSubscriptionOffer(){
  const anchor=el('filtered-articles-card');
  let heading=el('selected-subscription-heading');
@@ -353,14 +370,14 @@ function renderFilteredSubscriptionOffer(){
  const message=document.createElement('span');
  message.textContent=pct+'% of '+stats.evaluated+' classified articles from '+feed.name+
   ' were filtered ('+stats.rejected+' filtered). ';
- const action=button('Unsubscribe from '+feed.name,()=>{
+ const action=button('Unsubscribe from '+feed.name,async()=>{
   // Confirmation is required; displaying a recommendation never alters a subscription.
-  if(!window.confirm('Unsubscribe from "'+feed.name+'"? This removes the subscription from My Subscriptions.'))return;
+  if(!await confirmSubscriptionRemoval(feed.name))return;
   const record=registry.find(r=>r.kind==='feed'&&r.url===feed.url);
   if(!record||!unsubscribeRecord(record.id))return;
   chooseAllSubscriptions();
  });
- action.className='exclude-article-domain';
+ action.className='exclusion-confirm-action';
  action.style.marginLeft='0.75rem';
  panel.append(message,action);panel.hidden=false;
 }
@@ -645,7 +662,7 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
   if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
   el('sync-token').value='';syncAppearance();
   // Update counters and management list even when the server profile is already current.
-  if(syncConnected)renderManager();
+  if(syncConnected){renderManager();restoreReadingSelection(validReadingSelection(activeReadingSelection===null?localStorage.getItem(readingSelectionKey):activeReadingSelection));}
  }catch(e){syncToken='';syncConnected=false;isAdmin=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
  finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
 }
@@ -787,6 +804,6 @@ setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
 
-message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';renderPersonalArticles();
+message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';if(!rememberedSyncToken)renderPersonalArticles();
 
 })();`
