@@ -659,7 +659,22 @@ el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
-const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout'};
+const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
+// Admin control is created beside the existing feed-cache input so no server template migration is needed.
+const feedCacheInput=document.getElementById('admin-feed-cache');
+if(feedCacheInput){
+ const label=document.createElement('label');
+ label.setAttribute('for','admin-classification-cache');
+ label.textContent='Successful classification cache (minutes, 0–30)';
+ label.style.display='block';label.style.marginTop='1rem';
+ const input=document.createElement('input');
+ input.type='number';input.min='0';input.max='30';input.step='1';input.required=true;
+ input.id='admin-classification-cache';input.value='30';
+ input.style.display='block';input.style.width='100%';input.style.maxWidth='22rem';
+ label.append(input);
+ const parent=feedCacheInput.closest('label')||feedCacheInput.parentElement;
+ parent.insertAdjacentElement('afterend',label);
+}
 let retainedLegacyImageSettings=null;
 let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
