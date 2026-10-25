@@ -348,7 +348,12 @@ function renderFilteredArticles(){
     const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{Authorization:'Bearer '+syncToken,'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
-    output.textContent='Classification: '+(result.classification||'unknown')+'\\nFailure: '+(result.failure||'none')+'\\nHTTP status: '+(result.httpStatus||'not available')+'\\nElapsed: '+result.elapsedMs+' ms\\nTimeout: '+result.timeoutSeconds+' seconds';
+    const lines=['Classification: '+(result.classification||'unknown')];
+    if(result.reason)lines.push('Reason: '+result.reason);
+    if(Number.isInteger(result.publisherHttpStatus)&&result.publisherHttpStatus>=100&&result.publisherHttpStatus<=599)lines.push('Publisher HTTP status: '+result.publisherHttpStatus);
+    if(result.failure&&result.failure!=='none')lines.push('Diagnostic failure: '+result.failure);
+    if(Number.isFinite(result.elapsedMs))lines.push('Classification request duration: '+result.elapsedMs+' ms');
+    output.textContent=lines.join('\n');
    }catch(error){output.textContent='Diagnostic unavailable: '+error.message;}
   });
   row.append(details);
