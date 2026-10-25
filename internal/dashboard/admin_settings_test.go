@@ -105,6 +105,8 @@ func TestAdminSettingsRangeValidation(t *testing.T) {
 // Confirm the 30-second classification preference survives a new store
 // instance and is activated after a simulated process restart.
 func TestClassificationTimeoutPersistsAcrossRestart(t *testing.T) {
+ previous:=currentArticleSettings()
+ defer activeArticleSettings.Store(previous)
  dir:=t.TempDir()
  store,err:=NewSyncStore(dir)
  if err!=nil {t.Fatal(err)}
