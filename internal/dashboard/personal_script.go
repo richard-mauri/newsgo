@@ -665,7 +665,7 @@ el('admin-exit').addEventListener('click',()=>{
  el('sync-disconnect').click();
  showView('news');
 });
-const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache'};
+const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout'};
 let retainedLegacyImageSettings=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
 async function adminRequest(method,payload){
