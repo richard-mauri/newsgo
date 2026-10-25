@@ -25,3 +25,18 @@ func TestNewsClassifyDetailLegacyStatusUnknown(t *testing.T) {
  result:=newsClassifyDetail(context.Background(),server.URL,"https://example.org/story/legacy-status")
  if result.Classification!="article" || result.ContentStatus!="unknown" {t.Fatalf("legacy response %+v",result)}
 }
+
+
+func TestClassificationAvailabilityRequiresConfirmedDenial(t *testing.T) {
+ cases:=[]struct{classification,reason,want string}{
+  {"unavailable","publisher_access_denied","unavailable"},
+  {"unavailable","publisher_unavailable",""},
+  {"unavailable","timeout",""},
+  {"unknown","extraction_unavailable",""},
+  {"article","publisher_access_denied",""},
+ }
+ for _,tc:=range cases {
+  got:=classificationAvailability(classificationOutcome{Classification:tc.classification,Reason:tc.reason})
+  if got!=tc.want {t.Fatalf("%s/%s: got %q want %q",tc.classification,tc.reason,got,tc.want)}
+ }
+}
