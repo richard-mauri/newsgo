@@ -714,11 +714,18 @@ el('manage-preferences').addEventListener('click',()=>showView('preferences'));
 el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
-el('admin-exit').addEventListener('click',()=>confirmAdminLeave(()=>{
+el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
  if(!syncConnected||!isAdmin)return;
  // Exiting admin mode removes the browser's saved credential, unlike Close.
  // Require explicit confirmation even if all settings are already saved.
- if(!window.confirm('Exit Admin Mode? This will discard your saved admin token from this browser and disconnect Server Sync. You will need to enter your token again to access Admin Settings.'))return;
+ const dialog=el('admin-exit-dialog');
+ if(typeof dialog.showModal!=='function')return; // Fail closed if safe confirmation is unavailable.
+ const confirmed=await new Promise(resolve=>{
+  const done=()=>resolve(dialog.returnValue==='confirm');
+  dialog.addEventListener('close',done,{once:true});
+  dialog.showModal();
+ });
+ if(!confirmed)return;
  el('sync-disconnect').click();
  adminSavedValues=null;
  showView('news');
