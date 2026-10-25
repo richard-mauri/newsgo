@@ -348,19 +348,19 @@ func newsClassifyDetail(ctx context.Context, reader, article string) classificat
  if result.Classification != "homepage" && result.Classification != "unreadable" && result.Classification != "article" && result.Classification != "unavailable" {
 		return classificationOutcome{Classification:"unknown"}
 	}
-	newsClassificationCache.Lock()
-	if len(newsClassificationCache.entries) >= 2048 {
-		for k := range newsClassificationCache.entries {
-			delete(newsClassificationCache.entries, k)
-			break
+	// Never cache unavailable, unknown, or unreadable outcomes.
+	// Publisher and transport failures must be retried on the next request.
+	if result.Classification == "article" {
+		newsClassificationCache.Lock()
+		if len(newsClassificationCache.entries) >= 2048 {
+			for k := range newsClassificationCache.entries {
+				delete(newsClassificationCache.entries, k)
+				break
+			}
 		}
+		newsClassificationCache.entries[key] = newsClassificationEntry{result, time.Now().Add(30*time.Minute)}
+		newsClassificationCache.Unlock()
 	}
-	ttl := 30 * time.Minute
-	if result.Classification == "unavailable" {
-		ttl = time.Minute
-	}
-	newsClassificationCache.entries[key] = newsClassificationEntry{result, time.Now().Add(ttl)}
-	newsClassificationCache.Unlock()
 	return result
 }
 
