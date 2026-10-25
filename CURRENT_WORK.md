@@ -1,3 +1,13 @@
+# Active task — Issue #22: admin classification diagnostics
+
+- Baseline: GitHub main. Branch: fix/issue-22-admin-diagnostics-clarity. Issue: https://github.com/richard-mauri/newsgo/issues/22.
+- Scope: presentation-only update to admin diagnostic results. Classifications, strict article admission, caching, subscriptions, image behavior, and ScraperGo are unchanged.
+- Replace misleading generic HTTP 200 and timeout-limit displays with classification result, actual diagnostic failure when reported, and elapsed milliseconds, using real line breaks. For unavailable results, explicitly state publisher HTTP status is not reported.
+- Static source-contract regression test added. GitHub Actions latest-head CI, owner Mac tests, Safari acceptance are not yet verified.
+- Separate frozen branches: NewsGo PR #21 and ScraperGo PR #78 remain untouched. Do not merge, tag, release, or modify appVersion without owner approval.
+
+---
+
 # Active draft work — Issue #18 (2026-10-25)
 
 - Baseline: `main`; branch `fix/18-configurable-feed-search-timeout`; no merge/release authorization.
