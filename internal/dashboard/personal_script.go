@@ -716,6 +716,9 @@ el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){show
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('admin-exit').addEventListener('click',()=>confirmAdminLeave(()=>{
  if(!syncConnected||!isAdmin)return;
+ // Exiting admin mode removes the browser's saved credential, unlike Close.
+ // Require explicit confirmation even if all settings are already saved.
+ if(!window.confirm('Exit Admin Mode? This will discard your saved admin token from this browser and disconnect Server Sync. You will need to enter your token again to access Admin Settings.'))return;
  el('sync-disconnect').click();
  adminSavedValues=null;
  showView('news');
