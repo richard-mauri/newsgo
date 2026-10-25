@@ -101,3 +101,28 @@ func TestAdminSettingsRangeValidation(t *testing.T) {
 		t.Fatalf("bad settings status %d", w.Code)
 	}
 }
+
+// Confirm the 30-second classification preference survives a new store
+// instance and is activated after a simulated process restart.
+func TestClassificationTimeoutPersistsAcrossRestart(t *testing.T) {
+ dir:=t.TempDir()
+ store,err:=NewSyncStore(dir)
+ if err!=nil {t.Fatal(err)}
+ token,err:=store.IssueToken("timeout-admin","")
+ if err!=nil {t.Fatal(err)}
+ if err=store.SetRole("timeout-admin","admin");err!=nil {t.Fatal(err)}
+ cfg:=defaultServerSettings()
+ cfg.Articles.ClassificationTimeoutSeconds=30
+ if w:=adminCall(t,store,http.MethodPut,token,cfg);w.Code!=http.StatusOK {
+  t.Fatalf("save status %d: %s",w.Code,w.Body.String())
+ }
+ restarted,err:=NewSyncStore(dir)
+ if err!=nil {t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err!=nil {t.Fatal(err)}
+ if got:=currentArticleSettings().ClassificationTimeoutSeconds;got!=30 {
+  t.Fatalf("after restart classification timeout = %d, want 30",got)
+ }
+ if w:=adminCall(t,restarted,http.MethodGet,token,nil);w.Code!=http.StatusOK {
+  t.Fatalf("reload status %d",w.Code)
+ }
+}
