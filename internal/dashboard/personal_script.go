@@ -348,7 +348,12 @@ function renderFilteredArticles(){
     const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{Authorization:'Bearer '+syncToken,'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
-    output.textContent='Classification: '+(result.classification||'unknown')+'\\nFailure: '+(result.failure||'none')+'\\nHTTP status: '+(result.httpStatus||'not available')+'\\nElapsed: '+result.elapsedMs+' ms\\nTimeout: '+result.timeoutSeconds+' seconds';
+    const classification=result.classification||'unknown';
+    const lines=['Classification: '+classification];
+    if(result.failure&&result.failure!=='none')lines.push('Request failure: '+result.failure);
+    else if(classification==='unavailable')lines.push('ScraperGo could not confirm a readable article. The publisher HTTP status is not reported by this diagnostic.');
+    if(Number.isFinite(result.elapsedMs))lines.push('Classification request duration: '+result.elapsedMs+' ms');
+    output.textContent=lines.join('\n');
    }catch(error){output.textContent='Diagnostic unavailable: '+error.message;}
   });
   row.append(details);
