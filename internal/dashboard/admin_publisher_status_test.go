@@ -2,7 +2,6 @@ package dashboard
 
 import (
  "context"
- "encoding/json"
  "net/http"
  "net/http/httptest"
  "strings"
@@ -39,4 +38,3 @@ func TestAdminDiagnosticScriptPublisherStatus(t *testing.T) {
  }
 }
 
-var _ = json.Valid
