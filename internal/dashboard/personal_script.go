@@ -314,7 +314,7 @@ function renderReading(){
  selectedSource=selection.feedURL;
  el('personal-feed').classList.toggle('personal-hidden',!selection.showPersonal);
  el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0;
- el('reading-title').hidden=selection.all;
+ el('reading-title').hidden=true; // Single selected-feed heading is rendered above filtered results.
  el('reading-title').textContent=selection.feedURL?(feeds.find(f=>f.url===selection.feedURL)?.name||'Selected subscription'):'';
  el('personal-section-label').hidden=true;
  renderFilteredSubscriptionOffer();
@@ -360,6 +360,8 @@ function renderFilteredSubscriptionOffer(){
   if(!record||!unsubscribeRecord(record.id))return;
   chooseAllSubscriptions();
  });
+ action.className='exclude-article-domain';
+ action.style.marginLeft='0.75rem';
  panel.append(message,action);panel.hidden=false;
 }
 
