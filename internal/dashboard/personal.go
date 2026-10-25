@@ -249,6 +249,7 @@ type classificationOutcome struct {
 	Classification string `json:"classification"`
  ContentStatus string `json:"contentStatus,omitempty"`
  ContentReason string `json:"contentReason,omitempty"`
+ Reason string `json:"reason,omitempty"`
 }
 type newsClassificationEntry struct {
 	value  classificationOutcome
@@ -356,7 +357,7 @@ func newsClassifyDetail(ctx context.Context, reader, article string) classificat
 
 // Confirmed publisher denial is distinct from unknown availability and completeness.
 func classificationAvailability(result classificationOutcome) string {
- if result.Classification == "unavailable" && result.ContentReason != "timeout" { return "unavailable" }
+ if result.Classification == "unavailable" && result.Reason == "publisher_access_denied" { return "unavailable" }
  return ""
 }
 
