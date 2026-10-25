@@ -40,3 +40,11 @@ func TestClassificationAvailabilityRequiresConfirmedDenial(t *testing.T) {
   if got!=tc.want {t.Fatalf("%s/%s: got %q want %q",tc.classification,tc.reason,got,tc.want)}
  }
 }
+
+
+func TestSafeFeedImage(t *testing.T) {
+ if got:=safeFeedImage("https://images.example.org/cover.jpg");got!="https://images.example.org/cover.jpg" {t.Fatalf("valid RSS image: %q",got)}
+ for _,raw:=range []string{"http://example.org/a.jpg","javascript:alert(1)","https://user:pw@example.org/image.png",""} {
+  if got:=safeFeedImage(raw);got!="" {t.Fatalf("unsafe feed image %q accepted as %q",raw,got)}
+ }
+}
