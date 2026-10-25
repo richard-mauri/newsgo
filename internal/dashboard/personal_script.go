@@ -298,7 +298,10 @@ function renderSourceSelector(){
  const group=el('followed-options');group.replaceChildren();
  feeds.forEach(f=>{const option=document.createElement('option');option.value='personal:'+f.url;option.textContent=f.name;group.append(option)});
  if(selectedSource&&!feeds.some(f=>f.url===selectedSource))selectedSource='';
- const select=el('read-source');if(select.value.startsWith('personal:')&&!feeds.some(f=>'personal:'+f.url===select.value))select.value='';
+ const select=el('read-source');
+ // Replacing <option> elements clears the current value in Safari. Restore
+ // the saved reading selection rather than silently converting it to All.
+ select.value=activeReadingSelection&&activeReadingSelection!=='all'&&feeds.some(f=>f.url===activeReadingSelection)?'personal:'+activeReadingSelection:'';
 }
 // Every visible article is fetched from a subscribed feed. The server catalog
 // is discovery metadata only; it never supplies unsolicited headlines.
@@ -310,7 +313,9 @@ function readingSelection(source){
 function renderReading(){
  // Also guard saved/selector-driven navigation to excluded publishers.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource=''}
- const selection=readingSelection(el('read-source').value);
+ const restored=activeReadingSelection&&activeReadingSelection!=='all'&&feeds.some(f=>f.url===activeReadingSelection)?'personal:'+activeReadingSelection:'';
+ const selection=readingSelection(restored);
+ el('read-source').value=restored;
  selectedSource=selection.feedURL;
  el('personal-feed').classList.toggle('personal-hidden',!selection.showPersonal);
  el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0;
@@ -377,8 +382,8 @@ function renderFilteredSubscriptionOffer(){
   if(!record||!unsubscribeRecord(record.id))return;
   chooseAllSubscriptions();
  });
- action.className='exclusion-confirm-action';
- action.style.marginLeft='0.75rem';
+ action.className='subscription-unsubscribe-button';
+ action.style.cssText='margin-left:0.75rem;background:#18252d;color:#f1f5f9;border:1px solid #354650;border-radius:12px;padding:0.75rem 1.1rem;font-weight:700;font-size:1rem;cursor:pointer';
  panel.append(message,action);panel.hidden=false;
 }
 
