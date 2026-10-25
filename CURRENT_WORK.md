@@ -1,3 +1,11 @@
+# Active candidate — Issue #26 selected-subscription unsubscribe recommendation
+
+- Baseline: GitHub main; branch `feat/26-filtered-subscription-unsubscribe`; issue https://github.com/richard-mauri/newsgo/issues/26.
+- UI-only: selected subscription name continues to appear in the existing reading title, with a new recommendation after it only if >90% of at least 10 classified articles were filtered. All-subscriptions selection, incomplete feed fetches and unprocessed entries suppress the recommendation.
+- Only classification-filtered entries count; age limits and user exclusions do not influence the percentage.
+- Explicit confirm before unsubscribing; reuse saved subscriptions/Server Sync and return to All. No automatic unsubscribe; no ScraperGo, filtering, feed, cache or backend changes.
+- Static regression coverage added. CI, owner Mac and Safari acceptance pending. Other draft PRs untouched; merge and release require owner authorization.
+
 # Active draft work — Issue #18 (2026-10-25)
 
 - Baseline: `main`; branch `fix/18-configurable-feed-search-timeout`; no merge/release authorization.
