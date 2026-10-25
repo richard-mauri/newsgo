@@ -119,8 +119,8 @@ type cacheEntry struct {
 // and canceled requests are never cached.
 func personalCacheTTL(entry cacheEntry) time.Duration {
 	if entry.err != "" {
-		return 20 * time.Second
-	}
+        return 0
+    }
 	return time.Duration(currentArticleSettings().FeedCacheMinutes) * time.Minute
 }
 
@@ -154,9 +154,9 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, s
 	}
 	// Do not poison the shared cache with a canceled browser request. A
 	// timed-out feed request may be retried, but cannot mask later success.
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-		return a, msg
-	}
+	if ctx.Err() != nil || err != nil || errors.Is(err, context.Canceled) {
+        return a, msg
+    }
 	personalCache.Lock()
 	if len(personalCache.entries) >= 64 {
 		for k := range personalCache.entries {
