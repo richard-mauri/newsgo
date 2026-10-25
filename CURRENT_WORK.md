@@ -4,7 +4,7 @@
 - UI-only: selected subscription name continues to appear in the existing reading title, with a new recommendation after it only if >90% of at least 10 classified articles were filtered. All-subscriptions selection, incomplete feed fetches and unprocessed entries suppress the recommendation.
 - Only classification-filtered entries count; age limits and user exclusions do not influence the percentage.
 - Explicit confirm before unsubscribing; reuse saved subscriptions/Server Sync and return to All. No automatic unsubscribe; no ScraperGo, filtering, feed, cache or backend changes.
-- Owner Safari feedback on Build 000033: restored saved feed required clicking Read Articles, the unsubscribe control looked unstyled, and native confirmation didn't match NewsGo. Updated to avoid final startup render overwriting sync restoration, repeat saved-selection restoration after sync initialization, and use existing sync-choice dialog and confirmation button classes. Static coverage extended. Latest-head CI and owner Mac/Safari retest pending. Other draft PRs untouched; merge and release require owner authorization.
+- Owner Safari feedback on Build 000033: restored saved feed required clicking Read Articles, the unsubscribe control looked unstyled, and native confirmation didn't match NewsGo. Updated to avoid final startup render overwriting sync restoration, retain sync's own one-time saved-selection restoration without a duplicate feed request, and use existing sync-choice dialog and confirmation button classes. Static coverage extended. Latest-head CI and owner Mac/Safari retest pending. Other draft PRs untouched; merge and release require owner authorization.
 
 # Active draft work — Issue #18 (2026-10-25)
 
