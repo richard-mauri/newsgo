@@ -44,6 +44,7 @@ type personalArticle struct {
  DateWarning string `json:"dateWarning,omitempty"`
 	Published string `json:"published"`
 	Image     string `json:"image,omitempty"`
+ ContentStatus string `json:"contentStatus,omitempty"`
 }
 
 // Personal feed fetching uses a dedicated transport to prevent SSRF, including DNS rebinding and redirects.
@@ -195,13 +196,13 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			cfg := currentArticleSettings()
    res.FeedEntries = len(articles)
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
-   decisions := classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
+   decisions := classifyFeedArticlesWithAgeDetailed(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
 					break
 				}
-				if decisions[i] != "article" {
-      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i], Published:a.Published.Format(time.RFC3339)})
+				if decisions[i].Classification != "article" {
+      res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i].Classification, Published:a.Published.Format(time.RFC3339)})
 					continue
 				}
 				date := "Date unavailable"
@@ -212,7 +213,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
                     date = a.RawDate
                     warning = "Unrecognized date format"
                 }
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL), ContentStatus: decisions[i].ContentStatus})
 			}
 			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -245,9 +246,11 @@ func scraperThumbnailURL(reader, article string) string {
 // lookup cannot delete a legitimate headline or prevent opening ScraperGo.
 type classificationOutcome struct {
 	Classification string `json:"classification"`
+ ContentStatus string `json:"contentStatus,omitempty"`
+ ContentReason string `json:"contentReason,omitempty"`
 }
 type newsClassificationEntry struct {
-	value  string
+	value  classificationOutcome
 	expiry time.Time
 }
 
@@ -266,27 +269,35 @@ func classifyFeedArticles(ctx context.Context, reader string, articles []feeds.A
  return classifyFeedArticlesWithAge(ctx, reader, articles, 0)
 }
 func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []feeds.Article, days int) []string {
-	out := make([]string, len(articles))
- limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
-	var wg sync.WaitGroup
-	for i, a := range articles {
-		if i >= currentArticleSettings().MaxArticlesPerFeed {
-			break
-		}
-		if articleTooOld(a.Published, days, time.Now()) {
-			out[i] = "too-old"
-			continue
-		}
-		wg.Add(1)
-		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
-	}
-	wg.Wait()
-	return out
+ detail := classifyFeedArticlesWithAgeDetailed(ctx, reader, articles, days)
+ out := make([]string,len(detail))
+ for i, v := range detail { out[i]=v.Classification }
+ return out
+}
+func classifyFeedArticlesWithAgeDetailed(ctx context.Context, reader string, articles []feeds.Article, days int) []classificationOutcome {
+ out := make([]classificationOutcome,len(articles))
+ limiter := make(chan struct{},currentArticleSettings().ClassificationConcurrency)
+ var wg sync.WaitGroup
+ for i,a := range articles {
+  if i >= currentArticleSettings().MaxArticlesPerFeed {break}
+  if articleTooOld(a.Published,days,time.Now()) {out[i].Classification="too-old";continue}
+  wg.Add(1)
+  go func(i int, article string) {
+   defer wg.Done()
+   select {case limiter<-struct{}{}: defer func(){<-limiter}();case <-ctx.Done():out[i].Classification="unknown";return}
+   out[i]=newsClassifyDetail(ctx,reader,article)
+  }(i,a.URL)
+ }
+ wg.Wait()
+ return out
 }
 func newsClassify(ctx context.Context, reader, article string) string {
+ return newsClassifyDetail(ctx,reader,article).Classification
+}
+func newsClassifyDetail(ctx context.Context, reader, article string) classificationOutcome {
  article = normalizeClassificationURL(article)
 	if !safeURL(article) {
-		return "unknown"
+		return classificationOutcome{Classification:"unknown"}
 	}
 	key := reader + "|" + article
 	newsClassificationCache.Lock()
@@ -299,31 +310,32 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	case newsClassificationSlots <- struct{}{}:
 		defer func() { <-newsClassificationSlots }()
 	case <-ctx.Done():
-		return "unknown"
+		return classificationOutcome{Classification:"unknown"}
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(currentArticleSettings().ClassificationTimeoutSeconds)*time.Second)
 	defer cancel()
 	body, _ := json.Marshal(map[string]string{"url": article})
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(reader, "/")+"/api/classify", bytes.NewReader(body))
 	if err != nil {
-		return "unknown"
+		return classificationOutcome{Classification:"unknown"}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{Timeout: time.Duration(currentArticleSettings().ClassificationTimeoutSeconds)*time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "unknown"
+		return classificationOutcome{Classification:"unknown"}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "unknown"
+		return classificationOutcome{Classification:"unknown"}
 	}
 	var result classificationOutcome
 	if json.NewDecoder(io.LimitReader(resp.Body, 2048)).Decode(&result) != nil {
-		return "unknown"
+		return classificationOutcome{Classification:"unknown"}
 	}
-	if result.Classification != "homepage" && result.Classification != "unreadable" && result.Classification != "article" && result.Classification != "unavailable" {
-		return "unknown"
+	if result.ContentStatus != "partial" && result.ContentStatus != "complete" {result.ContentStatus="unknown"}
+ if result.Classification != "homepage" && result.Classification != "unreadable" && result.Classification != "article" && result.Classification != "unavailable" {
+		return classificationOutcome{Classification:"unknown"}
 	}
 	newsClassificationCache.Lock()
 	if len(newsClassificationCache.entries) >= 2048 {
@@ -336,9 +348,9 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	if result.Classification == "unavailable" {
 		ttl = time.Minute
 	}
-	newsClassificationCache.entries[key] = newsClassificationEntry{result.Classification, time.Now().Add(ttl)}
+	newsClassificationCache.entries[key] = newsClassificationEntry{result, time.Now().Add(ttl)}
 	newsClassificationCache.Unlock()
-	return result.Classification
+	return result
 }
 
 // HTTP fragments are browser-only and must not invalidate otherwise safe article URLs.
