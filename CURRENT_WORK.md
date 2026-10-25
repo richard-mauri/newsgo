@@ -1,3 +1,12 @@
+# Active candidate — Issue #20 (2026-10-25)
+
+- Authoritative base: GitHub main; branch `feat/20-preview-label`, dedicated draft PR pending.
+- Goal: preserve ScraperGo completeness metadata in classification/cache and present Preview label for explicit partial articles; legacy statuses map to unknown.
+- Related: ScraperGo #77, NewsGo #20. Deploy ScraperGo before NewsGo. No automatic full-text extraction or paywall circumvention.
+- Regression tests added; exact-head CI and owner Mac/Safari acceptance not verified. No merge/tag/release/version change without owner authorization. Existing unrelated issue branches remain independent.
+
+---
+
 # Active draft work — Issue #18 (2026-10-25)
 
 - Baseline: `main`; branch `fix/18-configurable-feed-search-timeout`; no merge/release authorization.
