@@ -257,6 +257,12 @@ var newsClassificationCache = struct {
 }{entries: make(map[string]newsClassificationEntry)}
 var newsClassificationSlots = make(chan struct{}, 16)
 
+func clearNewsClassificationCache(){
+ newsClassificationCache.Lock()
+ newsClassificationCache.entries=make(map[string]newsClassificationEntry)
+ newsClassificationCache.Unlock()
+}
+
 func validArticleAgeDays(n int) bool { return n==0 || n==1 || n==3 || n==7 || n==14 || n==30 || n==60 }
 
 func articleTooOld(published time.Time, days int, now time.Time) bool {
@@ -292,7 +298,7 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	newsClassificationCache.Lock()
 	entry, ok := newsClassificationCache.entries[key]
 	newsClassificationCache.Unlock()
-	if ok && time.Now().Before(entry.expiry) {
+	if currentArticleSettings().ClassificationCacheMinutes>0 && ok && time.Now().Before(entry.expiry) {
 		return entry.value
 	}
 	select {
@@ -325,19 +331,15 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	if result.Classification != "homepage" && result.Classification != "unreadable" && result.Classification != "article" && result.Classification != "unavailable" {
 		return "unknown"
 	}
-	newsClassificationCache.Lock()
-	if len(newsClassificationCache.entries) >= 2048 {
-		for k := range newsClassificationCache.entries {
-			delete(newsClassificationCache.entries, k)
-			break
-		}
-	}
-	ttl := 30 * time.Minute
-	if result.Classification == "unavailable" {
-		ttl = time.Minute
-	}
-	newsClassificationCache.entries[key] = newsClassificationEntry{result.Classification, time.Now().Add(ttl)}
-	newsClassificationCache.Unlock()
+ // Cache only successful classifications, when enabled. Never cache unavailable failures.
+ if ttl:=currentArticleSettings().ClassificationCacheMinutes;ttl>0 && result.Classification!="unavailable" {
+  newsClassificationCache.Lock()
+  if len(newsClassificationCache.entries)>=2048 {
+   for k:=range newsClassificationCache.entries {delete(newsClassificationCache.entries,k);break}
+  }
+  newsClassificationCache.entries[key]=newsClassificationEntry{result.Classification,time.Now().Add(time.Duration(ttl)*time.Minute)}
+  newsClassificationCache.Unlock()
+ }
 	return result.Classification
 }
 
