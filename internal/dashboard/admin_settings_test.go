@@ -147,7 +147,8 @@ func TestUnsavedAdminSettingsDialogContract(t *testing.T) {
 }
 
 func TestExitAdminModeWarnsBeforeDiscardingBrowserToken(t *testing.T) {
- for _,want:=range []string{"window.confirm('Exit Admin Mode?", "discard your saved admin token", "if(!window.confirm(", "el('sync-disconnect').click()"} {
+ if !strings.Contains(page.Tree.Root.String(), "This will discard your saved admin token") { t.Fatal("missing styled token removal warning") }
+ for _,want:=range []string{"admin-exit-dialog", "dialog.showModal()", "dialog.returnValue==='confirm'", "el('sync-disconnect').click()"} {
   if !strings.Contains(personalJS,want) { t.Errorf("admin exit must explicitly warn: %q",want) }
  }
 }
