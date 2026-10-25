@@ -128,3 +128,10 @@ func TestClassificationTimeoutPersistsAcrossRestart(t *testing.T) {
   t.Fatalf("reload status %d",w.Code)
  }
 }
+
+func TestAdminSettingsResponsiveLayoutContract(t *testing.T) {
+ html := page.Tree.Root.String()
+ for _, want := range []string{"admin-settings-grid", "admin-settings-actions", "admin-feed-search-timeout", "grid-template-columns:repeat(2,minmax(0,1fr))", "@media(max-width:700px)"} {
+  if !strings.Contains(html, want) { t.Errorf("missing admin settings layout %q", want) }
+ }
+}
