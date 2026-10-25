@@ -45,6 +45,7 @@ type personalArticle struct {
 	Published string `json:"published"`
 	Image     string `json:"image,omitempty"`
  ContentStatus string `json:"contentStatus,omitempty"`
+ AvailabilityStatus string `json:"availabilityStatus,omitempty"`
 }
 
 // Personal feed fetching uses a dedicated transport to prevent SSRF, including DNS rebinding and redirects.
@@ -201,7 +202,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 				if i >= cfg.MaxArticlesPerFeed {
 					break
 				}
-				if decisions[i].Classification != "article" {
+				if decisions[i].Classification != "article" && decisions[i].Classification != "unavailable" {
       res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i].Classification, Published:a.Published.Format(time.RFC3339)})
 					continue
 				}
@@ -213,7 +214,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
                     date = a.RawDate
                     warning = "Unrecognized date format"
                 }
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL), ContentStatus: decisions[i].ContentStatus})
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL), ContentStatus: decisions[i].ContentStatus, AvailabilityStatus: classificationAvailability(decisions[i])})
 			}
 			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -351,6 +352,12 @@ func newsClassifyDetail(ctx context.Context, reader, article string) classificat
 	newsClassificationCache.entries[key] = newsClassificationEntry{result, time.Now().Add(ttl)}
 	newsClassificationCache.Unlock()
 	return result
+}
+
+// Confirmed publisher denial is distinct from unknown availability and completeness.
+func classificationAvailability(result classificationOutcome) string {
+ if result.Classification == "unavailable" && result.ContentReason != "timeout" { return "unavailable" }
+ return ""
 }
 
 // HTTP fragments are browser-only and must not invalidate otherwise safe article URLs.
