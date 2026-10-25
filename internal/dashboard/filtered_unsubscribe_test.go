@@ -15,7 +15,9 @@ func TestFilteredSubscriptionOfferContract(t *testing.T) {
   "chooseAllSubscriptions()",
   "renderFilteredSubscriptionOffer();",
   "panel.hidden=true",
-  "title.insertAdjacentElement('afterend',panel)",
+  "heading.insertAdjacentElement('afterend',panel)",
+  "anchor.insertAdjacentElement('beforebegin',heading)",
+  "heading.textContent=feed.name",
  }
  for _,fragment:=range required {
   if !strings.Contains(personalJS,fragment) {t.Errorf("missing UI contract: %q",fragment)}
