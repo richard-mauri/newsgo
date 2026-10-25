@@ -15,6 +15,8 @@ import (
 // It does not change the classification gate, article cache, or subscriptions.
 type adminClassificationDiagnostic struct {
  Classification string `json:"classification"`
+ PublisherHTTPStatus int `json:"publisherHttpStatus,omitempty"`
+ Reason string `json:"reason,omitempty"`
  Failure string `json:"failure,omitempty"`
  HTTPStatus int `json:"httpStatus,omitempty"`
  ElapsedMs int64 `json:"elapsedMs"`
@@ -41,12 +43,14 @@ func classifyDiagnostic(ctx context.Context, reader, article string) adminClassi
  defer response.Body.Close()
  result.HTTPStatus=response.StatusCode
  if response.StatusCode!=http.StatusOK {result.Failure="http_error";result.ElapsedMs=time.Since(started).Milliseconds();return result}
- var parsed classificationOutcome
+ var parsed struct { Classification string `json:"classification"`; Reason string `json:"reason"`; PublisherHTTPStatus int `json:"publisherHttpStatus"` }
  err=json.NewDecoder(io.LimitReader(response.Body,2048)).Decode(&parsed)
  if err!=nil {result.Failure="invalid_json";result.ElapsedMs=time.Since(started).Milliseconds();return result}
  switch parsed.Classification {
  case "article","homepage","unreadable","unavailable":
   result.Classification=parsed.Classification
+  result.Reason=parsed.Reason
+  if parsed.PublisherHTTPStatus>=100 && parsed.PublisherHTTPStatus<=599 {result.PublisherHTTPStatus=parsed.PublisherHTTPStatus}
  default:
   result.Failure="unexpected_classification"
  }
