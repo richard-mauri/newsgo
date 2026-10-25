@@ -659,43 +659,80 @@ el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
-el('admin-exit').addEventListener('click',()=>{
- if(!syncConnected||!isAdmin)return;
- // Reuse the existing Server Sync credential-clearing path.
- el('sync-disconnect').click();
- showView('news');
-});
-const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache'};
+const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout'};
 let retainedLegacyImageSettings=null;
+let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
+const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
+const adminDirty=()=>adminSavedValues!==null&&Object.keys(articleAdminFields).some(key=>adminValues()[key]!==adminSavedValues[key]);
 async function adminRequest(method,payload){
  const response=await fetch('/api/admin/settings',{method,headers:{Authorization:'Bearer '+syncToken,...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
  if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
 }
 async function loadAdmin(){
- if(!syncConnected||!isAdmin)return;
+ if(!syncConnected||!isAdmin)return false;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
   retainedLegacyImageSettings=data.image;
   for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
-  if(!el('admin-articles')){adminStatus('Page is from an older NewsGo build. Reload the page after restarting NewsGo v0.2.54.');return;}
+  adminSavedValues=adminValues();
   adminStatus('Server settings loaded (revision '+adminRevision+').');
- }catch(e){adminStatus('Could not load settings: '+e.message)}
+  return true;
+ }catch(e){adminStatus('Could not load settings: '+e.message);return false}
+}
+async function saveAdmin(){
+ if(!syncConnected||!isAdmin||!retainedLegacyImageSettings)return false;
+ const form=el('admin-form');
+ if(!form.reportValidity())return false;
+ const articles=Object.fromEntries(Object.entries(adminValues()).map(([key,value])=>[key,Number(value)]));
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image:retainedLegacyImageSettings,articles});
+  adminRevision=result.revision;retainedLegacyImageSettings=result.image;adminSavedValues=adminValues();
+  adminStatus('Saved server settings (revision '+adminRevision+').');return true;
+ }catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.');return false}
+}
+function askAdminUnsaved(){
+ return new Promise(resolve=>{
+  const dialog=el('admin-unsaved-dialog');
+  if(typeof dialog.showModal!=='function'){
+   resolve(window.confirm('Discard unsaved administrator settings?')?'discard':'cancel');return;
+  }
+  const done=()=>{dialog.removeEventListener('close',onClose);resolve(dialog.returnValue||'cancel')};
+  const onClose=()=>done();
+  dialog.addEventListener('close',onClose,{once:true});
+  dialog.showModal();
+ });
+}
+async function confirmAdminLeave(action){
+ if(!adminDirty()){await action();return}
+ const choice=await askAdminUnsaved();
+ if(choice==='cancel')return;
+ if(choice==='save' && !(await saveAdmin()))return;
+ await action();
 }
 el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
 el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
-el('close-admin').addEventListener('click',()=>showView('news'));
-el('admin-reload').addEventListener('click',loadAdmin);
-el('admin-form').addEventListener('submit',async event=>{
- event.preventDefault();if(!syncConnected||!isAdmin)return;
- if(!retainedLegacyImageSettings){adminStatus('Reload server settings before saving.');return;}
- const image=retainedLegacyImageSettings;
- const articles={};for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(!field){adminStatus('Old NewsGo page detected. Reload the page.');return;}articles[key]=Number(field.value);}
- try{const result=await adminRequest('PUT',{revision:adminRevision,image,articles});adminRevision=result.revision;retainedLegacyImageSettings=result.image;adminStatus('Saved server settings (revision '+adminRevision+').');}
- catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.')}
-});
+el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
+el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
+ if(!syncConnected||!isAdmin)return;
+ // Exiting admin mode removes the browser's saved credential, unlike Close.
+ // Require explicit confirmation even if all settings are already saved.
+ const dialog=el('admin-exit-dialog');
+ if(typeof dialog.showModal!=='function')return; // Fail closed if safe confirmation is unavailable.
+ const confirmed=await new Promise(resolve=>{
+  const done=()=>resolve(dialog.returnValue==='confirm');
+  dialog.addEventListener('close',done,{once:true});
+  dialog.showModal();
+ });
+ if(!confirmed)return;
+ el('sync-disconnect').click();
+ adminSavedValues=null;
+ showView('news');
+}));
+el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
+el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
+window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
 syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);

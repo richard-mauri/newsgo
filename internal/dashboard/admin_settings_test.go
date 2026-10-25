@@ -101,3 +101,54 @@ func TestAdminSettingsRangeValidation(t *testing.T) {
 		t.Fatalf("bad settings status %d", w.Code)
 	}
 }
+
+// Confirm the 30-second classification preference survives a new store
+// instance and is activated after a simulated process restart.
+func TestClassificationTimeoutPersistsAcrossRestart(t *testing.T) {
+ previous:=currentArticleSettings()
+ defer activeArticleSettings.Store(previous)
+ dir:=t.TempDir()
+ store,err:=NewSyncStore(dir)
+ if err!=nil {t.Fatal(err)}
+ token,err:=store.IssueToken("timeout-admin","")
+ if err!=nil {t.Fatal(err)}
+ if err=store.SetRole("timeout-admin","admin");err!=nil {t.Fatal(err)}
+ cfg:=defaultServerSettings()
+ cfg.Articles.ClassificationTimeoutSeconds=30
+ if w:=adminCall(t,store,http.MethodPut,token,cfg);w.Code!=http.StatusOK {
+  t.Fatalf("save status %d: %s",w.Code,w.Body.String())
+ }
+ restarted,err:=NewSyncStore(dir)
+ if err!=nil {t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err!=nil {t.Fatal(err)}
+ if got:=currentArticleSettings().ClassificationTimeoutSeconds;got!=30 {
+  t.Fatalf("after restart classification timeout = %d, want 30",got)
+ }
+ if w:=adminCall(t,restarted,http.MethodGet,token,nil);w.Code!=http.StatusOK {
+  t.Fatalf("reload status %d",w.Code)
+ }
+}
+
+func TestAdminSettingsResponsiveLayoutContract(t *testing.T) {
+ html := page.Tree.Root.String()
+ for _, want := range []string{"admin-settings-grid", "admin-settings-actions", "admin-feed-search-timeout", "grid-template-columns:repeat(2,minmax(0,1fr))", "@media(max-width:700px)"} {
+  if !strings.Contains(html, want) { t.Errorf("missing admin settings layout %q", want) }
+ }
+}
+
+func TestUnsavedAdminSettingsDialogContract(t *testing.T) {
+ html:=page.Tree.Root.String()
+ for _,want:=range []string{"admin-unsaved-dialog", "Save changes", "Discard changes", "Keep editing"} {
+  if !strings.Contains(html,want) { t.Errorf("missing unsaved settings dialog %q",want) }
+ }
+ for _,want:=range []string{"const adminDirty=", "confirmAdminLeave(", "await saveAdmin()", "beforeunload"} {
+  if !strings.Contains(personalJS,want) { t.Errorf("missing admin dirty protection %q",want) }
+ }
+}
+
+func TestExitAdminModeWarnsBeforeDiscardingBrowserToken(t *testing.T) {
+ if !strings.Contains(page.Tree.Root.String(), "This will discard your saved admin token") { t.Fatal("missing styled token removal warning") }
+ for _,want:=range []string{"admin-exit-dialog", "dialog.showModal()", "dialog.returnValue==='confirm'", "el('sync-disconnect').click()"} {
+  if !strings.Contains(personalJS,want) { t.Errorf("admin exit must explicitly warn: %q",want) }
+ }
+}
