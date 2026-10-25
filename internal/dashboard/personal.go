@@ -202,7 +202,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 				if i >= cfg.MaxArticlesPerFeed {
 					break
 				}
-				if decisions[i].Classification != "article" && decisions[i].Classification != "unavailable" {
+				if decisions[i].Classification != "article" && classificationAvailability(decisions[i]) != "unavailable" {
       res.Filtered = append(res.Filtered, filteredArticle{Title:a.Title, URL:a.URL, Source:src.Name, Reason:decisions[i].Classification, Published:a.Published.Format(time.RFC3339)})
 					continue
 				}
