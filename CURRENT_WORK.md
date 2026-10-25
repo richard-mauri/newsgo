@@ -4,7 +4,8 @@
 - Scope: expose feed-directory search HTTP timeout as a persistent admin setting, retaining the independently configurable classification timeout; backward-migrate existing server-settings.json records without resetting other values.
 - Admin-observed symptom: classification diagnostic showed effective 7 seconds after a prior attempted 30-second admin save. Root cause of live reset not yet verified; startup/GET/PUT source already persists the classification setting. Added 30-second restart regression rather than blindly changing the default.
 - Hardcoded operational values audited: feed search 7s (fixed in branch), global classification semaphore 16, feed fetch slots 4, feed transport dial 5s/header 8s/overall 12s, failed feed cache 20s, classification positive cache 30m, Feedly query cache 10m and 3s rate limit. Some represent safety boundaries and need separate design review before becoming admin controls.
-- Next: focused draft PR and exact-head CI, then owner-side Mac/Safari test of admin save/reload/restart; no merge until approval.
+- Owner accepted revised responsive Admin Settings layout, but requested an unsaved-changes warning before Close or Exit Admin Mode. Added three-way save/discard/keep-editing modal, plus protection when Reload is clicked and a native browser leave warning. Save occurs before leaving; failed saves leave the panel open. Mac/Safari acceptance of this new behavior is pending.
+- Next: verify exact-head CI and owner Mac/Safari Save/Discard/Keep Editing scenarios, plus saved-settings restart; no merge until approval.
 
 ---
 
