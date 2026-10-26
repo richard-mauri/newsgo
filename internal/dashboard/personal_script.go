@@ -298,7 +298,10 @@ function renderSourceSelector(){
  const group=el('followed-options');group.replaceChildren();
  feeds.forEach(f=>{const option=document.createElement('option');option.value='personal:'+f.url;option.textContent=f.name;group.append(option)});
  if(selectedSource&&!feeds.some(f=>f.url===selectedSource))selectedSource='';
- const select=el('read-source');if(select.value.startsWith('personal:')&&!feeds.some(f=>'personal:'+f.url===select.value))select.value='';
+ const select=el('read-source');
+ // Replacing <option> elements clears the current value in Safari. Restore
+ // the saved reading selection rather than silently converting it to All.
+ select.value=activeReadingSelection&&activeReadingSelection!=='all'&&feeds.some(f=>f.url===activeReadingSelection)?'personal:'+activeReadingSelection:'';
 }
 // Every visible article is fetched from a subscribed feed. The server catalog
 // is discovery metadata only; it never supplies unsolicited headlines.
@@ -310,16 +313,87 @@ function readingSelection(source){
 function renderReading(){
  // Also guard saved/selector-driven navigation to excluded publishers.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource=''}
- const selection=readingSelection(el('read-source').value);
+ const restored=activeReadingSelection&&activeReadingSelection!=='all'&&feeds.some(f=>f.url===activeReadingSelection)?'personal:'+activeReadingSelection:'';
+ const selection=readingSelection(restored);
+ el('read-source').value=restored;
  selectedSource=selection.feedURL;
  el('personal-feed').classList.toggle('personal-hidden',!selection.showPersonal);
  el('subscriptions-empty-notice').hidden=!selection.all||registry.length>0;
- el('reading-title').hidden=selection.all;
+ el('reading-title').hidden=true; // Single selected-feed heading is rendered above filtered results.
  el('reading-title').textContent=selection.feedURL?(feeds.find(f=>f.url===selection.feedURL)?.name||'Selected subscription'):'';
  el('personal-section-label').hidden=true;
+ renderFilteredSubscriptionOffer();
  renderPersonalArticles();
 }
 let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedEntries=[];
+
+// This recommendation is based only on classification decisions actually made
+// for the selected feed, never the All subscriptions view.
+function filteredSubscriptionStats(sourceName) {
+ const rejected=filteredEntries.filter(a=>a.source===sourceName&&
+  !['too-old','publisher exclusion','article-domain exclusion'].includes(a.reason)).length;
+ const accepted=allPersonalArticles.filter(a=>a.source===sourceName).length;
+ const evaluated=rejected+accepted;
+ return {rejected,accepted,evaluated,offer:evaluated>=10&&rejected/evaluated>0.9};
+}
+function confirmSubscriptionRemoval(name){
+ return new Promise(resolve=>{
+  const previous=document.activeElement;
+  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
+  const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
+  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','unsubscribe-confirm-title');
+  const title=document.createElement('h3');title.id='unsubscribe-confirm-title';title.textContent='Unsubscribe from '+name+'?';
+  const description=document.createElement('p');description.textContent='This removes the subscription from My Subscriptions. It does not exclude the publisher or any article domain.';
+  const actions=document.createElement('div');actions.className='sync-choice-actions';
+  function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
+  function onKey(event){if(event.key==='Escape'){event.preventDefault();finish(false)}}
+  const cancel=button('Cancel',()=>finish(false));
+  const confirm=button('Unsubscribe',()=>finish(true),'exclusion-confirm-action');
+  actions.append(cancel,confirm);dialog.append(title,description,actions);shade.append(dialog);document.body.append(shade);
+  document.addEventListener('keydown',onKey);cancel.focus();
+ });
+}
+function renderFilteredSubscriptionOffer(){
+ const anchor=el('filtered-articles-card');
+ let heading=el('selected-subscription-heading');
+ if(!heading){heading=document.createElement('h2');heading.id='selected-subscription-heading';anchor.insertAdjacentElement('beforebegin',heading);}
+ heading.hidden=true;
+ let panel=el('filtered-subscription-offer');
+ if(!panel){
+  panel=document.createElement('div');panel.id='filtered-subscription-offer';
+  panel.className='personal-status';heading.insertAdjacentElement('afterend',panel);
+ }
+ panel.replaceChildren();panel.hidden=true;
+ if(activeReadingSelection===null||activeReadingSelection==='all'||!selectedSource)return;
+ const feed=feeds.find(f=>f.url===selectedSource);
+ if(feed){heading.textContent=feed.name;heading.hidden=false;}
+ if(!feed||personalErrors.some(e=>e.startsWith(feed.name+': '))||
+  notProcessedEntries.some(e=>e.source===feed.name&&e.count>0))return;
+ const stats=filteredSubscriptionStats(feed.name);
+ if(!stats.offer)return;
+ const pct=Math.round(100*stats.rejected/stats.evaluated);
+ const message=document.createElement('span');
+ message.textContent=pct+'% of '+stats.evaluated+' classified articles from '+feed.name+
+  ' were filtered ('+stats.rejected+' filtered). ';
+ const action=button('Unsubscribe from '+feed.name,async()=>{
+  // Confirmation is required; displaying a recommendation never alters a subscription.
+  if(!await confirmSubscriptionRemoval(feed.name))return;
+  const record=registry.find(r=>r.kind==='feed'&&r.url===feed.url);
+  if(!record||!unsubscribeRecord(record.id))return;
+  // Keep the reading view unselected after removal; never load all feeds implicitly.
+  ++refreshSequence;
+  activeReadingSelection=null;selectedSource='';
+  localStorage.removeItem(readingSelectionKey);scheduleServerSave();
+  el('read-source').value='';
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
+  el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
+  renderManager();renderReading();
+ });
+ action.className='subscription-unsubscribe-button';
+ action.style.cssText='margin-left:0.75rem;background:#18252d;color:#f1f5f9;border:1px solid #354650;border-radius:12px;padding:0.75rem 1.1rem;font-weight:700;font-size:1rem;cursor:pointer';
+ panel.append(message,action);panel.hidden=false;
+}
+
 function renderFilteredArticles(){
  const card=el('filtered-articles-card'),list=el('filtered-articles-list'),count=el('filtered-articles-count');
  if(!card||!list)return;
@@ -348,7 +422,12 @@ function renderFilteredArticles(){
     const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{Authorization:'Bearer '+syncToken,'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
-    output.textContent='Classification: '+(result.classification||'unknown')+'\\nFailure: '+(result.failure||'none')+'\\nHTTP status: '+(result.httpStatus||'not available')+'\\nElapsed: '+result.elapsedMs+' ms\\nTimeout: '+result.timeoutSeconds+' seconds';
+    const lines=['Classification: '+(result.classification||'unknown')];
+    if(result.reason)lines.push('Reason: '+result.reason);
+    if(Number.isInteger(result.publisherHttpStatus)&&result.publisherHttpStatus>=100&&result.publisherHttpStatus<=599)lines.push('Publisher HTTP status: '+result.publisherHttpStatus);
+    if(result.failure&&result.failure!=='none')lines.push('Diagnostic failure: '+result.failure);
+    if(Number.isFinite(result.elapsedMs))lines.push('Classification request duration: '+result.elapsedMs+' ms');
+    output.textContent=lines.join('\n');
    }catch(error){output.textContent='Diagnostic unavailable: '+error.message;}
   });
   row.append(details);
@@ -358,6 +437,7 @@ function renderFilteredArticles(){
 }
 
 function renderPersonalArticles(){
+ renderFilteredSubscriptionOffer();
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
  const sources=new Set(feeds.filter(f=>activeReadingSelection!==null&&(!selectedSource||f.url===selectedSource)).map(f=>f.name));
@@ -659,7 +739,22 @@ el('sync-disconnect').addEventListener('click',()=>{
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
 });
-const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout'};
+const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
+// Admin control is created beside the existing feed-cache input so no server template migration is needed.
+const feedCacheInput=document.getElementById('admin-feed-cache');
+if(feedCacheInput){
+ const label=document.createElement('label');
+ label.setAttribute('for','admin-classification-cache');
+ label.textContent='Successful classification cache (minutes, 0–30)';
+ label.style.display='block';label.style.marginTop='1rem';
+ const input=document.createElement('input');
+ input.type='number';input.min='0';input.max='30';input.step='1';input.required=true;
+ input.id='admin-classification-cache';input.value='30';
+ input.style.display='block';input.style.width='100%';input.style.maxWidth='22rem';
+ label.append(input);
+ const parent=feedCacheInput.closest('label')||feedCacheInput.parentElement;
+ parent.insertAdjacentElement('afterend',label);
+}
 let retainedLegacyImageSettings=null;
 let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
@@ -741,6 +836,6 @@ setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
 
-message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';renderPersonalArticles();
+message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';if(!rememberedSyncToken)renderPersonalArticles();
 
 })();`

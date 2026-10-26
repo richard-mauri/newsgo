@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"encoding/json"
+ "bytes"
+ "io"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,10 +27,11 @@ type ArticleSettings struct {
  ClassificationConcurrency int `json:"classificationConcurrency"`
  FeedCacheMinutes int `json:"feedCacheMinutes"`
  FeedSearchTimeoutSeconds int `json:"feedSearchTimeoutSeconds"`
+ ClassificationCacheMinutes int `json:"classificationCacheMinutes"`
 }
-func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7} }
+func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 30} }
 func validArticleSettings(a ArticleSettings) bool {
- return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30
+ return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30 && a.ClassificationCacheMinutes >= 0 && a.ClassificationCacheMinutes <= 30
 }
 var activeArticleSettings atomic.Value
 func currentArticleSettings() ArticleSettings { if v := activeArticleSettings.Load(); v != nil { return v.(ArticleSettings) }; return defaultArticleSettings() }
@@ -79,6 +82,7 @@ func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	}
 	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() }
  if v.Articles.FeedSearchTimeoutSeconds == 0 { v.Articles.FeedSearchTimeoutSeconds = defaultArticleSettings().FeedSearchTimeoutSeconds } // migrate historical saved settings
+ if !bytes.Contains(b, []byte(`"classificationCacheMinutes"`)) { v.Articles.ClassificationCacheMinutes = 30 } // migrate pre-setting files without overwriting explicit zero
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
@@ -130,7 +134,9 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	var candidate serverSettings
-	decoder := json.NewDecoder(r.Body)
+	payload, readErr := io.ReadAll(r.Body)
+ if readErr != nil { http.Error(w,"Invalid settings JSON",400);return }
+ decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if e = decoder.Decode(&candidate); e != nil {
 		http.Error(w, "Invalid settings JSON", 400)
@@ -142,6 +148,7 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if candidate.Articles.MaxArticlesPerFeed == 0 { candidate.Articles = current.Articles }
+ if !bytes.Contains(payload, []byte(`"classificationCacheMinutes"`)) {candidate.Articles.ClassificationCacheMinutes=current.Articles.ClassificationCacheMinutes}
  if candidate.Articles.FeedSearchTimeoutSeconds == 0 { candidate.Articles.FeedSearchTimeoutSeconds = current.Articles.FeedSearchTimeoutSeconds } // old admin clients
  if !validServerSettings(candidate) {
 		http.Error(w, "Out-of-range server settings", 400)
@@ -159,5 +166,6 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	activeImageSettings.Store(candidate.Image)
  activeArticleSettings.Store(candidate.Articles)
+ clearNewsClassificationCache()
 	_ = json.NewEncoder(w).Encode(candidate)
 }
