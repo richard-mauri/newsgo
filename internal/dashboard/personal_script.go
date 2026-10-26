@@ -335,8 +335,7 @@ function filteredSubscriptionStats(sourceName) {
  const articles=allPersonalArticles.filter(a=>a.source===sourceName);
  const excluded=articles.filter(a=>excludedURL(a.url)||articleExcluded(a.url)).length;
  const filtered=classifiedFiltered+excluded;
- const total=classifiedFiltered+articles.length+
-  notProcessedEntries.filter(x=>x.source===sourceName).reduce((n,x)=>n+x.count,0);
+ const total=classifiedFiltered+articles.length;
  return {filtered,total,offer:total>0&&filtered/total>0.9};
 }
 function confirmSubscriptionRemoval(name){
@@ -370,7 +369,7 @@ function renderFilteredSubscriptionOffer(){
  if(activeReadingSelection===null||activeReadingSelection==='all'||!selectedSource)return;
  const feed=feeds.find(f=>f.url===selectedSource);
  if(feed){heading.textContent=feed.name;heading.hidden=false;}
- if(!feed||personalErrors.some(e=>e.startsWith(feed.name+': ')))return;
+ if(!feed)return;
  const stats=filteredSubscriptionStats(feed.name);
  if(!stats.offer)return;
  const pct=Math.round(100*stats.filtered/stats.total);
