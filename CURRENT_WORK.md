@@ -1,3 +1,12 @@
+# Active candidate — Issue #31 CnnMon subscription failure (2026-10-26)
+
+- Baseline: GitHub `main`; branch `fix/31-charset-subscribe-feedback`; issue https://github.com/richard-mauri/newsgo/issues/31.
+- Fix XML decoding for ISO-8859-1 declarations in RSS/Atom/RDF using a constrained charset reader; retain rejection for unrecognized charsets.
+- Failed Subscribe becomes **Failure** with a click-to-view themed dialog and Retry control. Preserve the existing bottom-of-panel message for context; do not change stored subscriptions or Server Sync formats.
+- Added targeted charset parser and subscription UI-contract tests. GitHub Actions exact-head outcome and Mac/Safari acceptance pending. Owner must approve merge or release.
+
+---
+
 # Active candidate — Issue #26 selected-subscription unsubscribe recommendation
 
 - Baseline: GitHub main; branch `feat/26-filtered-subscription-unsubscribe`; issue https://github.com/richard-mauri/newsgo/issues/26.
