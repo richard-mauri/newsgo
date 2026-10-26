@@ -1,3 +1,11 @@
+# Active candidate — Issue #33 filtered-ratio unsubscribe recommendation (2026-10-26)
+
+- Baseline `main`; branch `fix/33-unsubscribe-filtered-ratio`; issue https://github.com/richard-mauri/newsgo/issues/33.
+- Offer unsubscribe for a selected feed when >90% of its feed entries are filtered, regardless of filtering reason (age, classification, domain); remove previous minimum of 10 classified entries. Unprocessed entries are counted in the denominator, not as filtered. No automatic unsubscribe and confirmation remains mandatory.
+- Regression test revised. Exact-head CI and owner Mac/Safari confirmation pending; do not merge or release without explicit approval.
+
+---
+
 # Active candidate — Issue #26 selected-subscription unsubscribe recommendation
 
 - Baseline: GitHub main; branch `feat/26-filtered-subscription-unsubscribe`; issue https://github.com/richard-mauri/newsgo/issues/26.
