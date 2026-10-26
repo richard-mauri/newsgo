@@ -8,8 +8,9 @@ import (
 func TestFilteredSubscriptionOfferContract(t *testing.T) {
  required:=[]string{
   "activeReadingSelection==='all'",
-  "evaluated>=10&&rejected/evaluated>0.9",
-  "'too-old','publisher exclusion','article-domain exclusion'",
+  "total>0&&filtered/total>0.9",
+  "const classifiedFiltered=filteredEntries.filter(a=>a.source===sourceName).length",
+  "const excluded=articles.filter(a=>excludedURL(a.url)||articleExcluded(a.url)).length",
   "confirmSubscriptionRemoval(feed.name)",
   "sync-choice-backdrop",
   "sync-choice-dialog",
