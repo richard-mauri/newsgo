@@ -330,11 +330,13 @@ let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedE
 // This recommendation is based only on classification decisions actually made
 // for the selected feed, never the All subscriptions view.
 function filteredSubscriptionStats(sourceName) {
- const rejected=filteredEntries.filter(a=>a.source===sourceName&&
-  !['too-old','publisher exclusion','article-domain exclusion'].includes(a.reason)).length;
- const accepted=allPersonalArticles.filter(a=>a.source===sourceName).length;
- const evaluated=rejected+accepted;
- return {rejected,accepted,evaluated,offer:evaluated>=10&&rejected/evaluated>0.9};
+ // Match the filtered audit shown to the reader, including age and domain exclusions.
+ const classifiedFiltered=filteredEntries.filter(a=>a.source===sourceName).length;
+ const articles=allPersonalArticles.filter(a=>a.source===sourceName);
+ const excluded=articles.filter(a=>excludedURL(a.url)||articleExcluded(a.url)).length;
+ const filtered=classifiedFiltered+excluded;
+ const total=classifiedFiltered+articles.length;
+ return {filtered,total,offer:total>0&&filtered/total>0.9};
 }
 function confirmSubscriptionRemoval(name){
  return new Promise(resolve=>{
@@ -367,14 +369,13 @@ function renderFilteredSubscriptionOffer(){
  if(activeReadingSelection===null||activeReadingSelection==='all'||!selectedSource)return;
  const feed=feeds.find(f=>f.url===selectedSource);
  if(feed){heading.textContent=feed.name;heading.hidden=false;}
- if(!feed||personalErrors.some(e=>e.startsWith(feed.name+': '))||
-  notProcessedEntries.some(e=>e.source===feed.name&&e.count>0))return;
+ if(!feed)return;
  const stats=filteredSubscriptionStats(feed.name);
  if(!stats.offer)return;
- const pct=Math.round(100*stats.rejected/stats.evaluated);
+ const pct=Math.round(100*stats.filtered/stats.total);
  const message=document.createElement('span');
- message.textContent=pct+'% of '+stats.evaluated+' classified articles from '+feed.name+
-  ' were filtered ('+stats.rejected+' filtered). ';
+ message.textContent=pct+'% of '+stats.total+' feed entries from '+feed.name+
+  ' were filtered ('+stats.filtered+' filtered). ';
  const action=button('Unsubscribe from '+feed.name,async()=>{
   // Confirmation is required; displaying a recommendation never alters a subscription.
   if(!await confirmSubscriptionRemoval(feed.name))return;
