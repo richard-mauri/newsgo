@@ -380,7 +380,14 @@ function renderFilteredSubscriptionOffer(){
   if(!await confirmSubscriptionRemoval(feed.name))return;
   const record=registry.find(r=>r.kind==='feed'&&r.url===feed.url);
   if(!record||!unsubscribeRecord(record.id))return;
-  chooseAllSubscriptions();
+  // Keep the reading view unselected after removal; never load all feeds implicitly.
+  ++refreshSequence;
+  activeReadingSelection=null;selectedSource='';
+  localStorage.removeItem(readingSelectionKey);scheduleServerSave();
+  el('read-source').value='';
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
+  el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
+  renderManager();renderReading();
  });
  action.className='subscription-unsubscribe-button';
  action.style.cssText='margin-left:0.75rem;background:#18252d;color:#f1f5f9;border:1px solid #354650;border-radius:12px;padding:0.75rem 1.1rem;font-weight:700;font-size:1rem;cursor:pointer';
