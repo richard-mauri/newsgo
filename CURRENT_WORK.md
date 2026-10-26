@@ -1,3 +1,11 @@
+# Integrated Mac/Safari acceptance candidate — Issues #31 and #33 (2026-10-26)
+
+- Branch `integration/31-33-cnnmoney-acceptance` combines charset parsing and Subscribe Failure dialog from PR #32 with the >90% filtered-article unsubscribe recommendation from PR #34.
+- The sole numeric condition is filtered / processed articles > 90%, regardless of age or other filtering reason, with explicit confirmation and no automatic removal.
+- Integration-only draft PR targets main; neither source PR nor main merged or changed. Final-head CI and owner Safari acceptance required before promotion.
+
+---
+
 # Active candidate — Issue #31 CnnMon subscription failure (2026-10-26)
 
 - Baseline: GitHub `main`; branch `fix/31-charset-subscribe-feedback`; issue https://github.com/richard-mauri/newsgo/issues/31.
