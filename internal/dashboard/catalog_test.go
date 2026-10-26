@@ -12,7 +12,7 @@ func TestRemoteSearchAndSubscriptionPreservation(t *testing.T) {
 			t.Fatalf("missing HTML %s", s)
 		}
 	}
-	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "add({name:f.name", "localStorage.getItem(key)", "submitCatalogSearch"} {
+	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "subscribeClick({name:f.name", "localStorage.getItem(key)", "submitCatalogSearch"} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing JS %s", s)
 		}
@@ -28,7 +28,7 @@ func TestUXNavigationAndSubscriptionManagement(t *testing.T) {
 			t.Fatalf("missing navigation element %s", s)
 		}
 	}
-	for _, s := range []string{`showView('news')`, `showView('subscriptions')`, `syncFollowButtons()`, `textContent='Checking…'`, `following?'Subscribed':'Subscribe'`, `textContent='('+total+')'`} {
+	for _, s := range []string{`showView('news')`, `showView('subscriptions')`, `syncFollowButtons()`, `textContent='Checking…'`, `following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe'`, `textContent='('+total+')'`} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing subscription interaction %s", s)
 		}

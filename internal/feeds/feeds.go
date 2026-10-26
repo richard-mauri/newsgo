@@ -2,6 +2,7 @@ package feeds
 
 import (
 	"context"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -121,6 +122,28 @@ type jsonFeed struct {
 	} `json:"items"`
 }
 
+// xmlDecoder supports the legacy ISO-8859-1 declaration used by some RSS feeds.
+// Other unknown encodings remain errors rather than silently corrupting article data.
+func xmlDecoder(data []byte) *xml.Decoder {
+ d := xml.NewDecoder(bytes.NewReader(data))
+ d.CharsetReader = func(label string, input io.Reader) (io.Reader, error) {
+  switch strings.ToLower(strings.TrimSpace(label)) {
+  case "utf-8", "utf8":
+   return input, nil
+  case "iso-8859-1", "iso8859-1", "latin1":
+   raw, err := io.ReadAll(input)
+   if err != nil { return nil, err }
+   var decoded strings.Builder
+   decoded.Grow(len(raw))
+   for _, b := range raw { decoded.WriteRune(rune(b)) }
+   return strings.NewReader(decoded.String()), nil
+  default:
+   return nil, fmt.Errorf("unsupported XML encoding %q", label)
+  }
+ }
+ return d
+}
+
 func Parse(data []byte) (string, []item, error) {
 	var j jsonFeed
 	if json.Unmarshal(data, &j) == nil && strings.Contains(j.Version, "jsonfeed.org/version/") {
@@ -139,13 +162,13 @@ func Parse(data []byte) (string, []item, error) {
 		return "JSON Feed", out, nil
 	}
 	var root struct{ XMLName xml.Name }
-	if err := xml.Unmarshal(data, &root); err != nil {
+	if err := xmlDecoder(data).Decode(&root); err != nil {
 		return "", nil, fmt.Errorf("invalid feed: %w", err)
 	}
 	switch strings.ToLower(root.XMLName.Local) {
 	case "rss":
 		var f rss
-		if err := xml.Unmarshal(data, &f); err != nil {
+		if err := xmlDecoder(data).Decode(&f); err != nil {
 			return "", nil, err
 		}
 		out := make([]item, 0, len(f.Channel.Items))
@@ -179,7 +202,7 @@ func Parse(data []byte) (string, []item, error) {
 		return "RSS", out, nil
 	case "feed":
 		var f atom
-		if err := xml.Unmarshal(data, &f); err != nil {
+		if err := xmlDecoder(data).Decode(&f); err != nil {
 			return "", nil, err
 		}
 		out := make([]item, 0, len(f.Entries))
@@ -210,7 +233,7 @@ func Parse(data []byte) (string, []item, error) {
 		return "Atom", out, nil
 	case "rdf":
 		var f rdf
-		if err := xml.Unmarshal(data, &f); err != nil {
+		if err := xmlDecoder(data).Decode(&f); err != nil {
 			return "", nil, err
 		}
 		out := make([]item, 0, len(f.Items))

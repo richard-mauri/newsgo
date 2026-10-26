@@ -268,7 +268,7 @@ async function searchCatalog(){
    name.textContent=f.name;detail.textContent=f.website||new URL(f.url).hostname;
    info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);
    const followed=feeds.some(x=>x.url===f.url);
-   const b=button(followed?'Subscribed':'Subscribe',()=>add({name:f.name,category:'Other',url:f.url},b));b.dataset.feedUrl=f.url;b.dataset.publisherDomain=domain;b.disabled=followed||excludedURL(domain);
+   const b=button(followed?'Subscribed':'Subscribe',()=>subscribeClick({name:f.name,category:'Other',url:f.url},b));b.dataset.feedUrl=f.url;b.dataset.publisherDomain=domain;b.disabled=followed||excludedURL(domain);
    const exclude=excludeButton(domain);row.append(info,b);if(exclude)row.append(exclude);root.append(row);
   });
   syncFollowButtons();
@@ -283,7 +283,7 @@ function queryEdited(){
 }
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
-function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
+function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
 function chooseAllSubscriptions(){
  activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
@@ -330,11 +330,13 @@ let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedE
 // This recommendation is based only on classification decisions actually made
 // for the selected feed, never the All subscriptions view.
 function filteredSubscriptionStats(sourceName) {
- const rejected=filteredEntries.filter(a=>a.source===sourceName&&
-  !['too-old','publisher exclusion','article-domain exclusion'].includes(a.reason)).length;
- const accepted=allPersonalArticles.filter(a=>a.source===sourceName).length;
- const evaluated=rejected+accepted;
- return {rejected,accepted,evaluated,offer:evaluated>=10&&rejected/evaluated>0.9};
+ // Match the filtered audit shown to the reader, including age and domain exclusions.
+ const classifiedFiltered=filteredEntries.filter(a=>a.source===sourceName).length;
+ const articles=allPersonalArticles.filter(a=>a.source===sourceName);
+ const excluded=articles.filter(a=>excludedURL(a.url)||articleExcluded(a.url)).length;
+ const filtered=classifiedFiltered+excluded;
+ const total=classifiedFiltered+articles.length;
+ return {filtered,total,offer:total>0&&filtered/total>0.9};
 }
 function confirmSubscriptionRemoval(name){
  return new Promise(resolve=>{
@@ -367,14 +369,13 @@ function renderFilteredSubscriptionOffer(){
  if(activeReadingSelection===null||activeReadingSelection==='all'||!selectedSource)return;
  const feed=feeds.find(f=>f.url===selectedSource);
  if(feed){heading.textContent=feed.name;heading.hidden=false;}
- if(!feed||personalErrors.some(e=>e.startsWith(feed.name+': '))||
-  notProcessedEntries.some(e=>e.source===feed.name&&e.count>0))return;
+ if(!feed)return;
  const stats=filteredSubscriptionStats(feed.name);
  if(!stats.offer)return;
- const pct=Math.round(100*stats.rejected/stats.evaluated);
+ const pct=Math.round(100*stats.filtered/stats.total);
  const message=document.createElement('span');
- message.textContent=pct+'% of '+stats.evaluated+' classified articles from '+feed.name+
-  ' were filtered ('+stats.rejected+' filtered). ';
+ message.textContent=pct+'% of '+stats.total+' feed entries from '+feed.name+
+  ' were filtered ('+stats.filtered+' filtered). ';
  const action=button('Unsubscribe from '+feed.name,async()=>{
   // Confirmation is required; displaying a recommendation never alters a subscription.
   if(!await confirmSubscriptionRemoval(feed.name))return;
@@ -546,13 +547,33 @@ async function refresh(){
  }
 }
 
+function showSubscriptionFailure(trigger,f){
+ const previous=document.activeElement;
+ const shade=document.createElement('div');shade.className='sync-choice-backdrop';
+ const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
+ dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
+ dialog.setAttribute('aria-labelledby','subscription-failure-title');
+ const heading=document.createElement('h3');heading.id='subscription-failure-title';heading.textContent='Subscription failed: '+f.name;
+ const detail=document.createElement('p');detail.textContent=trigger.dataset.subscribeError||'The feed could not be added.';
+ const actions=document.createElement('div');actions.className='sync-choice-actions';
+ function finish(){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus()}
+ function onKey(e){if(e.key==='Escape'){e.preventDefault();finish()}}
+ const close=button('Close',finish);
+ const retry=button('Retry',()=>{finish();delete trigger.dataset.subscribeError;add(f,trigger)});
+ actions.append(close,retry);dialog.append(heading,detail,actions);shade.append(dialog);document.body.append(shade);
+ document.addEventListener('keydown',onKey);close.focus();
+}
+function subscribeClick(f,trigger){
+ if(trigger&&trigger.dataset.subscribeError){showSubscriptionFailure(trigger,f);return}
+ add(f,trigger);
+}
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{message('Feed not added: '+err.message);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.textContent='Subscribe'}})}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
- data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);const domain=publisherForFeed(f);markSite(info,domain);row.append(info,button('Subscribe',()=>add(f)));const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
+ data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);const domain=publisherForFeed(f);markSite(info,domain);const subscribeButton=button('Subscribe',()=>subscribeClick(f,subscribeButton));row.append(info,subscribeButton);const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
  }catch(err){message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
@@ -563,7 +584,7 @@ el('manage-personal').addEventListener('click',()=>showView('discover'));
 function chooseIncluded(name){const f=catalogByName.get(name);if(f)chooseSource(f.url)}
 document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{
  const f=catalogByName.get(b.dataset.includedSource);
- if(f)add(f,b);
+ if(f)subscribeClick(f,b);
 }));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
 el('read-source').addEventListener('change',()=>{const value=el('read-source').value;if(value.startsWith('personal:'))chooseSource(value.slice(9));else chooseAllSubscriptions()});
