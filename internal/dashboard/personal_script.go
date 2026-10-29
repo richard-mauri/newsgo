@@ -424,7 +424,13 @@ function renderFilteredArticles(){
  count.textContent='('+display.length+' filtered, '+pending.reduce((n,x)=>n+x.count,0)+' unprocessed)';
  card.hidden=activeReadingSelection===null;
  if(display.length===0&&pending.length===0){const empty=document.createElement('p');empty.className='personal-status';empty.textContent='No filtered or unprocessed entries reported for this selection.';list.append(empty);}
- for(const a of display){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);
+ const groups=new Map();
+ for(const a of display){const classification=a.reason||'unknown';if(!groups.has(classification))groups.set(classification,[]);groups.get(classification).push(a)}
+ const labelForReason=reason=>({'too-old':'Outside article age limit','homepage':'Homepage / index','unreadable':'Unreadable','unavailable':'Unavailable','unknown':'Unknown classification','publisher exclusion':'Publisher excluded','article-domain exclusion':'Article domain excluded'}[reason]||reason);
+ for(const [reason,items] of [...groups.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
+  const section=document.createElement('section');section.className='filtered-classification-group';
+  const heading=document.createElement('h3');heading.textContent=labelForReason(reason)+' ('+items.length+')';section.append(heading);
+  for(const a of items){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);
  if(syncConnected&&isAdmin&&a.url&&a.reason!=='too-old'&&a.reason!=='publisher exclusion'&&a.reason!=='article-domain exclusion'){
   const details=document.createElement('details');
   const summary=document.createElement('summary');summary.textContent='Admin diagnostics (run fresh classification)';
@@ -447,7 +453,8 @@ function renderFilteredArticles(){
   });
   row.append(details);
  }
- list.append(row)}
+ section.append(row)}
+ list.append(section)}
  for(const x of pending){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';list.append(p)}
 }
 
