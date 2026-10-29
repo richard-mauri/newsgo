@@ -119,3 +119,18 @@ func mustRead(t *testing.T, path string) []byte {
 	}
 	return b
 }
+
+func TestLeadStoryPreferencesSyncRoundTrip(t *testing.T) {
+ store,err:=NewSyncStore(t.TempDir());if err!=nil {t.Fatal(err)}
+ token,err:=store.IssueToken("leadtest","lead prefs");if err!=nil {t.Fatal(err)}
+ input:=storedPrefs{MaximumLeadStories:12,LeadOnlyAllSubscriptions:true}
+ saved:=syncCall(t,store,"PUT",token,input)
+ if saved.Code!=http.StatusOK {t.Fatalf("save: %d %s",saved.Code,saved.Body.String())}
+ got:=syncCall(t,store,"GET",token,nil)
+ if got.Code!=http.StatusOK {t.Fatalf("read: %d %s",got.Code,got.Body.String())}
+ var prefs userPrefs
+ if err:=json.Unmarshal(got.Body.Bytes(),&prefs);err!=nil {t.Fatal(err)}
+ if prefs.MaximumLeadStories!=12||!prefs.LeadOnlyAllSubscriptions {t.Fatalf("preferences not persisted: %+v",prefs.storedPrefs)}
+ if validPrefs(storedPrefs{MaximumLeadStories:21}) {t.Fatal("lead count above maximum accepted")}
+ if !validPrefs(storedPrefs{}) {t.Fatal("legacy profiles must remain valid")}
+}

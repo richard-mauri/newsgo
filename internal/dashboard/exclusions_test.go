@@ -12,7 +12,7 @@ func TestExclusionControlsPreserveSubscriptionFlows(t *testing.T) {
 		"function subscribeRecord(record)",
 		"function unsubscribeRecord(id)",
 		"function renderManager()",
-		"function chooseAllSubscriptions()",
+		"function chooseAllSubscriptions(leadOnly=false)",
 		"function saveExclusions(list)",
 		"function renderExclusionManager()",
 		"function excludeButton(domain)",
