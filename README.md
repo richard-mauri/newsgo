@@ -38,3 +38,16 @@ The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NN
 
 ## Documentation map
 [AGENTS.md](AGENTS.md) specifies development rules. [ARCHITECTURE.md](ARCHITECTURE.md) describes implemented internals. [CURRENT_WORK.md](CURRENT_WORK.md) records the active candidate and acceptance status. Historical development is available through Git history rather than standalone version-note files.
+
+## Admin diagnostics (candidate)
+
+Authenticated administrators can open **Diagnostics** after reading one feed or All Subscriptions. The panel shows the latest completed browser read: fetched feed entries, accepted articles, filtered entries, entries beyond the processing cap, feed errors and actual thumbnail load outcomes (loaded, failed, pending or not requested). Thumbnail counts update as image events occur. These browser-local observations do not persist to Server Sync and do not run extra publisher requests. The existing **Filtered / unprocessed articles** section groups rejected items by classification or exclusion reason; entries beyond the cap remain separately labeled as unprocessed.
+
+Timing diagnostics show browser-observed refresh and batch durations, browser render duration, sum of per-feed fetch/wait and classification durations, and mean thumbnail completion-event latency. Summed server per-feed durations are not additive wall-clock stages. These timings do not yet report cache hits or specific thumbnail failure stages.
+
+### Optional RSS metadata-only mode
+
+In **Reading Preferences**, enable **Use RSS metadata only** to bypass ScraperGo article classification and thumbnail extraction while constructing the headline briefing. NewsGo uses RSS/Atom/JSON feed titles, dates, links and HTTPS image metadata when provided; article-age and feed processing limits continue to apply. RSS-only results can include homepages or other non-articles, and some publisher images may be missing or blocked by hotlink protection. Opening a headline still uses ScraperGo. This new mode defaults off and is saved in this browser only, not in Server Sync.
+
+
+Reading Preferences also offer browser-local Maximum Lead Stories (1–20, default 3) and Lead Stories only in All Subscriptions (default off). The latter skips Latest Articles rendering, not feed fetching or classification. These coexist with RSS metadata only and admin Diagnostics.
