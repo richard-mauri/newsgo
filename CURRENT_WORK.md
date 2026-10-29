@@ -3,6 +3,7 @@
 - Issue: https://github.com/richard-mauri/newsgo/issues/36. Branch `feat/36-admin-diagnostics-classification` from authoritative `main`; scoped draft PR planned, not merged or released.
 - Repro supplied by owner: All Subscriptions repeatedly shows zero thumbnails after completing, while an individual subscription shows thumbnails.
 - Candidate: Admin-only Diagnostics panel reports latest completed browser read totals, actual image loading outcomes, and per-feed errors. Non-featured thumbnail images are lazy-loaded instead of all eager; failed image status is recorded before the image is removed. Existing filtered view is grouped by classification/exclusion reason with unprocessed kept separate.
+- Correction at `50af191`: initial diagnostics image instrumentation omitted `img.src=a.image`, producing empty image rectangles in Safari; restored. Original draft-head Go CI #202 passed but did not catch this browser behavior. New-head CI and Mac/Safari acceptance are pending.
 - No ScraperGo changes, no server persistence or user data migrations. Go CI, Mac build, all-subscriptions Safari test and image outcome verification remain pending. Owner must approve merge, tag and release.
 
 ---
