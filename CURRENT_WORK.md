@@ -1,3 +1,12 @@
+# Issue #39 — Lead Stories reading preferences (2026-10-29)
+
+- Issue https://github.com/richard-mauri/newsgo/issues/39; branch `feat/39-lead-story-preferences` from authoritative main, independent of unmerged PR #37 (RSS-only and diagnostics).
+- Add browser-local maximum Lead Stories (1–20, default 3) and 'Lead Stories only when reading All Subscriptions' (default off). Existing newest-first, duplicate filtering and individual-subscription view are retained; skipped latest story elements are not created in lead-only All mode.
+- These settings are not added to Server Sync. This branch does not include RSS-only changes from PR #37 and must be integrated thoughtfully after both changes are approved; neither branch is merged.
+- Exact-head CI and Mac/Safari acceptance pending; no merge/tag/release authorized.
+
+---
+
 # Integrated Mac/Safari acceptance candidate — Issues #31 and #33 (2026-10-26)
 
 - Branch `integration/31-33-cnnmoney-acceptance` combines charset parsing and Subscribe Failure dialog from PR #32 with the >90% filtered-article unsubscribe recommendation from PR #34.
