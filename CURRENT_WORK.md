@@ -1,3 +1,12 @@
+# Issue #36 — admin Diagnostics and classification-grouped filtered articles (2026-10-29)
+
+- Issue: https://github.com/richard-mauri/newsgo/issues/36. Branch `feat/36-admin-diagnostics-classification` from authoritative `main`; scoped draft PR planned, not merged or released.
+- Repro supplied by owner: All Subscriptions repeatedly shows zero thumbnails after completing, while an individual subscription shows thumbnails.
+- Candidate: Admin-only Diagnostics panel reports latest completed browser read totals, actual image loading outcomes, and per-feed errors. Non-featured thumbnail images are lazy-loaded instead of all eager; failed image status is recorded before the image is removed. Existing filtered view is grouped by classification/exclusion reason with unprocessed kept separate.
+- No ScraperGo changes, no server persistence or user data migrations. Go CI, Mac build, all-subscriptions Safari test and image outcome verification remain pending. Owner must approve merge, tag and release.
+
+---
+
 # Integrated Mac/Safari acceptance candidate — Issues #31 and #33 (2026-10-26)
 
 - Branch `integration/31-33-cnnmoney-acceptance` combines charset parsing and Subscribe Failure dialog from PR #32 with the >90% filtered-article unsubscribe recommendation from PR #34.
