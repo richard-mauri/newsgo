@@ -42,3 +42,5 @@ The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NN
 ## Admin diagnostics (candidate)
 
 Authenticated administrators can open **Diagnostics** after reading one feed or All Subscriptions. The panel shows the latest completed browser read: fetched feed entries, accepted articles, filtered entries, entries beyond the processing cap, feed errors and actual thumbnail load outcomes (loaded, failed, pending or not requested). Thumbnail counts update as image events occur. These browser-local observations do not persist to Server Sync and do not run extra publisher requests. The existing **Filtered / unprocessed articles** section groups rejected items by classification or exclusion reason; entries beyond the cap remain separately labeled as unprocessed.
+
+Timing diagnostics show browser-observed refresh and batch durations, browser render duration, sum of per-feed fetch/wait and classification durations, and mean thumbnail completion-event latency. Summed server per-feed durations are not additive wall-clock stages. These timings do not yet report cache hits or specific thumbnail failure stages.
