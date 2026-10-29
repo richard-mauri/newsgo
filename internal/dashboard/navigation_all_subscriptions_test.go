@@ -7,8 +7,8 @@ import (
 
 func TestReadAllArticlesIsOnlyCombinedFeedNavigation(t *testing.T) {
  for _, fragment := range []string{
-  "function chooseAllSubscriptions()", "el('read-source').value=''", "renderReading();showView('news')",
-  "button('Read All Articles',chooseAllSubscriptions)", "if(source&&excludedURL(publisherForFeed(source))){chooseAllSubscriptions();return}",
+  "function chooseAllSubscriptions(leadOnly=false)", "el('read-source').value=''", "renderReading();showView('news')",
+  "button('Read All Articles',()=>chooseAllSubscriptions(false))", "button('Read Lead Articles',()=>chooseAllSubscriptions(true))", "leadOnlyAllSubscriptions=leadOnly", "if(source&&excludedURL(publisherForFeed(source))){chooseAllSubscriptions();return}",
  } {
   if !strings.Contains(personalJS, fragment) { t.Errorf("missing combined-feed behavior: %s", fragment) }
  }
