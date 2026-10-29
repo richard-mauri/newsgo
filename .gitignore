@@ -4,3 +4,7 @@ data/
 .cloudflared/
 newsgo.log
 report.json
+
+# Local configuration and build artifacts
+config.toml
+dist/
