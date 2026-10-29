@@ -18,6 +18,7 @@ import (
 type personalRequest struct {
 	Feeds []feeds.Source `json:"feeds"`
  MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
+ RSSMetadataOnly bool `json:"rssMetadataOnly,omitempty"`
 }
 type personalResult struct {
 	Source   feeds.Source      `json:"source"`
@@ -200,7 +201,12 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    res.FeedEntries = len(articles)
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
    classifyStarted:=time.Now()
-   decisions := classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
+   decisions := make([]string,len(articles))
+   if req.RSSMetadataOnly {
+     for i,a := range articles {if articleTooOld(a.Published,req.MaxArticleAgeDays,time.Now()){decisions[i]="too-old"}else{decisions[i]="article"}}
+   } else {
+     decisions = classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
+   }
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
@@ -218,7 +224,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
                     date = a.RawDate
                     warning = "Unrecognized date format"
                 }
-				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: scraperThumbnailURL(s.reader, a.URL)})
+				res.Articles = append(res.Articles, personalArticle{Title: a.Title, URL: a.URL, Open: s.reader + "/?url=" + url.QueryEscape(a.URL), Source: src.Name, Category: src.Category, Date: date, DateWarning: warning, Published: a.Published.Format(time.RFC3339), Image: func() string {if req.RSSMetadataOnly {if safeRSSImage(a.Image){return a.Image};return ""};return scraperThumbnailURL(s.reader, a.URL)}()})
 			}
 			if msg == "" && len(res.Articles) == 0 && res.FeedEntries == 0 {
 				res.Error = "Feed contains no usable article links"
@@ -357,4 +363,9 @@ func normalizeClassificationURL(raw string) string {
  u.Fragment = ""
  u.RawFragment = ""
  return u.String()
+}
+
+// safeRSSImage only exposes HTTPS feed-supplied images; no ScraperGo extraction is requested.
+func safeRSSImage(raw string) bool {
+ u,e:=url.Parse(strings.TrimSpace(raw));return e==nil&&u.Scheme=="https"&&u.Host!=""&&u.User==nil&&u.Fragment==""
 }
