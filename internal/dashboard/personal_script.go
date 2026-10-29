@@ -17,6 +17,11 @@ const exclusionKey='newsgo.excludedDomains.v1';
 let excludedDomains=[],articleDomains=[],exclusionError='';
 const articleExclusionKey='newsgo.excludedArticleDomains.v1';
 const agePreferenceKey='newsgo.maxArticleAgeDays.v1';
+const leadCountKey='newsgo.maximumLeadStories.v1';
+const leadOnlyKey='newsgo.leadOnlyAllSubscriptions.v1';
+function normalizedLeadCount(v){const n=Number(v);return Number.isInteger(n)&&n>=1&&n<=20?n:3}
+let maximumLeadStories=normalizedLeadCount(localStorage.getItem(leadCountKey));
+let leadOnlyAllSubscriptions=localStorage.getItem(leadOnlyKey)==='true';
 const allowedAges=[0,1,3,7,14,30,60];
 function normalizedAge(v){const n=Number(v);return allowedAges.includes(n)?n:0}
 let maxArticleAgeDays=normalizedAge(localStorage.getItem(agePreferenceKey)||0);
@@ -447,7 +452,8 @@ function renderPersonalArticles(){
  let count=0;
  articles.forEach(a=>{
   if(seen.has(a.url))return;seen.add(a.url);
-  const featured=count++<3;
+  const featured=count++<maximumLeadStories;
+  if(!featured&&leadOnlyAllSubscriptions&&activeReadingSelection==='all')return;
   const row=document.createElement('article');row.className=featured?'feature':'item';
   const body=document.createElement('div');body.className='item-body';
   const meta=document.createElement('div');meta.className='source';meta.textContent=a.source+' · '+a.category;
@@ -465,7 +471,7 @@ function renderPersonalArticles(){
  renderFilteredArticles();
  const hasArticles=count>0;
  el('personal-lead-section').hidden=!hasArticles;
- el('personal-latest-section').hidden=!hasArticles;
+ el('personal-latest-section').hidden=!hasArticles||(leadOnlyAllSubscriptions&&activeReadingSelection==='all');
  const selected=feeds.find(f=>f.url===selectedSource);
  if(activeReadingSelection===null){el('personal-loading').textContent='Welcome to NewsGo. Find Subscriptions, or select one subscription or All Subscriptions to read.';return}
  if(!el('personal-loading').classList.contains('is-refreshing'))
@@ -826,6 +832,10 @@ async function confirmAdminLeave(action){
 }
 el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
+el('maximum-lead-stories').value=String(maximumLeadStories);
+el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));renderPersonalArticles()});
+el('lead-only-all-subscriptions').checked=leadOnlyAllSubscriptions;
+el('lead-only-all-subscriptions').addEventListener('change',e=>{leadOnlyAllSubscriptions=e.target.checked;localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));renderPersonalArticles()});
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
 el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
