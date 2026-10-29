@@ -26,6 +26,8 @@ type personalResult struct {
  Filtered []filteredArticle `json:"filtered,omitempty"`
  NotProcessed int `json:"notProcessed,omitempty"`
  FeedEntries int `json:"feedEntries,omitempty"`
+ FeedDurationMs int64 `json:"feedDurationMs"`
+ ClassificationDurationMs int64 `json:"classificationDurationMs"`
 }
 type filteredArticle struct {
  Title string `json:"title"`
@@ -190,12 +192,16 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			res.Error = "Duplicate feed URL"
 		} else {
 			seen[src.URL] = true
-			articles, msg := personalFetch(r.Context(), src)
+			feedStarted:=time.Now()
+            articles, msg := personalFetch(r.Context(), src)
+            res.FeedDurationMs=time.Since(feedStarted).Milliseconds()
 			res.Error = msg
 			cfg := currentArticleSettings()
    res.FeedEntries = len(articles)
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
+   classifyStarted:=time.Now()
    decisions := classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
+   res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
 					break
