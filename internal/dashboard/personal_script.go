@@ -327,6 +327,8 @@ function renderReading(){
 }
 let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedEntries=[];
 let latestReadStats=null;
+let latestTiming=null;
+const thumbnailTiming=new Map();
 const thumbnailResults=new Map();
 function updateDiagnostics(){
  const panel=el('diagnostics-summary');if(!panel)return;
@@ -337,6 +339,7 @@ function updateDiagnostics(){
  for(const url of relevant){const status=thumbnailResults.get(url);if(status==='loaded')loaded++;else if(status==='failed')failed++;else if(status==='pending')pending++;else notRequested++;}
  const values=[['Feed entries fetched',latestReadStats.fetched],['Accepted articles',latestReadStats.accepted],['Thumbnails loaded',loaded],['Thumbnail failures',failed],['Thumbnails pending',pending],['Images not requested',notRequested],['Filtered by classification or age',latestReadStats.filtered],['Unprocessed (feed cap)',latestReadStats.unprocessed]];
  for(const [name,value] of values){const item=document.createElement('div');const label=document.createElement('strong');label.textContent=name;const number=document.createElement('div');number.textContent=String(value);number.style.fontSize='1.5rem';item.append(label,number);panel.append(item)}
+ const timingPanel=el('diagnostics-timing');if(timingPanel){timingPanel.replaceChildren();if(latestTiming){const rows=[['Total refresh',latestTiming.totalMs],['Feed batches (network + classification)',latestTiming.batchMs],['Browser render',latestTiming.renderMs]];for(const [label,value] of rows){const p=document.createElement('p');p.textContent=label+': '+Math.round(value)+' ms';timingPanel.append(p)}const completed=[...thumbnailTiming.values()].filter(x=>Number.isFinite(x.duration));if(completed.length){const average=completed.reduce((n,x)=>n+x.duration,0)/completed.length;const p=document.createElement('p');p.textContent='Thumbnail load/error event time: average '+Math.round(average)+' ms across '+completed.length+' completed images';timingPanel.append(p)}}else timingPanel.textContent='Timing available after the next completed read.';}
  el('diagnostics-note').textContent='Source: '+latestReadStats.selection+' · '+latestReadStats.feeds+' feeds · '+latestReadStats.failedFeeds+' feed errors. Thumbnail outcomes can change after the read completes.';
 }
 
@@ -489,9 +492,10 @@ function renderPersonalArticles(){
   sub.append(original);body.append(meta,title,sub);const exclude=excludeButton(a.url);if(exclude)body.append(exclude);const ad=articleDomain(a.url);if(ad){body.append(button('Exclude articles from '+ad,()=>toggleArticleDomain(ad),'exclude-article-domain'))}
   if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
    const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';img.src=a.image;
+   const imageStart=performance.now();
    if(!thumbnailResults.has(a.url))thumbnailResults.set(a.url,'pending');
-   img.addEventListener('load',()=>{thumbnailResults.set(a.url,'loaded');updateDiagnostics()});
-   img.addEventListener('error',()=>{thumbnailResults.set(a.url,'failed');updateDiagnostics();img.remove()});
+   img.addEventListener('load',()=>{thumbnailResults.set(a.url,'loaded');thumbnailTiming.set(a.url,{duration:performance.now()-imageStart});updateDiagnostics()});
+   img.addEventListener('error',()=>{thumbnailResults.set(a.url,'failed');thumbnailTiming.set(a.url,{duration:performance.now()-imageStart});updateDiagnostics();img.remove()});
    if(featured)body.prepend(img);else row.append(img);
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
@@ -546,6 +550,7 @@ function showView(view){
 }
 let refreshSequence=0;
 async function refresh(){
+ const refreshStart=performance.now();let batchDuration=0;
  const sequence=++refreshSequence;
  const loading=el('personal-loading');
  if(activeReadingSelection===null)return;
@@ -560,21 +565,23 @@ async function refresh(){
   let completed=0;
   for(let offset=0;offset<snapshot.length;offset+=8){
    const batch=snapshot.slice(offset,offset+8);
+   const batchStart=performance.now();
    const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays})});
    if(sequence!==refreshSequence)return;
    if(!res.ok)throw new Error('HTTP '+res.status);
-   data.push(...await res.json());
+   data.push(...await res.json());batchDuration+=performance.now()-batchStart;
    if(sequence!==refreshSequence)return;
    completed+=batch.length;
    if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
   }
   if(sequence!==refreshSequence)return;
-  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();
   latestReadStats={fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
   loading.classList.remove('is-refreshing');
-  renderPersonalArticles();
+  const renderStart=performance.now();renderPersonalArticles();
+  latestTiming={totalMs:performance.now()-refreshStart,batchMs:batchDuration,renderMs:performance.now()-renderStart};updateDiagnostics();
   const succeeded=data.filter(group=>!group.error).length;
   loading.textContent='Updated '+succeeded+' of '+snapshot.length+' web feeds'+(personalErrors.length?' · '+personalErrors.length+' failed':'')+context+' · '+allPersonalArticles.filter(a=>!excludedURL(a.url)&&!articleExcluded(a.url)).length+' visible headlines';
  }catch(e){
