@@ -1,9 +1,24 @@
-# Issue #39 — Lead Stories reading preferences (2026-10-29)
+# Integrated PR #40 — Lead Stories preferences + PR #37 work (2026-10-29)
 
-- Issue https://github.com/richard-mauri/newsgo/issues/39; branch `feat/39-lead-story-preferences` from authoritative main, independent of unmerged PR #37 (RSS-only and diagnostics).
-- Add browser-local maximum Lead Stories (1–20, default 3) and 'Lead Stories only when reading All Subscriptions' (default off). Existing newest-first, duplicate filtering and individual-subscription view are retained; skipped latest story elements are not created in lead-only All mode.
-- These settings are not added to Server Sync. This branch does not include RSS-only changes from PR #37 and must be integrated thoughtfully after both changes are approved; neither branch is merged.
-- Exact-head CI and Mac/Safari acceptance pending; no merge/tag/release authorized.
+- Working branch `feat/39-lead-story-preferences` contains the current contents of PR #37 (RSS-only, admin Diagnostics, classification filter tabs, timing) plus Issue #39 browser-local Lead Stories maximum 1–20 and All Subscriptions lead-only rendering. It is still based on main; no branch merge or release was performed.
+- Reconciled `internal/dashboard/personal.go`, `personal_script.go`, `dashboard.go`, and `README.md`; preserve existing RSS-only default off, admin-only diagnostics, image eager loading/src, browser-local saved settings and Server Sync data.
+- The only new display behavior is selectable lead count and optional All Subscriptions lead-only (defaults 3/off); it skips rendering non-lead stories, but does not reduce fetch/classification work. Source ranking is unchanged.
+- PR #37 remains independently open and overlapping; coordinate before either merge. CI at head and owner Mac/Safari verification outstanding. No merge/version/release authorization.
+
+---
+
+- Added scoped timing instrumentation: total refresh, batch requests, summed per-feed fetch/wait and classification durations, render time and mean completed thumbnail event latency. Cache hit rates and image failure-stage timing are not implemented. Final-head CI and owner Safari tests pending.
+
+- Issue #38: Added opt-in browser-only RSS metadata mode to Reading Preferences; default remains ScraperGo-verified. RSS mode skips classification and uses feed-provided HTTPS images, retains age/feed cap, and defers ScraperGo reading until article click. It may include nonarticles and images may be missing. CI/Mac Safari checks pending; not a release.
+
+# Issue #36 — admin Diagnostics and classification-grouped filtered articles (2026-10-29)
+
+- Issue: https://github.com/richard-mauri/newsgo/issues/36. Branch `feat/36-admin-diagnostics-classification` from authoritative `main`; scoped draft PR planned, not merged or released.
+- Repro supplied by owner: All Subscriptions repeatedly shows zero thumbnails after completing, while an individual subscription shows thumbnails.
+- Follow-up 2026-10-29: filtered entries now use one accessible tab per classification/reason, with counts; unprocessed is its own tab. Restored original eager thumbnail loading (no unauthorized lazy behavior change). Safari acceptance pending.
+- Candidate: Admin-only Diagnostics panel reports latest completed browser read totals, actual image loading outcomes, and per-feed errors. Non-featured thumbnail images are lazy-loaded instead of all eager; failed image status is recorded before the image is removed. Existing filtered view is grouped by classification/exclusion reason with unprocessed kept separate.
+- Correction at `50af191`: initial diagnostics image instrumentation omitted `img.src=a.image`, producing empty image rectangles in Safari; restored. Original draft-head Go CI #202 passed but did not catch this browser behavior. New-head CI and Mac/Safari acceptance are pending.
+- No ScraperGo changes, no server persistence or user data migrations. Go CI, Mac build, all-subscriptions Safari test and image outcome verification remain pending. Owner must approve merge, tag and release.
 
 ---
 
