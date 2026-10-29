@@ -12,7 +12,7 @@ func TestPersonalFeedsHaveLeadAndLatestSections(t *testing.T) {
 			t.Errorf("missing personal headline section: %s", part)
 		}
 	}
-	for _, part := range []string{`const featured=count++<3;`, `row.className=featured?'feature':'item'`, `lead.append(row)`, `list.append(row)`, `seen.has(a.url)`, `el('personal-lead-section').hidden=!hasArticles;`} {
+	for _, part := range []string{`const featured=count++<maximumLeadStories;`, `if(!featured&&leadOnlyAllSubscriptions&&activeReadingSelection==='all')return;`, `el('personal-latest-section').hidden=!hasArticles||(leadOnlyAllSubscriptions&&activeReadingSelection==='all');`, `row.className=featured?'feature':'item'`, `lead.append(row)`, `list.append(row)`, `seen.has(a.url)`, `el('personal-lead-section').hidden=!hasArticles;`} {
 		if !strings.Contains(personalJS, part) {
 			t.Errorf("missing personal lead rendering: %s", part)
 		}
