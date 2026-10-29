@@ -38,3 +38,7 @@ The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NN
 
 ## Documentation map
 [AGENTS.md](AGENTS.md) specifies development rules. [ARCHITECTURE.md](ARCHITECTURE.md) describes implemented internals. [CURRENT_WORK.md](CURRENT_WORK.md) records the active candidate and acceptance status. Historical development is available through Git history rather than standalone version-note files.
+
+## Admin diagnostics (candidate)
+
+Authenticated administrators can open **Diagnostics** after reading one feed or All Subscriptions. The panel shows the latest completed browser read: fetched feed entries, accepted articles, filtered entries, entries beyond the processing cap, feed errors and actual thumbnail load outcomes (loaded, failed, pending or not requested). Thumbnail counts update as image events occur. These browser-local observations do not persist to Server Sync and do not run extra publisher requests. The existing **Filtered / unprocessed articles** section groups rejected items by classification or exclusion reason; entries beyond the cap remain separately labeled as unprocessed.
