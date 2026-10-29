@@ -326,6 +326,20 @@ function renderReading(){
  renderPersonalArticles();
 }
 let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedEntries=[];
+let latestReadStats=null;
+const thumbnailResults=new Map();
+function updateDiagnostics(){
+ const panel=el('diagnostics-summary');if(!panel)return;
+ panel.replaceChildren();
+ if(!latestReadStats){panel.textContent='No completed read yet.';return;}
+ const relevant=new Set(allPersonalArticles.filter(a=>!excludedURL(a.url)&&!articleExcluded(a.url)).map(a=>a.url));
+ let loaded=0,failed=0,pending=0,notRequested=0;
+ for(const url of relevant){const status=thumbnailResults.get(url);if(status==='loaded')loaded++;else if(status==='failed')failed++;else if(status==='pending')pending++;else notRequested++;}
+ const values=[['Feed entries fetched',latestReadStats.fetched],['Accepted articles',latestReadStats.accepted],['Thumbnails loaded',loaded],['Thumbnail failures',failed],['Thumbnails pending',pending],['Images not requested',notRequested],['Filtered by classification or age',latestReadStats.filtered],['Unprocessed (feed cap)',latestReadStats.unprocessed]];
+ for(const [name,value] of values){const item=document.createElement('div');const label=document.createElement('strong');label.textContent=name;const number=document.createElement('div');number.textContent=String(value);number.style.fontSize='1.5rem';item.append(label,number);panel.append(item)}
+ el('diagnostics-note').textContent='Source: '+latestReadStats.selection+' · '+latestReadStats.feeds+' feeds · '+latestReadStats.failedFeeds+' feed errors. Thumbnail outcomes can change after the read completes.';
+}
+
 
 // This recommendation is based only on classification decisions actually made
 // for the selected feed, never the All subscriptions view.
@@ -457,12 +471,16 @@ function renderPersonalArticles(){
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
   sub.append(original);body.append(meta,title,sub);const exclude=excludeButton(a.url);if(exclude)body.append(exclude);const ad=articleDomain(a.url);if(ad){body.append(button('Exclude articles from '+ad,()=>toggleArticleDomain(ad),'exclude-article-domain'))}
   if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
-   const img=document.createElement('img');img.className='article-thumb';img.src=a.image;img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';img.addEventListener('error',()=>img.remove());
+   const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading=featured?'eager':'lazy';img.referrerPolicy='no-referrer';
+   if(!thumbnailResults.has(a.url))thumbnailResults.set(a.url,'pending');
+   img.addEventListener('load',()=>{thumbnailResults.set(a.url,'loaded');updateDiagnostics()});
+   img.addEventListener('error',()=>{thumbnailResults.set(a.url,'failed');updateDiagnostics();img.remove()});
    if(featured)body.prepend(img);else row.append(img);
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
  });
  renderFilteredArticles();
+ updateDiagnostics();
  const hasArticles=count>0;
  el('personal-lead-section').hidden=!hasArticles;
  el('personal-latest-section').hidden=!hasArticles;
@@ -505,8 +523,9 @@ function showView(view){
  el('news-content').classList.toggle('personal-hidden',view!=='news');
  el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
  el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
+ el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics');
  el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -533,7 +552,8 @@ async function refresh(){
    if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
   }
   if(sequence!==refreshSequence)return;
-  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();
+  latestReadStats={fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
   loading.classList.remove('is-refreshing');
@@ -622,7 +642,8 @@ function syncAppearance(){
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
  el('manage-admin').hidden=!(syncConnected&&isAdmin);
- if(!(syncConnected&&isAdmin)&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
+ el('manage-diagnostics').hidden=!(syncConnected&&isAdmin);
+ if(!(syncConnected&&isAdmin)&&(!el('admin-panel').classList.contains('personal-hidden')||!el('diagnostics-panel').classList.contains('personal-hidden')))showView('news');
 }
 function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 async function syncRequest(method,body){
@@ -829,6 +850,8 @@ el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.va
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
 el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
+el('manage-diagnostics').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('diagnostics');updateDiagnostics()}});
+el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
  if(!syncConnected||!isAdmin)return;
