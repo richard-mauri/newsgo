@@ -1,6 +1,13 @@
+# Issue #39 persistence correction
+
+- Owner reports Lead Stories selections are not persistent in connected reader profile. Added optional server profile fields `maximumLeadStories` and `leadOnlyAllSubscriptions`, validation, browser snapshot save/restore, comparison, and save scheduling. Legacy server profiles remain parseable with default 3/off. A sync round-trip regression test covers new fields.
+- RSS-only setting is still browser-local, unchanged; no tokens or unrelated Server Sync behavior modified. Exact-head CI and owner Safari cross-session acceptance pending.
+
+---
+
 # Integrated PR #40 — Lead Stories preferences + PR #37 work (2026-10-29)
 
-- Working branch `feat/39-lead-story-preferences` contains the current contents of PR #37 (RSS-only, admin Diagnostics, classification filter tabs, timing) plus Issue #39 browser-local Lead Stories maximum 1–20 and All Subscriptions lead-only rendering. It is still based on main; no branch merge or release was performed.
+- Working branch `feat/39-lead-story-preferences` contains the current contents of PR #37 (RSS-only, admin Diagnostics, classification filter tabs, timing) plus Issue #39 Lead Stories maximum 1–20 and All Subscriptions lead-only rendering, now also included in Server Sync save/restore. It is still based on main; no branch merge or release was performed.
 - Reconciled `internal/dashboard/personal.go`, `personal_script.go`, `dashboard.go`, and `README.md`; preserve existing RSS-only default off, admin-only diagnostics, image eager loading/src, browser-local saved settings and Server Sync data.
 - The only new display behavior is selectable lead count and optional All Subscriptions lead-only (defaults 3/off); it skips rendering non-lead stories, but does not reduce fetch/classification work. Source ranking is unchanged.
 - PR #37 remains independently open and overlapping; coordinate before either merge. Existing layout test initially failed because it asserted a fixed `count++<3` expression. Updated it to assert the configurable count and lead-only behavior; CI at corrected head pending. Mac/Safari verification outstanding. `devbuild.sh` increments its local build counter only after tests and binary builds complete, so a failed test intentionally retains the prior build number. No merge/version/release authorization.
