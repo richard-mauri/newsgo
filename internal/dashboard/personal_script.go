@@ -478,7 +478,7 @@ function renderPersonalArticles(){
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
   sub.append(original);body.append(meta,title,sub);const exclude=excludeButton(a.url);if(exclude)body.append(exclude);const ad=articleDomain(a.url);if(ad){body.append(button('Exclude articles from '+ad,()=>toggleArticleDomain(ad),'exclude-article-domain'))}
   if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
-   const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading=featured?'eager':'lazy';img.referrerPolicy='no-referrer';
+   const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading=featured?'eager':'lazy';img.referrerPolicy='no-referrer';img.src=a.image;
    if(!thumbnailResults.has(a.url))thumbnailResults.set(a.url,'pending');
    img.addEventListener('load',()=>{thumbnailResults.set(a.url,'loaded');updateDiagnostics()});
    img.addEventListener('error',()=>{thumbnailResults.set(a.url,'failed');updateDiagnostics();img.remove()});
