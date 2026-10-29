@@ -291,7 +291,9 @@ function queryEdited(){
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
-function chooseAllSubscriptions(){
+function chooseAllSubscriptions(leadOnly=false){
+ leadOnlyAllSubscriptions=leadOnly;
+ localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
  activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -526,7 +528,9 @@ function renderManager(){
  const root=el('personal-sources');root.replaceChildren();
  const allRow=document.createElement('div');allRow.className='personal-row';
  const allInfo=document.createElement('strong');allInfo.textContent='All Subscriptions';
- allRow.append(allInfo,button('Read All Articles',chooseAllSubscriptions));root.append(allRow);
+ const allActions=document.createElement('div');allActions.className='personal-form';
+  allActions.append(button('Read All Articles',()=>chooseAllSubscriptions(false)),button('Read Lead Articles',()=>chooseAllSubscriptions(true)));
+  allRow.append(allInfo,allActions);root.append(allRow);
  // Legacy subscription records that could not be mapped remain visible
  // with a clear explanation and an unsubscribe option; do not lose them.
  included.forEach(name=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('strong');info.textContent=name+' · Feed unavailable — select a feed in Find Subscriptions';row.append(info,button('Unsubscribe',()=>{if(unsubscribeRecord('shared:'+name)){renderManager();refresh()}}));root.append(row)});
@@ -692,7 +696,7 @@ function applyServerPreferences(data){
  registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);
   maximumLeadStories=normalizedLeadCount(data.maximumLeadStories||3);leadOnlyAllSubscriptions=data.leadOnlyAllSubscriptions===true;
   localStorage.setItem(leadCountKey,String(maximumLeadStories));localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
-  el('maximum-lead-stories').value=String(maximumLeadStories);el('lead-only-all-subscriptions').checked=leadOnlyAllSubscriptions;syncRevision=data.revision;
+  el('maximum-lead-stories').value=String(maximumLeadStories);syncRevision=data.revision;
  const restored=validReadingSelection(data.lastReadingSelection);if(restored===null)localStorage.removeItem(readingSelectionKey);else localStorage.setItem(readingSelectionKey,restored);
  restoreReadingSelection(restored);
  syncDirty=false;syncPending=false;syncConflict=false;
@@ -884,8 +888,6 @@ el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('maximum-lead-stories').value=String(maximumLeadStories);
 el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleServerSave();renderPersonalArticles()});
-el('lead-only-all-subscriptions').checked=leadOnlyAllSubscriptions;
-el('lead-only-all-subscriptions').addEventListener('change',e=>{leadOnlyAllSubscriptions=e.target.checked;localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));scheduleServerSave();renderPersonalArticles()});
 el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
