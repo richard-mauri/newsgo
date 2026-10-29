@@ -1,5 +1,7 @@
 - Added scoped timing instrumentation: total refresh, batch requests, summed per-feed fetch/wait and classification durations, render time and mean completed thumbnail event latency. Cache hit rates and image failure-stage timing are not implemented. Final-head CI and owner Safari tests pending.
 
+- Issue #38: Added opt-in browser-only RSS metadata mode to Reading Preferences; default remains ScraperGo-verified. RSS mode skips classification and uses feed-provided HTTPS images, retains age/feed cap, and defers ScraperGo reading until article click. It may include nonarticles and images may be missing. CI/Mac Safari checks pending; not a release.
+
 # Issue #36 — admin Diagnostics and classification-grouped filtered articles (2026-10-29)
 
 - Issue: https://github.com/richard-mauri/newsgo/issues/36. Branch `feat/36-admin-diagnostics-classification` from authoritative `main`; scoped draft PR planned, not merged or released.
