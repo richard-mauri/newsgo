@@ -677,7 +677,7 @@ function syncAppearance(){
  el('manage-diagnostics').hidden=!(syncConnected&&isAdmin);
  if(!(syncConnected&&isAdmin)&&(!el('admin-panel').classList.contains('personal-hidden')||!el('diagnostics-panel').classList.contains('personal-hidden')))showView('news');
 }
-function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
+function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 async function syncRequest(method,body){
  const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
  if(response.status===404){const data=await response.json();return {...data,notFound:true}}
@@ -689,7 +689,10 @@ function applyServerPreferences(data){
  if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Server profile contains invalid entries');
  const migrated=convertLegacy(data.subscriptions);
  localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));localStorage.setItem(articleExclusionKey,JSON.stringify(data.excludedArticleDomains||[]));
- registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);syncRevision=data.revision;
+ registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);
+  maximumLeadStories=normalizedLeadCount(data.maximumLeadStories||3);leadOnlyAllSubscriptions=data.leadOnlyAllSubscriptions===true;
+  localStorage.setItem(leadCountKey,String(maximumLeadStories));localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
+  el('maximum-lead-stories').value=String(maximumLeadStories);el('lead-only-all-subscriptions').checked=leadOnlyAllSubscriptions;syncRevision=data.revision;
  const restored=validReadingSelection(data.lastReadingSelection);if(restored===null)localStorage.removeItem(readingSelectionKey);else localStorage.setItem(readingSelectionKey,restored);
  restoreReadingSelection(restored);
  syncDirty=false;syncPending=false;syncConflict=false;
@@ -700,7 +703,7 @@ function samePreferences(data){
  const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
  const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
  const domains=x=>[...new Set(x)].sort().join('\n');
- return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays&&(activeReadingSelection===null||validReadingSelection(data.lastReadingSelection)===validReadingSelection(activeReadingSelection));
+ return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays&&normalizedLeadCount(data.maximumLeadStories||3)===maximumLeadStories&&(data.leadOnlyAllSubscriptions===true)===leadOnlyAllSubscriptions&&(activeReadingSelection===null||validReadingSelection(data.lastReadingSelection)===validReadingSelection(activeReadingSelection));
 }
 function resolveConnectDifference(){
  return new Promise(resolve=>{
@@ -880,9 +883,9 @@ async function confirmAdminLeave(action){
 el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('maximum-lead-stories').value=String(maximumLeadStories);
-el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));renderPersonalArticles()});
+el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleServerSave();renderPersonalArticles()});
 el('lead-only-all-subscriptions').checked=leadOnlyAllSubscriptions;
-el('lead-only-all-subscriptions').addEventListener('change',e=>{leadOnlyAllSubscriptions=e.target.checked;localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));renderPersonalArticles()});
+el('lead-only-all-subscriptions').addEventListener('change',e=>{leadOnlyAllSubscriptions=e.target.checked;localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));scheduleServerSave();renderPersonalArticles()});
 el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
