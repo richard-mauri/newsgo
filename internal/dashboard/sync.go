@@ -33,6 +33,8 @@ type storedPrefs struct {
 	ExcludedDomains        []string           `json:"excludedDomains"`
 	ExcludedArticleDomains []string           `json:"excludedArticleDomains"`
  MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
+ MaximumLeadStories int `json:"maximumLeadStories,omitempty"`
+ LeadOnlyAllSubscriptions bool `json:"leadOnlyAllSubscriptions,omitempty"`
  LastReadingSelection string `json:"lastReadingSelection,omitempty"`
 	UpdatedAt              string             `json:"updatedAt"`
 }
@@ -169,6 +171,7 @@ func (s *SyncStore) Revoke(user string) error {
 	return atomicJSON(s.file("approved-tokens.json"), out)
 }
 func validPrefs(p storedPrefs) bool {
+ if p.MaximumLeadStories != 0 && (p.MaximumLeadStories < 1 || p.MaximumLeadStories > 20) {return false}
  if p.LastReadingSelection != "" && p.LastReadingSelection != "all" {
   found := false
   for _, sub := range p.Subscriptions { if sub.Kind == "feed" && sub.URL == p.LastReadingSelection { found = true; break } }
