@@ -685,7 +685,7 @@ async function checkHomepageSession(){
   return;
  }
  try{
-  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'include',cache:'no-store'});
+  const response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
   if(response.status===401){homepageIdentity=null;show('Homepage account: not signed in');return}
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
