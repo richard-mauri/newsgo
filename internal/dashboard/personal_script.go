@@ -678,18 +678,24 @@ const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageSessionStatus.hidden=true;homepageIdentity=null;return;
+  homepageIdentity=null;
+  show('Homepage account: local NewsGo address — open https://newsgo.themauris.org to use shared sign-in');
+  return;
  }
  try{
   const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'include',cache:'no-store'});
-  if(!response.ok){homepageIdentity=null;homepageSessionStatus.hidden=true;return}
+  if(response.status===401){homepageIdentity=null;show('Homepage account: not signed in');return}
+  if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
-  if(typeof profile.user!=='string'||!profile.user){throw Error('Invalid profile')}
+  if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
-  homepageSessionStatus.textContent='Homepage: signed in as '+homepageIdentity.user+' · Reader sync still uses NewsGo Server Sync';
-  homepageSessionStatus.hidden=false;
- }catch(e){homepageIdentity=null;homepageSessionStatus.hidden=true}
+  show('Signed in as '+homepageIdentity.user+' (Homepage) · Legacy Server Sync still separate');
+ }catch(e){
+  homepageIdentity=null;
+  show('Homepage account: connection unavailable ('+e.message+'). Legacy Server Sync still available.');
+ }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
 async function homepageReaderRecord(){
