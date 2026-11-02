@@ -671,6 +671,33 @@ el('close-exclusions').addEventListener('click',()=>showView('news'));
 
 // Optional per-user server sync. The same token works on every device.
 // Remembered credentials are local to this browser origin; only use on a trusted device.
+// Stage-one Homepage integration is intentionally read-only. Do not replace
+// legacy Server Sync or import/export a profile before an explicit migration.
+const homepageOrigin='https://home.themauris.org';
+const homepageSessionStatus=document.getElementById('homepage-session-status');
+let homepageIdentity=null;
+async function checkHomepageSession(){
+ if(!homepageSessionStatus)return;
+ if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
+  homepageSessionStatus.hidden=true;homepageIdentity=null;return;
+ }
+ try{
+  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'include',cache:'no-store'});
+  if(!response.ok){homepageIdentity=null;homepageSessionStatus.hidden=true;return}
+  const profile=await response.json();
+  if(typeof profile.user!=='string'||!profile.user){throw Error('Invalid profile')}
+  homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
+  homepageSessionStatus.textContent='Homepage: signed in as '+homepageIdentity.user+' · Reader sync still uses NewsGo Server Sync';
+  homepageSessionStatus.hidden=false;
+ }catch(e){homepageIdentity=null;homepageSessionStatus.hidden=true}
+}
+// Profile storage is user-scoped by Homepage; no user identifier is supplied.
+async function homepageReaderRecord(){
+ const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'include',cache:'no-store'});
+ if(response.status===404)return null;
+ if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
+ return response.json();
+}
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
 let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
@@ -921,6 +948,8 @@ syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
 else restoreReadingSelection(localStorage.getItem(readingSelectionKey));
+void checkHomepageSession();
+window.addEventListener('focus',()=>{void checkHomepageSession()});
 setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
