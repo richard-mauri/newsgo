@@ -65,6 +65,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if r.URL.Path == "/api/homepage/session" { s.ServeHomepageSession(w,r); return }
 	if r.URL.Path == "/api/sync" {
 		if s.syncStore == nil {
 			http.Error(w, "Sync unavailable", 503)
