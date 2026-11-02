@@ -698,6 +698,59 @@ async function homepageReaderRecord(){
  if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
  return response.json();
 }
+// Deliberate one-time migration only: never overwrite an existing Homepage profile.
+// Read the legacy server record (not this browser's possibly unsaved settings)
+// and require the authenticated central username to match its owner.
+async function migrateLegacyReaderToHomepage(){
+ const status=el('homepage-migrate-status');
+ const report=message=>{status.textContent=message};
+ if(!homepageIdentity||!syncConnected||!syncToken){report('Connect both Homepage and legacy NewsGo Server Sync first.');return}
+ if(syncDirty||syncConflict||syncBusy||syncReading){report('Resolve pending NewsGo Server Sync changes before migration.');return}
+ const button=el('homepage-migrate');button.disabled=true;
+ try{
+  const legacy=await syncRequest('GET');
+  if(legacy.notFound)throw Error('No saved legacy profile to migrate.');
+  if(legacy.user!==homepageIdentity.user)throw Error('Homepage username does not match the owner of this NewsGo profile. No data copied.');
+  if(!Array.isArray(legacy.subscriptions)||!Array.isArray(legacy.excludedDomains)||
+     !Array.isArray(legacy.excludedArticleDomains||[])||
+     legacy.subscriptions.some(r=>!recordValid(r)))throw Error('Legacy profile failed validation.');
+  const existing=await homepageReaderRecord();
+  if(existing)throw Error('Homepage already contains a NewsGo profile. Migration refused to avoid overwriting it.');
+  if(!window.confirm('Copy the existing NewsGo server profile for '+legacy.user+' to Homepage? The old NewsGo copy remains unchanged.'))return;
+  // Legacy revision is tracked by its old server; Homepage assigns a new revision.
+  const data={
+   subscriptions:legacy.subscriptions,excludedDomains:legacy.excludedDomains,
+   excludedArticleDomains:legacy.excludedArticleDomains||[],
+   maxArticleAgeDays:legacy.maxArticleAgeDays||0,
+   maximumLeadStories:legacy.maximumLeadStories||3,
+   leadOnlyAllSubscriptions:legacy.leadOnlyAllSubscriptions===true,
+   lastReadingSelection:legacy.lastReadingSelection||''
+  };
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{
+   method:'PUT',credentials:'include',cache:'no-store',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({revision:0,data})
+  });
+  if(response.status===409)throw Error('Homepage profile changed during migration. No data overwritten.');
+  if(!response.ok)throw Error('Homepage migration failed (HTTP '+response.status+').');
+  const saved=await response.json();
+  report('Copied legacy server preferences to Homepage revision '+saved.revision+'. Legacy NewsGo data remains unchanged.');
+ }catch(e){report(e.message)}
+ finally{button.disabled=false}
+}
+function mountHomepageMigration(){
+ const panel=el('sync-panel');
+ if(!panel||document.getElementById('homepage-migrate'))return;
+ const row=document.createElement('div');
+ row.style.marginTop='16px';
+ const button=document.createElement('button');button.type='button';
+ button.id='homepage-migrate';button.textContent='Copy legacy profile to Homepage';
+ const status=document.createElement('p');status.id='homepage-migrate-status';
+ status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+ status.style.color='var(--muted)';
+ button.addEventListener('click',migrateLegacyReaderToHomepage);
+ row.append(button,status);panel.appendChild(row);
+}
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
 let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
@@ -948,6 +1001,7 @@ syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
 else restoreReadingSelection(localStorage.getItem(readingSelectionKey));
+mountHomepageMigration();
 void checkHomepageSession();
 window.addEventListener('focus',()=>{void checkHomepageSession()});
 setInterval(checkSync,30000);
