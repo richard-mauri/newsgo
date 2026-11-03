@@ -749,7 +749,7 @@ async function accountSave(){
  try{
   const data=accountSnapshot();
   if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:suiteHandoff?'omit':'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
   if(response.status===409){accountConflict=true;throw Error('Account profile changed elsewhere; load account settings before saving again.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
   const result=await response.json();accountRevision=result.revision;
@@ -803,7 +803,7 @@ async function accountEstablish(){
   // Disconnect legacy writing before establishing the central revision.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
   localStorage.removeItem(syncCredentialKey);syncAppearance();
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:suiteHandoff?'omit':'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
   if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
   const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
