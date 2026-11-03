@@ -2,9 +2,9 @@
 
 Date: 2026-11-03. Baseline: GitHub `main` after merged header accent PR. Issue [#46](https://github.com/richard-mauri/newsgo/issues/46), branch `feat/46-hourly-account-handoff` (draft PR in progress).
 
-Implemented candidate: accept Homepage one-hour URL fragment handoff, strip fragment from URL, retain only in browser tab sessionStorage, use Bearer header to validate Homepage identity and read/write revisioned account settings. Existing NewsGo cookie proxy remains a fallback. Browser-local subscriptions, exclusions and preferences unchanged. No automatic import, migration, or data deletion. Must deploy Homepage issue #6 first for full operation. Admin server endpoints remain on legacy authorization; this PR does not change them. No merge/restart authorized.
+Implemented candidate: accept Homepage one-hour URL fragment handoff, strip fragment from URL, retain only in browser tab sessionStorage, use Bearer header to validate Homepage identity and read/write revisioned account settings. The NewsGo cookie proxy and route are removed; no fallback. Without a valid one-hour token, account settings are unavailable and all subscriptions/preferences remain browser-local. Browser-local subscriptions, exclusions and preferences unchanged. No automatic import, migration, or data deletion. Must deploy Homepage issue #6 first for full operation. Admin server endpoints remain on legacy authorization; this PR does not change them. No merge/restart authorized.
 
-CI and Safari verification pending, including expired token and signed-out fallback.
+CI and Safari verification pending, including expired token and browser-only signed-out behavior.
 
 Mac test:
 ```
