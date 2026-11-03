@@ -66,7 +66,7 @@ function confirmDomainRemoval(domain,affected){
   const explanation=document.createElement('p');explanation.textContent='This will remove '+affected.length+' subscription(s) from My Subscriptions and block article links from this domain and its subdomains:';
   const list=document.createElement('ul');list.className='exclusion-confirm-list';
   affected.forEach(r=>{const item=document.createElement('li');item.textContent=r.name;list.append(item)});
-  const note=document.createElement('p');note.textContent='Allowing the domain later will not restore removed subscriptions.';
+  const note=document.createElement('p');note.className='homepage-sync-note';note.textContent='Allowing the domain later will not restore removed subscriptions.';
   const actions=document.createElement('div');actions.className='sync-choice-actions';
   function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
   function onKey(e){if(e.key==='Escape'){e.preventDefault();finish(false)}}
@@ -707,6 +707,16 @@ async function homepageReaderRecord(){
 // Deliberate one-time migration only: never overwrite an existing Homepage profile.
 // Read the legacy server record (not this browser's possibly unsaved settings)
 // and require the authenticated central username to match its owner.
+function confirmHomepageOperation(message){
+ const dialog=el('homepage-confirm-dialog');
+ if(!dialog||typeof dialog.showModal!=='function')return Promise.resolve(false);
+ el('homepage-confirm-message').textContent=message;
+ return new Promise(resolve=>{
+  dialog.returnValue='cancel';
+  dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});
+  dialog.showModal();
+ });
+}
 async function migrateLegacyReaderToHomepage(){
  if(homepageAuto){el('homepage-migrate-status').textContent='Pause Homepage autosave before migrating.';return}
  const status=el('homepage-migrate-status');
@@ -723,7 +733,7 @@ async function migrateLegacyReaderToHomepage(){
      legacy.subscriptions.some(r=>!recordValid(r)))throw Error('Legacy profile failed validation.');
   const existing=await homepageReaderRecord();
   if(existing)throw Error('Homepage already contains a NewsGo profile. Migration refused to avoid overwriting it.');
-  if(!window.confirm('Copy the existing NewsGo server profile for '+legacy.user+' to Homepage? The old NewsGo copy remains unchanged.'))return;
+  if(!await confirmHomepageOperation('Copy the existing NewsGo server profile for '+legacy.user+' to Homepage? The old NewsGo copy remains unchanged.'))return;
   // Legacy revision is tracked by its old server; Homepage assigns a new revision.
   const data={
    subscriptions:legacy.subscriptions,excludedDomains:legacy.excludedDomains,
@@ -775,7 +785,7 @@ async function homepageReaderAction(mode){
    if(!existing){report('No Homepage NewsGo profile exists.');return}
    if(!homepageDataValid(existing.data))throw Error('Homepage profile is invalid. Browser unchanged.');
    if(homepageAuto){report('Pause Homepage autosave before manually loading account settings.');return}
-   if(!window.confirm('Load Homepage preferences into this browser? Local reader settings will be replaced; legacy NewsGo Server Sync will remain unchanged.'))return;
+   if(!await confirmHomepageOperation('Load Homepage preferences into this browser? Local reader settings will be replaced; legacy NewsGo Server Sync will remain unchanged.'))return;
    // Prevent the legacy autosave queue from writing a central account load back
    // to the independent NewsGo profile. Disconnect locally before applying.
    clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
@@ -787,7 +797,7 @@ async function homepageReaderAction(mode){
   const data=homepageReaderSnapshot();
   if(!homepageDataValid(data))throw Error('Browser settings did not pass profile validation.');
   if(existing&&!homepageDataValid(existing.data))throw Error('Existing Homepage record invalid; refusing overwrite.');
-  if(!window.confirm(existing?'Replace your Homepage profile with current browser preferences? Other devices may have newer settings.':'Create a Homepage profile from current browser preferences?'))return;
+  if(!await confirmHomepageOperation(existing?'Replace your Homepage profile with current browser preferences? Other devices may have newer settings.':'Create a Homepage profile from current browser preferences?'))return;
   const response=await fetch(homepageOrigin+'/api/storage/newsgo',{
    method:'PUT',credentials:'include',cache:'no-store',
    headers:{'Content-Type':'application/json'},
@@ -823,7 +833,7 @@ async function activateHomepageAuto(){
  if(syncBusy||syncDirty||syncConflict||syncReading){el('homepage-migrate-status').textContent='Resolve outstanding legacy sync changes before switching.';return}
  const existing=await homepageReaderRecord();
  if(!existing||!homepageDataValid(existing.data)){el('homepage-migrate-status').textContent='Create or migrate a valid Homepage profile first.';return}
- if(!window.confirm('Switch this browser to Homepage autosave? The Homepage account profile will be loaded, replacing local reader preferences. Legacy Server Sync will be disconnected in this browser but its server data will remain intact.'))return;
+ if(!await confirmHomepageOperation('Switch this browser to Homepage autosave? The Homepage account profile will be loaded, replacing local reader preferences. Legacy Server Sync will be disconnected in this browser but its server data will remain intact.'))return;
  clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncDirty=false;syncConflict=false;
  localStorage.removeItem(syncCredentialKey);syncAppearance();
  applyServerPreferences({...existing.data,revision:existing.revision});
@@ -847,7 +857,7 @@ function mountHomepageMigration(){
  const panel=el('sync-panel');
  if(!panel||document.getElementById('homepage-migrate'))return;
  const row=document.createElement('div');
- row.style.marginTop='16px';
+ row.className='homepage-actions';
  const button=document.createElement('button');button.type='button';
  button.id='homepage-migrate';button.textContent='Copy legacy profile to Homepage';
  const status=document.createElement('p');status.id='homepage-migrate-status';
@@ -861,7 +871,7 @@ function mountHomepageMigration(){
  const auto=document.createElement('button');auto.id='homepage-auto';auto.type='button';auto.textContent='Use Homepage autosave';
  auto.addEventListener('click',()=>{if(homepageAuto)pauseHomepageAuto();else void activateHomepageAuto()});
  const note=document.createElement('p');note.textContent='Homepage autosave is opt-in and loads the existing central profile. Legacy Server Sync is disconnected before activation.';
- row.append(button,save,load,auto,note,status);panel.appendChild(row);
+ row.append(button,save,load,auto);panel.append(row,note,status);
 }
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
