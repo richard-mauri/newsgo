@@ -676,25 +676,34 @@ el('close-exclusions').addEventListener('click',()=>showView('news'));
 const homepageOrigin='https://home.themauris.org';
 const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
+function accountSessionState(){
+ const available=!!homepageIdentity;
+ const save=el('account-save-button'),load=el('account-load-button');
+ if(save)save.disabled=!available;
+ if(load)load.disabled=!available;
+ if(!available){
+  clearTimeout(accountTimer);accountTimer=null;
+  accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
+  accountStatus('Sign in through Homepage to save or load account settings. Browser settings remain available.');
+ }
+}
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageIdentity=null;
-  show('Homepage account: local NewsGo address — open https://newsgo.themauris.org to use shared sign-in');
-  return;
+  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
  }
  try{
   const response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
-  if(response.status===401){homepageIdentity=null;const reason=(await response.text()).trim();show(reason==='session unavailable'?'Homepage account: session cookie not received by NewsGo':'Homepage account: session cookie rejected by Homepage');return}
+  if(response.status===401){homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return}
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
+  if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
-  show('Signed in as '+homepageIdentity.user+' (Homepage)');
+  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');
  }catch(e){
-  homepageIdentity=null;
-  show('Homepage account: connection unavailable ('+e.message+'). Legacy Server Sync still available.');
+  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
@@ -711,6 +720,7 @@ const accountStatus=message=>{const e=el('account-sync-status');if(e)e.textConte
 function accountSnapshot(){const p=syncSnapshot();return {subscriptions:p.subscriptions,excludedDomains:p.excludedDomains,excludedArticleDomains:p.excludedArticleDomains,maxArticleAgeDays:p.maxArticleAgeDays,maximumLeadStories:p.maximumLeadStories,leadOnlyAllSubscriptions:p.leadOnlyAllSubscriptions,lastReadingSelection:p.lastReadingSelection}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
 async function accountSave(){
+ await checkHomepageSession();
  if(!homepageIdentity||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
  accountPending=true;accountDirty=false;
  try{
@@ -722,7 +732,7 @@ async function accountSave(){
   const result=await response.json();accountRevision=result.revision;
   accountStatus('Saved to Homepage (revision '+accountRevision+').');
  }catch(e){accountDirty=true;accountStatus(e.message)}
- finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
+ finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
 }
 function scheduleAccountSave(){
  if(!homepageIdentity||!accountReady||accountConflict)return;
@@ -739,6 +749,7 @@ function confirmAccountChange(message){
  });
 }
 async function accountLoad(){
+ await checkHomepageSession();
  if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
  if(accountPending){accountStatus('An account save is in progress.');return}
  if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy Server Sync changes first.');return}
@@ -759,6 +770,7 @@ async function accountLoad(){
  }catch(e){accountStatus(e.message)}
 }
 async function accountEstablish(){
+ await checkHomepageSession();
  if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
  if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy sync changes before saving to Homepage.');return}
  try{
@@ -788,8 +800,8 @@ function mountAccountActions(){
  const explanation=document.createElement('p');explanation.className='homepage-sync-note';
  explanation.textContent='Your subscriptions and preferences stay in this browser. Once saved to Homepage, changes sync automatically.';
  const wrap=document.createElement('div');wrap.className='homepage-actions';
- const save=document.createElement('button');save.type='button';save.id='account-save-button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
- const load=document.createElement('button');load.type='button';load.id='account-load-button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
+ const save=document.createElement('button');save.type='button';save.disabled=true;save.id='account-save-button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
+ const load=document.createElement('button');load.type='button';load.disabled=true;load.id='account-load-button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
  const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  wrap.append(save,load);panel.append(explanation,wrap,status);
 }
