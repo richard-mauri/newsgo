@@ -701,7 +701,8 @@ function showSuiteCountdown(){
  }
  const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in · Open from Homepage';
  suiteAccountLine.textContent=label;
- suiteRenewButton.disabled=!homepageIdentity || remaining===0;
+ suiteRenewButton.disabled=false;
+ suiteRenewButton.textContent=homepageIdentity&&remaining>0?'Renew':'Open Homepage';
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
@@ -719,7 +720,7 @@ function initSuiteAccountHeader(){
  setInterval(showSuiteCountdown,1000);
 }
 async function renewSuiteAccount(){
- if(!suiteHandoff || Date.now()>=suiteExpiresAt){showSuiteCountdown();return}
+ if(!suiteHandoff || Date.now()>=suiteExpiresAt){location.assign(homepageOrigin+'/');return}
  suiteRenewButton.disabled=true;
  try{
   const response=await fetch(homepageOrigin+'/api/handoff/renew',{method:'POST',credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
