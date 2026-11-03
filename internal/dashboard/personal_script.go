@@ -691,7 +691,7 @@ function readSuiteHandoff(){
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 let suiteExpiresAt=0;
-let suiteAccountLine=null,suiteRenewButton=null;
+let suiteAccountLine=null,suiteRenewButton=null,suiteHomeLink=null;
 function showSuiteCountdown(){
  if(!suiteAccountLine)return;
  const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
@@ -701,8 +701,10 @@ function showSuiteCountdown(){
  }
  const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in · Open from Homepage';
  suiteAccountLine.textContent=label;
- suiteRenewButton.disabled=false;
- suiteRenewButton.textContent=homepageIdentity&&remaining>0?'Renew':'Open Homepage';
+ const active=!!homepageIdentity && remaining>0;
+ suiteRenewButton.hidden=!active;
+ suiteRenewButton.disabled=!active;
+ suiteHomeLink.hidden=active;
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
@@ -713,14 +715,21 @@ function initSuiteAccountHeader(){
  suiteRenewButton.type='button';suiteRenewButton.textContent='Renew';
  suiteRenewButton.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;background:transparent;color:var(--accent);cursor:pointer';
  suiteRenewButton.addEventListener('click',renewSuiteAccount);
- container.append(suiteAccountLine,suiteRenewButton);
+ // Use a real link for return navigation. Safari handles an anchor like a
+ // normal user-selected link, rather than a script-driven cross-origin jump.
+ suiteHomeLink=document.createElement('a');
+ suiteHomeLink.href=homepageOrigin+'/';
+ suiteHomeLink.textContent='Open Homepage';
+ suiteHomeLink.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;color:var(--accent);text-decoration:none';
+ suiteHomeLink.hidden=true;
+ container.append(suiteAccountLine,suiteRenewButton,suiteHomeLink);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
  showSuiteCountdown();
  setInterval(showSuiteCountdown,1000);
 }
 async function renewSuiteAccount(){
- if(!suiteHandoff || Date.now()>=suiteExpiresAt){location.assign(homepageOrigin+'/');return}
+ if(!suiteHandoff || Date.now()>=suiteExpiresAt){showSuiteCountdown();return}
  suiteRenewButton.disabled=true;
  try{
   const response=await fetch(homepageOrigin+'/api/handoff/renew',{method:'POST',credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
