@@ -776,29 +776,26 @@ async function accountEstablish(){
 }
 function mountAccountActions(){
  const panel=el('sync-panel');if(!panel)return;
- // Keep the old token-based UI available for rollback, but remove it from
- // the normal account-sync workflow.
  const heading=panel.querySelector('.panel-heading');
  if(heading){const title=heading.querySelector('h2');if(title)title.textContent='Account Sync'}
- const legacy=document.createElement('details');legacy.className='legacy-sync-details';
- const summary=document.createElement('summary');summary.textContent='Legacy NewsGo Server Sync (advanced / recovery)';
- legacy.appendChild(summary);
- for(const node of [...panel.children])if(node!==heading)legacy.appendChild(node);
+ // Legacy browser controls are removed from the normal view. Old server
+ // records remain untouched; the old backend is retained for rollback.
+ for(const node of [...panel.children])if(node!==heading)node.remove();
  const explanation=document.createElement('p');explanation.className='homepage-sync-note';
- explanation.textContent='Your browser keeps its own settings. Save them to Homepage once, then changes save automatically. Use Load from account on another browser.';
- panel.appendChild(explanation);
+ explanation.textContent='Your subscriptions and preferences stay in this browser. Once saved to Homepage, changes sync automatically.';
  const wrap=document.createElement('div');wrap.className='homepage-actions';
- const save=document.createElement('button');save.type='button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
- const load=document.createElement('button');load.type='button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
- const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');
- wrap.append(save,load);panel.append(wrap,status,legacy);
+ const save=document.createElement('button');save.type='button';save.id='account-save-button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
+ const load=document.createElement('button');load.type='button';load.id='account-load-button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
+ const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+ wrap.append(save,load);panel.append(explanation,wrap,status);
 }
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
 let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
 const syncStatus=t=>{el('sync-status').textContent=t};
 function syncAppearance(){
- el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
+ const legacyConnection=el('sync-connection');if(!legacyConnection)return;
+ legacyConnection.textContent=syncConnected?'Connected':'Not connected';
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
  el('manage-admin').hidden=!(syncConnected&&isAdmin);
