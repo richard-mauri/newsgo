@@ -692,7 +692,7 @@ function accountSessionState(){
 }
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
- const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false};
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity)};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
   homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
  }
