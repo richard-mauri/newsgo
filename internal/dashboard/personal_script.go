@@ -776,11 +776,22 @@ async function accountEstablish(){
 }
 function mountAccountActions(){
  const panel=el('sync-panel');if(!panel)return;
+ // Keep the old token-based UI available for rollback, but remove it from
+ // the normal account-sync workflow.
+ const heading=panel.querySelector('.panel-heading');
+ if(heading){const title=heading.querySelector('h2');if(title)title.textContent='Account Sync'}
+ const legacy=document.createElement('details');legacy.className='legacy-sync-details';
+ const summary=document.createElement('summary');summary.textContent='Legacy NewsGo Server Sync (advanced / recovery)';
+ legacy.appendChild(summary);
+ for(const node of [...panel.children])if(node!==heading)legacy.appendChild(node);
+ const explanation=document.createElement('p');explanation.className='homepage-sync-note';
+ explanation.textContent='Your browser keeps its own settings. Save them to Homepage once, then changes save automatically. Use Load from account on another browser.';
+ panel.appendChild(explanation);
  const wrap=document.createElement('div');wrap.className='homepage-actions';
  const save=document.createElement('button');save.type='button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
  const load=document.createElement('button');load.type='button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
  const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');
- wrap.append(save,load);panel.append(wrap,status);
+ wrap.append(save,load);panel.append(wrap,status,legacy);
 }
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
