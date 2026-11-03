@@ -676,6 +676,21 @@ el('close-exclusions').addEventListener('click',()=>showView('news'));
 const homepageOrigin='https://home.themauris.org';
 const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
+let suiteHandoff='';
+const suiteHandoffKey='newsgo.homepage.handoff.v1';
+function readSuiteHandoff(){
+ const fragment=new URLSearchParams(location.hash.slice(1));
+ const delivered=fragment.get('suite_token');
+ if(delivered!==null){
+  history.replaceState(null,'',location.pathname+location.search);
+  if(/^[a-f0-9]{64}$/.test(delivered)){try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}}
+ }
+ try{suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||''}catch(_){suiteHandoff=''}
+ if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
+}
+readSuiteHandoff();
+const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+
 function accountSessionState(){
  const available=!!homepageIdentity;
  const nav=el('manage-sync');if(nav)nav.hidden=!available;
@@ -697,7 +712,12 @@ async function checkHomepageSession(){
   homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
  }
  try{
-  const response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
+  let response;
+  if(suiteHandoff){
+   response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+   if(response.status===401){suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}}
+  }
+  if(!suiteHandoff)response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
   if(response.status===401){homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return}
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
@@ -711,7 +731,7 @@ async function checkHomepageSession(){
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
 async function homepageReaderRecord(){
- const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'include',cache:'no-store'});
+ const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:suiteHandoff?'omit':'include',cache:'no-store',headers:homepageAccountHeaders()});
  if(response.status===404)return null;
  if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
  return response.json();
@@ -729,7 +749,7 @@ async function accountSave(){
  try{
   const data=accountSnapshot();
   if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:accountRevision,data})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
   if(response.status===409){accountConflict=true;throw Error('Account profile changed elsewhere; load account settings before saving again.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
   const result=await response.json();accountRevision=result.revision;
@@ -783,7 +803,7 @@ async function accountEstablish(){
   // Disconnect legacy writing before establishing the central revision.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
   localStorage.removeItem(syncCredentialKey);syncAppearance();
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
   if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
   const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
