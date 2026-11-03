@@ -796,6 +796,50 @@ async function homepageReaderAction(mode){
   report('Saved browser settings to Homepage revision '+stored.revision+'. Legacy NewsGo profile unchanged.');
  }catch(e){report(e.message)}finally{button.disabled=false}
 }
+// Opt-in Homepage autosave: never allow simultaneous legacy and central writers.
+let homepageAuto=false,homepageAutoRevision=null,homepageAutoPending=false,homepageAutoDirty=false,homepageAutoConflict=false,homepageAutoTimer=null,homepageAutoUser=null;
+async function homepageAutoWrite(){
+ if(!homepageAuto||!homepageAutoDirty||homepageAutoPending||homepageAutoConflict)return;
+ homepageAutoPending=true;homepageAutoDirty=false;
+ const data=homepageReaderSnapshot();
+ try{
+  if(!homepageIdentity||homepageIdentity.user!==homepageAutoUser)throw Error('Homepage identity changed. Autosave stopped.');
+  if(!homepageDataValid(data))throw Error('Reader settings failed validation.');
+  const res=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:homepageAutoRevision,data})});
+  if(res.status===409){homepageAutoConflict=true;throw Error('Homepage preferences changed on another device. Autosave paused; load and review before retrying.')}
+  if(!res.ok)throw Error('Homepage save failed (HTTP '+res.status+').');
+  const saved=await res.json();homepageAutoRevision=saved.revision;
+  el('homepage-migrate-status').textContent='Homepage settings saved (revision '+homepageAutoRevision+').';
+ }catch(e){homepageAutoDirty=true;el('homepage-migrate-status').textContent=e.message}
+ finally{homepageAutoPending=false;if(homepageAutoDirty&&!homepageAutoConflict&&homepageAuto&&homepageIdentity&&homepageIdentity.user===homepageAutoUser){clearTimeout(homepageAutoTimer);homepageAutoTimer=setTimeout(homepageAutoWrite,30000)}}
+}
+async function activateHomepageAuto(){
+ if(homepageAuto)return;
+ if(!homepageIdentity){el('homepage-migrate-status').textContent='Sign in to Homepage first.';return}
+ if(syncBusy||syncDirty||syncConflict||syncReading){el('homepage-migrate-status').textContent='Resolve outstanding legacy sync changes before switching.';return}
+ const existing=await homepageReaderRecord();
+ if(!existing||!homepageDataValid(existing.data)){el('homepage-migrate-status').textContent='Create or migrate a valid Homepage profile first.';return}
+ if(!window.confirm('Switch this browser to Homepage autosave? The Homepage account profile will be loaded, replacing local reader preferences. Legacy Server Sync will be disconnected in this browser but its server data will remain intact.'))return;
+ clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncDirty=false;syncConflict=false;
+ localStorage.removeItem(syncCredentialKey);syncAppearance();
+ applyServerPreferences({...existing.data,revision:existing.revision});
+ homepageAuto=true;homepageAutoUser=homepageIdentity.user;homepageAutoRevision=existing.revision;
+ homepageAutoDirty=false;homepageAutoConflict=false;
+ el('homepage-auto').textContent='Pause Homepage autosave';
+ el('homepage-migrate-status').textContent='Homepage autosave active for '+homepageAutoUser+'. Legacy Server Sync disconnected.';
+}
+function pauseHomepageAuto(){
+ homepageAuto=false;clearTimeout(homepageAutoTimer);homepageAutoTimer=null;
+ el('homepage-auto').textContent='Use Homepage autosave';
+ el('homepage-migrate-status').textContent='Homepage autosave paused. Browser settings remain available.';
+}
+function scheduleHomepageSave(){
+ if(!homepageAuto)return;
+ homepageAutoDirty=true;
+ clearTimeout(homepageAutoTimer);
+ if(!homepageAutoConflict)homepageAutoTimer=setTimeout(homepageAutoWrite,650);
+}
 function mountHomepageMigration(){
  const panel=el('sync-panel');
  if(!panel||document.getElementById('homepage-migrate'))return;
@@ -811,8 +855,10 @@ function mountHomepageMigration(){
  save.addEventListener('click',()=>homepageReaderAction('save'));
  const load=document.createElement('button');load.id='homepage-load';load.type='button';load.textContent='Load from Homepage';
  load.addEventListener('click',()=>homepageReaderAction('load'));
- const note=document.createElement('p');note.textContent='Homepage save/load is manual during migration. Legacy Server Sync remains separate; loading disconnects it to prevent overwrites.';
- row.append(button,save,load,note,status);panel.appendChild(row);
+ const auto=document.createElement('button');auto.id='homepage-auto';auto.type='button';auto.textContent='Use Homepage autosave';
+ auto.addEventListener('click',()=>{if(homepageAuto)pauseHomepageAuto();else void activateHomepageAuto()});
+ const note=document.createElement('p');note.textContent='Homepage autosave is opt-in and loads the existing central profile. Legacy Server Sync is disconnected before activation.';
+ row.append(button,save,load,auto,note,status);panel.appendChild(row);
 }
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
@@ -943,6 +989,7 @@ async function saveSync(){
  syncBusy=false;if(syncPending){syncPending=false;scheduleServerSave()}
 }
 function scheduleServerSave(){
+ if(homepageAuto){scheduleHomepageSave();return}
  if(!syncConnected)return;
  syncDirty=true;
  syncStatus('Connected · saving changes…');
