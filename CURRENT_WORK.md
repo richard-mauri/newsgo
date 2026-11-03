@@ -1,16 +1,25 @@
-# Active work — Homepage authentication and reader migration
+# Active work — Homepage Account Sync
 
-**2026-11-02.** Merged baseline: `main`. [Issue #41](https://github.com/richard-mauri/newsgo/issues/41); branch `feat/41-homepage-auth-sync`; [draft PR #42](https://github.com/richard-mauri/newsgo/pull/42). No merge or deployment authorized.
+**2026-11-02.** Baseline: `main`. Issue [#41](https://github.com/richard-mauri/newsgo/issues/41), branch `feat/41-homepage-auth-sync`, draft [PR #42](https://github.com/richard-mauri/newsgo/pull/42). No merge or deployment.
 
-## Implemented in current draft
-- The four Homepage migration controls now use a responsive styled action row matching NewsGo controls, and confirmation flows use a themed `<dialog>` with explicit Cancel/Continue instead of Safari native `confirm`. No persistence or authorization behavior changed in this UI pass.
-- Added validated legacy NewsGo reader-profile ↔ Homepage record-data mapping and regression tests. Outer Homepage revisions remain separate from legacy NewsGo revisions.
-- Added read-only Homepage session discovery in the NewsGo browser on the trusted HTTPS `newsgo.themauris.org` origin, using same-origin `GET /api/homepage/session` on NewsGo. The NewsGo server forwards only the suite cookie to Homepage's fixed HTTPS session-profile endpoint, avoiding Safari's cross-origin credential rules. Shows the signed-in Homepage username in the header while explicitly stating NewsGo Server Sync remains in use. Build 000054 Safari reported Homepage 401 despite the user reporting an active Homepage session. Reworked identity verification via same-origin NewsGo backend proxy; owner reports still signed out after same-origin proxy. The next diagnostic distinguishes a missing cookie on NewsGo from one forwarded to but rejected by Homepage; it exposes neither secret nor token. Session checks show signed-in, diagnostic signed-out, wrong-origin or connection-error states. No bearer tokens are copied.
-- Added an explicit **Copy legacy profile to Homepage** action in the Server Sync panel. It requires both sessions, no pending legacy edits, matching legacy and Homepage usernames, a valid legacy server profile and an empty Homepage profile. The user must confirm; a revision-0 PUT fails on concurrent creation. It leaves legacy profiles intact. There is no background migration or automatic account load. A new opt-in central autosave mode explicitly loads the existing Homepage profile, disconnects legacy browser sync, and saves subsequent changes with revision checks; conflict pauses writes. CSP permits connecting only to the exact Homepage HTTPS origin.
-- Added explicit **Save browser to Homepage** and **Load from Homepage** controls alongside the one-time legacy copy. Save validates settings, requires confirmation and uses Homepage's revisioned PUT; Load validates before confirmation, disconnects legacy sync before applying account settings, and does not change the legacy server profile. Both one-shot actions remain manual and are unavailable while Homepage autosave is active. Existing NewsGo token registry, `/api/sync`, and admin settings remain unchanged.
+## Current candidate
+- Aligned NewsGo with MauriStocks: settings remain browser-local, `GET/PUT https://home.themauris.org/api/storage/newsgo` uses the signed-in Homepage user's cookie and server revision. Profile is established with **Save to account** or explicitly restored with **Load from account**; later edits autosave after the first account save/load.
+- Replaced four migration actions with two account controls, plus short status. Legacy NewsGo Server Sync remains untouched on disk and its token UI is collapsed under **Legacy NewsGo Server Sync (advanced / recovery)**, not removed.
+- Initial account save checks for existing Homepage profile and requests confirmation before replacement. Explicit load requests confirmation and disconnects legacy browser sync first. Account saves use revision checks, pause on 409, retain browser state on failure, and retry transient errors.
+- Homepage session is verified through a same-origin NewsGo proxy; Safari ordinary tabs verified username `richard`. Dock web-app cookie isolation is separate from regular Safari.
+- Go tests cover reader profile mapping and session endpoint. No automatic cross-device load at sign-in; account load is intentional, like MauriStocks. Admin settings still use legacy role checks pending centralized authorization.
 
-## Remaining / blockers
-Before using the migration action, back up legacy NewsGo `data/` and Homepage `private/` and test recovery. Next: test opt-in central autosave via Safari, improve conflict/offline recovery, switch admin authorization to central role checks, and retire legacy token code only after verified Safari acceptance and rollback. Maintain compatibility with legacy data until owner approves cutover.
+## Remaining
+Owner must test the latest account workflow on Mac/Safari, including saved subscriptions and column-equivalent reader preferences, 409 conflicts, offline behavior and profile survival. Refactor NewsGo admin authorization to Homepage roles before retiring token-based admin login. Preserve NewsGo `data/` and Homepage `private/` backups.
 
-## Validation
-Initial profile mapping CI passed at prior head; final-head CI pending. Owner Mac: `cd ~/projects/newsgo; git fetch origin; git checkout feat/41-homepage-auth-sync; git pull --ff-only origin feat/41-homepage-auth-sync; go test -count=1 ./...; ./devbuild.sh; ./newsgo.sh`. Test Safari signed-out/sign-in indicator, existing token-based sync, subscriptions and admin controls. Do not deploy or restart without owner action.
+## Mac validation
+```bash
+cd ~/projects/newsgo
+git fetch origin
+git checkout feat/41-homepage-auth-sync
+git pull --ff-only origin feat/41-homepage-auth-sync
+go test -count=1 ./...
+./devbuild.sh
+./newsgo.sh
+```
+Final-head CI and Safari acceptance pending.
