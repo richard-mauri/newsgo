@@ -4,11 +4,11 @@ Baseline: GitHub `main` after merged PR #42. Issue [#44](https://github.com/rich
 
 ## Scope
 - Match MauriStocks' accent-colored authenticated username: NewsGo's Homepage session line uses `var(--accent)`, 0.9rem and font-weight 650 **only when authenticated**. Signed-out or unavailable connection status remains muted.
-- Match MauriStocks' accent-colored Tanner name using NewsGo's existing `var(--accent)` and 700 font weight. Preserve Tanner image sizing, layout and responsive behavior.
+- Match MauriStocks' accent-colored Tanner name using NewsGo's existing `var(--accent)` and 700 font weight. Center the label **below** the photograph with a column layout. Preserve image sizing and show the label even on small screens.
 - No changes to auth verification, account persistence, legacy settings, tokens, subscriptions, or private storage.
 
 ## Acceptance
-GitHub CI must run `go test -count=1 ./...` and `go build ./...` on final head. Owner to review Safari appearance with signed-in and signed-out state; confirm Tanner label and authenticated identity are teal. No local Mac acceptance performed by assistant.
+GitHub CI must run `go test -count=1 ./...` and `go build ./...` on final head. Owner to review Safari appearance with signed-in and signed-out state; confirm Tanner label is teal and centered beneath the image, including narrow-screen layout, and authenticated identity is teal. No local Mac acceptance performed by assistant.
 
 ## Mac validation
 ```bash
