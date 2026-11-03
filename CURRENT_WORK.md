@@ -18,3 +18,6 @@ go test -count=1 ./...
 ```
 
 Latest candidate: NewsGo header now presents signed-in user, server-based remaining time (mm:ss), and Renew. Renew makes a direct bearer-authenticated POST to Homepage `/api/handoff/renew`; it replaces the short-lived per-tab token. After expiry the button becomes Open Homepage. Countdown does not automatically renew, and browser-local settings remain intact. Verify iOS Safari and renewal against short-lifetime Homepage candidate.
+
+## Expired-token Homepage return
+Owner confirmed Homepage remains signed in after five-minute NewsGo token expiration when navigating by Safari address bar, but the JavaScript-driven Open Homepage button reportedly landed on a signed-out Homepage. The expired-state action is now a native same-tab `<a href="https://home.themauris.org/">` link, not `location.assign` from a button. It does not clear Homepage credentials or touch NewsGo browser data. This change is in the existing handoff PR, with Safari verification pending; it must not be presented as a confirmed browser fix before owner testing.
