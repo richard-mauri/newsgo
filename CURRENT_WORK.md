@@ -1,24 +1,18 @@
-# Active work — Header accent consistency
+# NewsGo current work
 
-Baseline: GitHub `main` after merged PR #42. Issue [#44](https://github.com/richard-mauri/newsgo/issues/44), branch `fix/44-header-accent`. Candidate is a UI-only change; no release or merge authorized.
+Date: 2026-11-03. Baseline: GitHub `main` after merged header accent PR. Issue [#46](https://github.com/richard-mauri/newsgo/issues/46), branch `feat/46-hourly-account-handoff` (draft PR in progress).
 
-## Scope
-- Match MauriStocks' accent-colored authenticated username: NewsGo's Homepage session line uses `var(--accent)`, 0.9rem and font-weight 650 **only when authenticated**. Signed-out or unavailable connection status remains muted.
-- Match MauriStocks' accent-colored Tanner name using NewsGo's existing `var(--accent)` and 700 font weight. Center the label **below** the photograph with a column layout. Preserve image sizing and show the label even on small screens.
-- No changes to auth verification, account persistence, legacy settings, tokens, subscriptions, or private storage.
+Implemented candidate: accept Homepage one-hour URL fragment handoff, strip fragment from URL, retain only in browser tab sessionStorage, use Bearer header to validate Homepage identity and read/write revisioned account settings. Existing NewsGo cookie proxy remains a fallback. Browser-local subscriptions, exclusions and preferences unchanged. No automatic import, migration, or data deletion. Must deploy Homepage issue #6 first for full operation. Admin server endpoints remain on legacy authorization; this PR does not change them. No merge/restart authorized.
 
-## Acceptance
-GitHub CI must run `go test -count=1 ./...` and `go build ./...` on final head. Owner to review Safari appearance with signed-in and signed-out state; confirm Tanner label is teal and centered beneath the image, including narrow-screen layout, and authenticated identity is teal. No local Mac acceptance performed by assistant.
+CI and Safari verification pending, including expired token and signed-out fallback.
 
-## Mac validation
-```bash
+Mac test:
+```
 cd ~/projects/newsgo
 git fetch origin
-git checkout fix/44-header-accent
-git pull --ff-only origin fix/44-header-accent
+git checkout feat/46-hourly-account-handoff
+git pull --ff-only origin feat/46-hourly-account-handoff
 go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
-
-PR remains unmerged until owner approval.
