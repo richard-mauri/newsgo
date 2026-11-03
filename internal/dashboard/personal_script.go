@@ -682,6 +682,7 @@ function accountSessionState(){
  if(save)save.disabled=!available;
  if(load)load.disabled=!available;
  if(!available){
+  const saveButton=el('account-save-button');if(saveButton)saveButton.hidden=false;
   clearTimeout(accountTimer);accountTimer=null;
   accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
   accountStatus('Sign in through Homepage to save or load account settings. Browser settings remain available.');
@@ -1060,6 +1061,7 @@ else restoreReadingSelection(localStorage.getItem(readingSelectionKey));
 mountAccountActions();
 void checkHomepageSession();
 window.addEventListener('focus',()=>{void checkHomepageSession()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void checkHomepageSession()});
 setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
