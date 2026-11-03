@@ -66,7 +66,7 @@ function confirmDomainRemoval(domain,affected){
   const explanation=document.createElement('p');explanation.textContent='This will remove '+affected.length+' subscription(s) from My Subscriptions and block article links from this domain and its subdomains:';
   const list=document.createElement('ul');list.className='exclusion-confirm-list';
   affected.forEach(r=>{const item=document.createElement('li');item.textContent=r.name;list.append(item)});
-  const note=document.createElement('p');note.textContent='Allowing the domain later will not restore removed subscriptions.';
+  const note=document.createElement('p');note.className='homepage-sync-note';note.textContent='Allowing the domain later will not restore removed subscriptions.';
   const actions=document.createElement('div');actions.className='sync-choice-actions';
   function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
   function onKey(e){if(e.key==='Escape'){e.preventDefault();finish(false)}}
@@ -671,6 +671,143 @@ el('close-exclusions').addEventListener('click',()=>showView('news'));
 
 // Optional per-user server sync. The same token works on every device.
 // Remembered credentials are local to this browser origin; only use on a trusted device.
+// Stage-one Homepage integration is intentionally read-only. Do not replace
+// legacy Server Sync or import/export a profile before an explicit migration.
+const homepageOrigin='https://home.themauris.org';
+const homepageSessionStatus=document.getElementById('homepage-session-status');
+let homepageIdentity=null;
+function accountSessionState(){
+ const available=!!homepageIdentity;
+ const nav=el('manage-sync');if(nav)nav.hidden=!available;
+ if(!available&& !el('sync-panel').classList.contains('personal-hidden'))showView('news');
+ const save=el('account-save-button'),load=el('account-load-button');
+ if(save)save.disabled=!available;
+ if(load)load.disabled=!available;
+ if(!available){
+  const saveButton=el('account-save-button');if(saveButton)saveButton.hidden=false;
+  clearTimeout(accountTimer);accountTimer=null;
+  accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
+  accountStatus('Sign in through Homepage to save or load account settings. Browser settings remain available.');
+ }
+}
+async function checkHomepageSession(){
+ if(!homepageSessionStatus)return;
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false};
+ if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
+  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
+ }
+ try{
+  const response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
+  if(response.status===401){homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return}
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const profile=await response.json();
+  if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
+  if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
+  homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
+  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');
+ }catch(e){
+  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');
+ }
+}
+// Profile storage is user-scoped by Homepage; no user identifier is supplied.
+async function homepageReaderRecord(){
+ const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'include',cache:'no-store'});
+ if(response.status===404)return null;
+ if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
+ return response.json();
+}
+// Account settings follow MauriStocks: local browser data first, explicit
+// load, and revision-checked saves after the user establishes an account copy.
+let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
+const accountStatus=message=>{const e=el('account-sync-status');if(e)e.textContent=message};
+function accountSnapshot(){const p=syncSnapshot();return {subscriptions:p.subscriptions,excludedDomains:p.excludedDomains,excludedArticleDomains:p.excludedArticleDomains,maxArticleAgeDays:p.maxArticleAgeDays,maximumLeadStories:p.maximumLeadStories,leadOnlyAllSubscriptions:p.leadOnlyAllSubscriptions,lastReadingSelection:p.lastReadingSelection}}
+function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
+async function accountSave(){
+ await checkHomepageSession();
+ if(!homepageIdentity||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
+ accountPending=true;accountDirty=false;
+ try{
+  const data=accountSnapshot();
+  if(!validAccountData(data))throw Error('Local profile failed validation');
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:accountRevision,data})});
+  if(response.status===409){accountConflict=true;throw Error('Account profile changed elsewhere; load account settings before saving again.')}
+  if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
+  const result=await response.json();accountRevision=result.revision;
+  accountStatus('Saved to Homepage (revision '+accountRevision+').');
+ }catch(e){accountDirty=true;accountStatus(e.message)}
+ finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
+}
+function scheduleAccountSave(){
+ if(!homepageIdentity||!accountReady||accountConflict)return;
+ accountDirty=true;clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,650);
+}
+function confirmAccountChange(message){
+ const dialog=el('homepage-confirm-dialog');
+ if(!dialog||typeof dialog.showModal!=='function')return Promise.resolve(false);
+ el('homepage-confirm-message').textContent=message;
+ return new Promise(resolve=>{
+  dialog.returnValue='cancel';
+  dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});
+  dialog.showModal();
+ });
+}
+async function accountLoad(){
+ await checkHomepageSession();
+ if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
+ if(accountPending){accountStatus('An account save is in progress.');return}
+ if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy Server Sync changes first.');return}
+ try{
+  const record=await homepageReaderRecord();
+  if(!record){accountStatus('No saved account settings yet. Use Save to account to create them.');return}
+  if(!validAccountData(record.data))throw Error('Saved account data invalid; browser unchanged.');
+  if(!await confirmAccountChange('Replace this browser’s NewsGo subscriptions and preferences with your Homepage account settings?'))return;
+  clearTimeout(accountTimer);
+  // Disconnect the old browser token before applying central settings, so
+  // legacy sync never receives changes loaded from Homepage.
+  clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
+  localStorage.removeItem(syncCredentialKey);syncAppearance();
+  applyServerPreferences({...record.data,revision:record.revision});
+  accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
+  accountStatus('Loaded Homepage settings. Future changes save automatically.');
+  const b=el('account-save-button');if(b)b.hidden=true;
+ }catch(e){accountStatus(e.message)}
+}
+async function accountEstablish(){
+ await checkHomepageSession();
+ if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
+ if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy sync changes before saving to Homepage.');return}
+ try{
+  const existing=await homepageReaderRecord();
+  if(existing&&!validAccountData(existing.data))throw Error('Invalid account settings; cannot overwrite.');
+  if(!await confirmAccountChange(existing?'Replace your saved Homepage settings with this browser’s preferences?':'Save current browser preferences to your Homepage account?'))return;
+  // Disconnect legacy writing before establishing the central revision.
+  clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
+  localStorage.removeItem(syncCredentialKey);syncAppearance();
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
+  if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
+  if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
+  const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
+  accountStatus('Saved to Homepage. Future changes save automatically.');
+  const b=el('account-save-button');if(b)b.hidden=true;
+ }catch(e){accountStatus(e.message)}
+}
+function mountAccountActions(){
+ const panel=el('sync-panel');if(!panel)return;
+ const heading=panel.querySelector('.panel-heading');
+ if(heading){const title=heading.querySelector('h2');if(title)title.textContent='Account Sync'}
+ // Legacy browser controls are removed from the normal view. Old server
+ // records remain untouched; the old backend is retained for rollback.
+ const legacy=document.createElement('div');legacy.hidden=true;legacy.setAttribute('aria-hidden','true');
+ for(const node of [...panel.children])if(node!==heading)legacy.appendChild(node);
+ panel.appendChild(legacy);
+ const explanation=document.createElement('p');explanation.className='homepage-sync-note';
+ explanation.textContent='Your subscriptions and preferences stay in this browser. Once saved to Homepage, changes sync automatically.';
+ const wrap=document.createElement('div');wrap.className='homepage-actions';
+ const save=document.createElement('button');save.type='button';save.disabled=true;save.id='account-save-button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
+ const load=document.createElement('button');load.type='button';load.disabled=true;load.id='account-load-button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
+ const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+ wrap.append(save,load);panel.append(explanation,wrap,status);
+}
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
 let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
@@ -727,6 +864,7 @@ function resolveConnectDifference(){
  });
 }
 async function connectSync(token=el('sync-token').value.trim(),remember=true){
+ if(accountReady){syncStatus('Account sync is active; legacy Server Sync is unavailable.');return}
  if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter the 64-character approved token distributed by Richard.');return}
  syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
  let needsSave=false;
@@ -800,6 +938,7 @@ async function saveSync(){
  syncBusy=false;if(syncPending){syncPending=false;scheduleServerSave()}
 }
 function scheduleServerSave(){
+ if(accountReady){scheduleAccountSave();return}
  if(!syncConnected)return;
  syncDirty=true;
  syncStatus('Connected · saving changes…');
@@ -921,6 +1060,10 @@ syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
 else restoreReadingSelection(localStorage.getItem(readingSelectionKey));
+mountAccountActions();
+void checkHomepageSession();
+window.addEventListener('focus',()=>{void checkHomepageSession()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void checkHomepageSession()});
 setInterval(checkSync,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
 window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
