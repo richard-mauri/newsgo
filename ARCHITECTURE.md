@@ -34,3 +34,6 @@ This document describes **how the current application works**, not ongoing task 
 The semantic version is obtained from the dashboard's header version and used by the CLI. `devbuild.sh` injects the Mac-local sequential build number into both binaries through Go linker flags. Build numbering is a debugging identifier, not an API or data-format migration.
 
 Refer to code and tests for precise validation bounds and to [CURRENT_WORK.md](CURRENT_WORK.md) for known open bugs and acceptance results.
+
+## Homepage one-hour bearer handoff (candidate)
+NewsGo reads `#suite_token=...` from Homepage launcher links, immediately removes it from the visible URL, retains the bearer in tab-scoped `sessionStorage`, and verifies it with Homepage `/api/session/profile`. Homepage's revisioned `/api/storage/newsgo` GET/PUT uses an Authorization bearer header. Existing same-origin NewsGo session proxy is a fallback. No token is passed to NewsGo server endpoints, and normal reader subscriptions remain local until an explicit account load/save. An expired bearer requires navigating again through Homepage.
