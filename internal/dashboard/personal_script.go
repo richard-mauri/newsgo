@@ -676,6 +676,73 @@ el('close-exclusions').addEventListener('click',()=>showView('news'));
 const homepageOrigin='https://home.themauris.org';
 const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
+let suiteHandoff='';
+const suiteHandoffKey='newsgo.homepage.handoff.v1';
+function readSuiteHandoff(){
+ const fragment=new URLSearchParams(location.hash.slice(1));
+ const delivered=fragment.get('suite_token');
+ if(delivered!==null){
+  history.replaceState(null,'',location.pathname+location.search);
+  if(/^[a-f0-9]{64}$/.test(delivered)){try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}}
+ }
+ try{suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||''}catch(_){suiteHandoff=''}
+ if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
+}
+readSuiteHandoff();
+const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+let suiteExpiresAt=0;
+let suiteAccountLine=null,suiteRenewButton=null,suiteHomeLink=null;
+function showSuiteCountdown(){
+ if(!suiteAccountLine)return;
+ const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
+ if(remaining===0 && homepageIdentity){
+  homepageIdentity=null;accountSessionState();
+  suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+ }
+ const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in · Open from Homepage';
+ suiteAccountLine.textContent=label;
+ const active=!!homepageIdentity && remaining>0;
+ suiteRenewButton.hidden=!active;
+ suiteRenewButton.disabled=!active;
+ suiteHomeLink.hidden=active;
+}
+function initSuiteAccountHeader(){
+ if(suiteAccountLine||!homepageSessionStatus)return;
+ const container=document.createElement('div');
+ container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
+ suiteAccountLine=document.createElement('span');
+ suiteRenewButton=document.createElement('button');
+ suiteRenewButton.type='button';suiteRenewButton.textContent='Renew';
+ suiteRenewButton.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;background:transparent;color:var(--accent);cursor:pointer';
+ suiteRenewButton.addEventListener('click',renewSuiteAccount);
+ // Use a real link for return navigation. Safari handles an anchor like a
+ // normal user-selected link, rather than a script-driven cross-origin jump.
+ suiteHomeLink=document.createElement('a');
+ suiteHomeLink.href=homepageOrigin+'/';
+ suiteHomeLink.textContent='Open Homepage';
+ suiteHomeLink.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;color:var(--accent);text-decoration:none';
+ suiteHomeLink.hidden=true;
+ container.append(suiteAccountLine,suiteRenewButton,suiteHomeLink);
+ homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
+ homepageSessionStatus.hidden=true;
+ showSuiteCountdown();
+ setInterval(showSuiteCountdown,1000);
+}
+async function renewSuiteAccount(){
+ if(!suiteHandoff || Date.now()>=suiteExpiresAt){showSuiteCountdown();return}
+ suiteRenewButton.disabled=true;
+ try{
+  const response=await fetch(homepageOrigin+'/api/handoff/renew',{method:'POST',credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+  if(!response.ok)throw Error('Renewal failed (HTTP '+response.status+')');
+  const data=await response.json();
+  if(!/^[a-f0-9]{64}$/.test(data.token)||!Date.parse(data.expiresAt))throw Error('Invalid renewal response');
+  suiteHandoff=data.token;suiteExpiresAt=Date.parse(data.expiresAt);
+  try{sessionStorage.setItem(suiteHandoffKey,suiteHandoff)}catch(_){}
+  await checkHomepageSession();
+ }catch(e){homepageSessionStatus.textContent=e.message;homepageSessionStatus.hidden=false}
+ finally{showSuiteCountdown()}
+}
+
 function accountSessionState(){
  const available=!!homepageIdentity;
  const nav=el('manage-sync');if(nav)nav.hidden=!available;
@@ -692,26 +759,31 @@ function accountSessionState(){
 }
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
- const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity)};
- if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
+ initSuiteAccountHeader();
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteCountdown()};
+ if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org' || !suiteHandoff){
+  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
  }
  try{
-  const response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
-  if(response.status===401){homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return}
+  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+  if(response.status===401){
+   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');return;
+  }
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
+  suiteExpiresAt=Date.parse(profile.expiresAt)||0;
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
-  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');
+  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteCountdown();
  }catch(e){
-  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');
+  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteCountdown();
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
 async function homepageReaderRecord(){
- const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'include',cache:'no-store'});
+ const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
  if(response.status===404)return null;
  if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
  return response.json();
@@ -729,7 +801,7 @@ async function accountSave(){
  try{
   const data=accountSnapshot();
   if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:accountRevision,data})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
   if(response.status===409){accountConflict=true;throw Error('Account profile changed elsewhere; load account settings before saving again.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
   const result=await response.json();accountRevision=result.revision;
@@ -783,7 +855,7 @@ async function accountEstablish(){
   // Disconnect legacy writing before establishing the central revision.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
   localStorage.removeItem(syncCredentialKey);syncAppearance();
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
   if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
   const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
