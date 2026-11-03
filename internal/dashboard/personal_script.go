@@ -751,7 +751,7 @@ function accountSessionState(){
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
  initSuiteAccountHeader();
- const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity)};
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteCountdown()};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org' || !suiteHandoff){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
  }
