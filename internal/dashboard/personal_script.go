@@ -678,6 +678,8 @@ const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
 function accountSessionState(){
  const available=!!homepageIdentity;
+ const nav=el('manage-sync');if(nav)nav.hidden=!available;
+ if(!available&& !el('sync-panel').classList.contains('personal-hidden'))showView('news');
  const save=el('account-save-button'),load=el('account-load-button');
  if(save)save.disabled=!available;
  if(load)load.disabled=!available;
