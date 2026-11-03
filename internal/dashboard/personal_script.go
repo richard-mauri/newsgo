@@ -780,7 +780,9 @@ function mountAccountActions(){
  if(heading){const title=heading.querySelector('h2');if(title)title.textContent='Account Sync'}
  // Legacy browser controls are removed from the normal view. Old server
  // records remain untouched; the old backend is retained for rollback.
- for(const node of [...panel.children])if(node!==heading)node.remove();
+ const legacy=document.createElement('div');legacy.hidden=true;legacy.setAttribute('aria-hidden','true');
+ for(const node of [...panel.children])if(node!==heading)legacy.appendChild(node);
+ panel.appendChild(legacy);
  const explanation=document.createElement('p');explanation.className='homepage-sync-note';
  explanation.textContent='Your subscriptions and preferences stay in this browser. Once saved to Homepage, changes sync automatically.';
  const wrap=document.createElement('div');wrap.className='homepage-actions';
@@ -794,8 +796,7 @@ let isAdmin=false,adminRevision=0;
 let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
 const syncStatus=t=>{el('sync-status').textContent=t};
 function syncAppearance(){
- const legacyConnection=el('sync-connection');if(!legacyConnection)return;
- legacyConnection.textContent=syncConnected?'Connected':'Not connected';
+ el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
  el('manage-admin').hidden=!(syncConnected&&isAdmin);
