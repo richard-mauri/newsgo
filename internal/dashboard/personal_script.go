@@ -708,17 +708,15 @@ function accountSessionState(){
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity)};
- if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
+ if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org' || !suiteHandoff){
+  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
  }
  try{
-  let response;
-  if(suiteHandoff){
-   response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
-   if(response.status===401){suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}}
+  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+  if(response.status===401){
+   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');return;
   }
-  if(!suiteHandoff)response=await fetch('/api/homepage/session',{credentials:'same-origin',cache:'no-store'});
-  if(response.status===401){homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return}
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
@@ -731,7 +729,7 @@ async function checkHomepageSession(){
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
 async function homepageReaderRecord(){
- const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:suiteHandoff?'omit':'include',cache:'no-store',headers:homepageAccountHeaders()});
+ const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
  if(response.status===404)return null;
  if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
  return response.json();
@@ -749,7 +747,7 @@ async function accountSave(){
  try{
   const data=accountSnapshot();
   if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:suiteHandoff?'omit':'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
   if(response.status===409){accountConflict=true;throw Error('Account profile changed elsewhere; load account settings before saving again.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
   const result=await response.json();accountRevision=result.revision;
@@ -803,7 +801,7 @@ async function accountEstablish(){
   // Disconnect legacy writing before establishing the central revision.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
   localStorage.removeItem(syncCredentialKey);syncAppearance();
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:suiteHandoff?'omit':'include',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
   if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
   const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
