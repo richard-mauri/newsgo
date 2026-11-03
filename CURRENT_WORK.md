@@ -9,6 +9,8 @@
 - Homepage session is verified through a same-origin NewsGo proxy; Safari ordinary tabs verified username `richard`. Dock web-app cookie isolation is separate from regular Safari.
 - Go tests cover reader profile mapping and session endpoint. No automatic cross-device load at sign-in; account load is intentional, like MauriStocks. Admin settings still use legacy role checks pending centralized authorization.
 
+- Account actions now initialize disabled and require verified Homepage session; signed-out status is plain-language, pending autosave timer is cancelled, and session is rechecked on focus/visibility and before account operations. Browser settings are preserved.
+
 ## Remaining
 Owner must test the latest account workflow on Mac/Safari, including saved subscriptions and column-equivalent reader preferences, 409 conflicts, offline behavior and profile survival. Refactor NewsGo admin authorization to Homepage roles before retiring token-based admin login. Preserve NewsGo `data/` and Homepage `private/` backups.
 
