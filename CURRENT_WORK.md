@@ -16,3 +16,5 @@ go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
+
+Latest candidate: NewsGo header now presents signed-in user, server-based remaining time (mm:ss), and Renew. Renew makes a direct bearer-authenticated POST to Homepage `/api/handoff/renew`; it replaces the short-lived per-tab token. After expiry the button becomes Open Homepage. Countdown does not automatically renew, and browser-local settings remain intact. Verify iOS Safari and renewal against short-lifetime Homepage candidate.
