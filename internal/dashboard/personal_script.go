@@ -728,14 +728,25 @@ function scheduleAccountSave(){
  if(!homepageIdentity||!accountReady||accountConflict)return;
  accountDirty=true;clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,650);
 }
+function confirmAccountChange(message){
+ const dialog=el('homepage-confirm-dialog');
+ if(!dialog||typeof dialog.showModal!=='function')return Promise.resolve(false);
+ el('homepage-confirm-message').textContent=message;
+ return new Promise(resolve=>{
+  dialog.returnValue='cancel';
+  dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});
+  dialog.showModal();
+ });
+}
 async function accountLoad(){
  if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
  if(accountPending){accountStatus('An account save is in progress.');return}
+ if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy Server Sync changes first.');return}
  try{
   const record=await homepageReaderRecord();
   if(!record){accountStatus('No saved account settings yet. Use Save to account to create them.');return}
   if(!validAccountData(record.data))throw Error('Saved account data invalid; browser unchanged.');
-  if(!window.confirm('Replace this browser’s NewsGo subscriptions and preferences with your Homepage account settings?'))return;
+  if(!await confirmAccountChange('Replace this browser’s NewsGo subscriptions and preferences with your Homepage account settings?'))return;
   clearTimeout(accountTimer);
   // Disconnect the old browser token before applying central settings, so
   // legacy sync never receives changes loaded from Homepage.
@@ -752,7 +763,7 @@ async function accountEstablish(){
  try{
   const existing=await homepageReaderRecord();
   if(existing&&!validAccountData(existing.data))throw Error('Invalid account settings; cannot overwrite.');
-  if(!window.confirm(existing?'Replace your saved Homepage settings with this browser’s preferences?':'Save current browser preferences to your Homepage account?'))return;
+  if(!await confirmAccountChange(existing?'Replace your saved Homepage settings with this browser’s preferences?':'Save current browser preferences to your Homepage account?'))return;
   // Disconnect legacy writing before establishing the central revision.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
   localStorage.removeItem(syncCredentialKey);syncAppearance();
