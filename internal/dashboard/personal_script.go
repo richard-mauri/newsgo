@@ -755,6 +755,7 @@ async function accountLoad(){
   applyServerPreferences({...record.data,revision:record.revision});
   accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
   accountStatus('Loaded Homepage settings. Future changes save automatically.');
+  const b=el('account-save-button');if(b)b.hidden=true;
  }catch(e){accountStatus(e.message)}
 }
 async function accountEstablish(){
@@ -772,6 +773,7 @@ async function accountEstablish(){
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
   const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
   accountStatus('Saved to Homepage. Future changes save automatically.');
+  const b=el('account-save-button');if(b)b.hidden=true;
  }catch(e){accountStatus(e.message)}
 }
 function mountAccountActions(){
