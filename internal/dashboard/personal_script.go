@@ -691,7 +691,7 @@ async function checkHomepageSession(){
   const profile=await response.json();
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
-  show('Signed in as '+homepageIdentity.user+' (Homepage) · Legacy Server Sync still separate');
+  show('Signed in as '+homepageIdentity.user+' (Homepage)');
  }catch(e){
   homepageIdentity=null;
   show('Homepage account: connection unavailable ('+e.message+'). Legacy Server Sync still available.');
