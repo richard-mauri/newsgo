@@ -37,3 +37,6 @@ Refer to code and tests for precise validation bounds and to [CURRENT_WORK.md](C
 
 ## Homepage one-hour bearer handoff (candidate)
 NewsGo reads `#suite_token=...` from Homepage launcher links, immediately removes it from the visible URL, retains the bearer in tab-scoped `sessionStorage`, and verifies it with Homepage `/api/session/profile`. Homepage's revisioned `/api/storage/newsgo` GET/PUT uses an Authorization bearer header. There is no cookie fallback: an absent or invalid token leaves NewsGo in browser-only mode. The prior `/api/homepage/session` cookie proxy and its tests have been removed. No token is passed to NewsGo server endpoints, and normal reader subscriptions remain local until an explicit account load/save. An expired bearer requires navigating again through Homepage.
+
+## Session status and renewal
+The account status near the top shows authenticated identity and a seconds-accurate remaining lifetime based on Homepage's `expiresAt` profile field. The Renew button calls Homepage `POST /api/handoff/renew` directly with the current bearer, rotates the per-tab credential and updates the remaining time. No cookie or navigation needed while the token is valid; an expired token requires launching from Homepage. This is manual renewal, never silent auto-renewal.
