@@ -11,6 +11,8 @@
 
 - Account actions now initialize disabled and require verified Homepage session; signed-out status is plain-language, pending autosave timer is cancelled, and session is rechecked on focus/visibility and before account operations. Browser settings are preserved.
 
+- Account Sync navigation defaults hidden and is shown only after Homepage session verification. On logout/session loss it is hidden immediately and an open Account Sync panel returns to the news view; browser settings are unchanged.
+
 ## Remaining
 Owner must test the latest account workflow on Mac/Safari, including saved subscriptions and column-equivalent reader preferences, 409 conflicts, offline behavior and profile survival. Refactor NewsGo admin authorization to Homepage roles before retiring token-based admin login. Preserve NewsGo `data/` and Homepage `private/` backups.
 
