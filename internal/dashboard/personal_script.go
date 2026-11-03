@@ -708,6 +708,7 @@ async function homepageReaderRecord(){
 // Read the legacy server record (not this browser's possibly unsaved settings)
 // and require the authenticated central username to match its owner.
 async function migrateLegacyReaderToHomepage(){
+ if(homepageAuto){el('homepage-migrate-status').textContent='Pause Homepage autosave before migrating.';return}
  const status=el('homepage-migrate-status');
  const report=message=>{status.textContent=message};
  if(!homepageIdentity||!syncConnected||!syncToken){report('Connect both Homepage and legacy NewsGo Server Sync first.');return}
@@ -765,6 +766,7 @@ async function homepageReaderAction(mode){
  const report=t=>{status.textContent=t};
  if(!homepageIdentity){report('Sign in through Homepage before using account storage.');return}
  if(syncBusy||syncDirty||syncConflict||syncReading){report('Resolve pending legacy Server Sync changes before transferring settings.');return}
+ if(homepageAuto){report('Pause Homepage autosave before manual transfers.');return}
  const save=mode==='save',button=el(save?'homepage-save':'homepage-load');
  button.disabled=true;
  try{
@@ -772,6 +774,7 @@ async function homepageReaderAction(mode){
   if(!save){
    if(!existing){report('No Homepage NewsGo profile exists.');return}
    if(!homepageDataValid(existing.data))throw Error('Homepage profile is invalid. Browser unchanged.');
+   if(homepageAuto){report('Pause Homepage autosave before manually loading account settings.');return}
    if(!window.confirm('Load Homepage preferences into this browser? Local reader settings will be replaced; legacy NewsGo Server Sync will remain unchanged.'))return;
    // Prevent the legacy autosave queue from writing a central account load back
    // to the independent NewsGo profile. Disconnect locally before applying.
@@ -803,7 +806,7 @@ async function homepageAutoWrite(){
  homepageAutoPending=true;homepageAutoDirty=false;
  const data=homepageReaderSnapshot();
  try{
-  if(!homepageIdentity||homepageIdentity.user!==homepageAutoUser)throw Error('Homepage identity changed. Autosave stopped.');
+  if(!homepageIdentity||homepageIdentity.user!==homepageAutoUser){homepageAuto=false;homepageAutoConflict=true;el('homepage-auto').textContent='Use Homepage autosave';throw Error('Homepage identity changed. Autosave stopped.');}
   if(!homepageDataValid(data))throw Error('Reader settings failed validation.');
   const res=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'include',cache:'no-store',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:homepageAutoRevision,data})});
@@ -916,6 +919,7 @@ function resolveConnectDifference(){
  });
 }
 async function connectSync(token=el('sync-token').value.trim(),remember=true){
+ if(homepageAuto){syncStatus('Pause Homepage autosave before connecting legacy Server Sync.');return}
  if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter the 64-character approved token distributed by Richard.');return}
  syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
  let needsSave=false;
