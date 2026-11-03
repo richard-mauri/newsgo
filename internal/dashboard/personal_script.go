@@ -690,6 +690,48 @@ function readSuiteHandoff(){
 }
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+let suiteExpiresAt=0;
+let suiteAccountLine=null,suiteRenewButton=null;
+function showSuiteCountdown(){
+ if(!suiteAccountLine)return;
+ const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
+ if(remaining===0 && homepageIdentity){
+  homepageIdentity=null;accountSessionState();
+  suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+ }
+ const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in · Open from Homepage';
+ suiteAccountLine.textContent=label;
+ suiteRenewButton.disabled=!homepageIdentity || remaining===0;
+}
+function initSuiteAccountHeader(){
+ if(suiteAccountLine||!homepageSessionStatus)return;
+ const container=document.createElement('div');
+ container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
+ suiteAccountLine=document.createElement('span');
+ suiteRenewButton=document.createElement('button');
+ suiteRenewButton.type='button';suiteRenewButton.textContent='Renew';
+ suiteRenewButton.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;background:transparent;color:var(--accent);cursor:pointer';
+ suiteRenewButton.addEventListener('click',renewSuiteAccount);
+ container.append(suiteAccountLine,suiteRenewButton);
+ homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
+ homepageSessionStatus.hidden=true;
+ showSuiteCountdown();
+ setInterval(showSuiteCountdown,1000);
+}
+async function renewSuiteAccount(){
+ if(!suiteHandoff || Date.now()>=suiteExpiresAt){showSuiteCountdown();return}
+ suiteRenewButton.disabled=true;
+ try{
+  const response=await fetch(homepageOrigin+'/api/handoff/renew',{method:'POST',credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+  if(!response.ok)throw Error('Renewal failed (HTTP '+response.status+')');
+  const data=await response.json();
+  if(!/^[a-f0-9]{64}$/.test(data.token)||!Date.parse(data.expiresAt))throw Error('Invalid renewal response');
+  suiteHandoff=data.token;suiteExpiresAt=Date.parse(data.expiresAt);
+  try{sessionStorage.setItem(suiteHandoffKey,suiteHandoff)}catch(_){}
+  await checkHomepageSession();
+ }catch(e){homepageSessionStatus.textContent=e.message;homepageSessionStatus.hidden=false}
+ finally{showSuiteCountdown()}
+}
 
 function accountSessionState(){
  const available=!!homepageIdentity;
@@ -707,6 +749,7 @@ function accountSessionState(){
 }
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
+ initSuiteAccountHeader();
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=false;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity)};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org' || !suiteHandoff){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
@@ -719,12 +762,13 @@ async function checkHomepageSession(){
   }
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
+  suiteExpiresAt=Date.parse(profile.expiresAt)||0;
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
-  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');
+  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteCountdown();
  }catch(e){
-  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');
+  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteCountdown();
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
