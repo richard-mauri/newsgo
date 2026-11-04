@@ -19,7 +19,7 @@ func TestBackToHomepageNativeLink(t *testing.T) {
 }
 
 func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
- script := PersonalScript()
+ script := personalJS
  if strings.Contains(script,"Not signed in · Open from Homepage") || strings.Contains(script,"suiteHomeLink") || strings.Contains(script,"textContent='Open Homepage'") {
   t.Fatal("NewsGo account status must not create another Homepage link")
  }
