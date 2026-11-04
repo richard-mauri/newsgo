@@ -885,8 +885,8 @@ function syncAppearance(){
  if(!(syncConnected&&isAdmin)&&(!el('admin-panel').classList.contains('personal-hidden')||!el('diagnostics-panel').classList.contains('personal-hidden')))showView('news');
 }
 function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
-async function syncRequest(method,body){
- const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
+async function syncRequest(method,body,signal){
+ const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store',...(signal?{signal}:{})});
  if(response.status===404){const data=await response.json();return {...data,notFound:true}}
  if(!response.ok)throw Error('HTTP '+response.status+(response.status===409?' — newer server preferences are available. See Advanced to resolve the conflict.':' — '+(await response.text()).trim().slice(0,140)));
  return response.json();
@@ -937,9 +937,12 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
  connectButton.textContent='Connecting…';
  connectButton.setAttribute('aria-busy','true');
  syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Checking approved token…');
+ const controller=new AbortController();
+ const timeout=setTimeout(()=>controller.abort(),15000);
  let needsSave=false;
  try{
-  const data=await syncRequest('GET');
+  const data=await syncRequest('GET',undefined,controller.signal);
+  clearTimeout(timeout);
   isAdmin=data.role==='admin';
   if(data.notFound){syncRevision=0;syncConnected=true;syncDirty=true;needsSave=true;syncStatus('Connected · creating your server profile…')}
   else {
@@ -974,10 +977,11 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
  }catch(e){
   syncToken='';syncConnected=false;isAdmin=false;
   const invalid=/HTTP (401|403)(\D|$)/.test(e.message);
-  syncStatus(invalid?'Sign-in failed: token was rejected or has expired. Check your token and try again. Browser preferences remain unchanged.':'Could not connect: '+e.message+'. Browser preferences remain available.');
+  syncStatus(invalid?'Sign-in failed: token was rejected or has expired. Check your token and try again. Browser preferences remain unchanged.':e.name==='AbortError'?'Connection timed out. Check your network and try again. Browser preferences remain unchanged.':'Could not connect: '+e.message+'. Browser preferences remain available.');
   syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey);
  }
  finally{
+  clearTimeout(timeout);
   syncReading=false;syncConnectPending=false;
   connectButton.disabled=false;connectButton.textContent='Connect';connectButton.removeAttribute('aria-busy');
   if(needsSave&&syncConnected)scheduleServerSave();
