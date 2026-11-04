@@ -40,3 +40,6 @@ NewsGo reads `#suite_token=...` from Homepage launcher links, immediately remove
 
 ## Session status and renewal
 The account status near the top shows authenticated identity and a seconds-accurate remaining lifetime based on Homepage's `expiresAt` profile field. The Renew button calls Homepage `POST /api/handoff/renew` directly with the current bearer, rotates the per-tab credential and updates the remaining time. No cookie or navigation needed while the token is valid; an expired token requires launching from Homepage. This is manual renewal, never silent auto-renewal.
+
+## Return to Homepage navigation
+NewsGo's browser UI exposes a visible native anchor `<a href="https://home.themauris.org/">← Back to Homepage</a>` with no `target` and no JavaScript history manipulation. It navigates in the current tab and can be used regardless of account sign-in. The link adds no new server endpoints, exposes no credentials, and does not modify app-local state. This is coordinated with Homepage Issue #11 / draft PR #12, where card clicks now navigate in the same tab.
