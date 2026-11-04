@@ -691,7 +691,7 @@ function readSuiteHandoff(){
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 let suiteExpiresAt=0;
-let suiteAccountLine=null,suiteRenewButton=null,suiteHomeLink=null;
+let suiteAccountLine=null,suiteRenewButton=null;
 function showSuiteCountdown(){
  if(!suiteAccountLine)return;
  const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
@@ -699,12 +699,11 @@ function showSuiteCountdown(){
   homepageIdentity=null;accountSessionState();
   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
  }
- const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in · Open from Homepage';
+ const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in';
  suiteAccountLine.textContent=label;
  const active=!!homepageIdentity && remaining>0;
  suiteRenewButton.hidden=!active;
  suiteRenewButton.disabled=!active;
- suiteHomeLink.hidden=active;
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
@@ -715,14 +714,7 @@ function initSuiteAccountHeader(){
  suiteRenewButton.type='button';suiteRenewButton.textContent='Renew';
  suiteRenewButton.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;background:transparent;color:var(--accent);cursor:pointer';
  suiteRenewButton.addEventListener('click',renewSuiteAccount);
- // Use a real link for return navigation. Safari handles an anchor like a
- // normal user-selected link, rather than a script-driven cross-origin jump.
- suiteHomeLink=document.createElement('a');
- suiteHomeLink.href=homepageOrigin+'/';
- suiteHomeLink.textContent='Open Homepage';
- suiteHomeLink.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;color:var(--accent);text-decoration:none';
- suiteHomeLink.hidden=true;
- container.append(suiteAccountLine,suiteRenewButton,suiteHomeLink);
+ container.append(suiteAccountLine,suiteRenewButton);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
  showSuiteCountdown();

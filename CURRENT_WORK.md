@@ -1,23 +1,11 @@
-# NewsGo current work
+# NewsGo — current work (2026-11-04)
 
-Date: 2026-11-03. Baseline: GitHub `main` after merged header accent PR. Issue [#46](https://github.com/richard-mauri/newsgo/issues/46), branch `feat/46-hourly-account-handoff` (draft PR in progress).
+Authoritative baseline: GitHub `main`. Active issue [#49](https://github.com/richard-mauri/newsgo/issues/49), branch `fix/49-homepage-return`, [draft PR #50](https://github.com/richard-mauri/newsgo/pull/50) targeting main. This is an independent part of Homepage Issue #11 / PR #12, which changes launcher navigation to same-tab. Scope: Adding a styled native same-tab Back to Homepage link in the dashboard header. No feed/catalog/sync changes. Independent Issue #48 tracks Personal settings Sign in hover, press and progress feedback. Existing browser-local settings and optional suite token handoff stay unchanged.
 
-Implemented candidate: accept Homepage one-hour URL fragment handoff, strip fragment from URL, retain only in browser tab sessionStorage, use Bearer header to validate Homepage identity and read/write revisioned account settings. The NewsGo cookie proxy and route are removed; no fallback. Without a valid one-hour token, account settings are unavailable and all subscriptions/preferences remain browser-local. Browser-local subscriptions, exclusions and preferences unchanged. No automatic import, migration, or data deletion. Must deploy Homepage issue #6 first for full operation. Admin server endpoints remain on legacy authorization; this PR does not change them. No merge/restart authorized.
+Owner Mac/Safari acceptance of return link, mobile visibility, light/dark contrast and same-tab navigation is pending. Go regression test checks presence of native link. GitHub CI must be checked at the exact final PR head. No merge, release or service restart authorized. Existing local work and Cloudflare configuration are unverified and must not be overwritten.
 
-CI and Safari verification pending, including expired token and browser-only signed-out behavior.
+Other pending: The original token-hand-off work and browser-local preference/sync behavior remain in place. NewsGo Issue #48 separately tracks feedback on the Personal settings Sign in button; not part of this PR.
 
-Mac test:
-```
-cd ~/projects/newsgo
-git fetch origin
-git checkout feat/46-hourly-account-handoff
-git pull --ff-only origin feat/46-hourly-account-handoff
-go test -count=1 ./...
-./devbuild.sh
-./newsgo.sh
-```
+Owner Safari feedback on navigation PRs: app links worked but the return controls differed in position/hover style, and MauriStocks displayed a second 'Open Homepage' button while signed out. Latest candidate uses identical `.suite-home-link` CSS in all apps and positions the link at top-left above primary heading. MauriStocks retains only the universal return link while signed out; its account Renew button is visible only while signed in. Mac/Safari visual acceptance of this revision is outstanding.
 
-Latest candidate: NewsGo header now presents signed-in user, server-based remaining time (mm:ss), and Renew. Renew makes a direct bearer-authenticated POST to Homepage `/api/handoff/renew`; it replaces the short-lived per-tab token. After expiry the button becomes Open Homepage. Countdown does not automatically renew, and browser-local settings remain intact. Verify iOS Safari and renewal against short-lifetime Homepage candidate.
-
-## Expired-token Homepage return
-Owner confirmed Homepage remains signed in after five-minute NewsGo token expiration when navigating by Safari address bar, but the JavaScript-driven Open Homepage button reportedly landed on a signed-out Homepage. The expired-state action is now a native same-tab `<a href="https://home.themauris.org/">` link, not `location.assign` from a button. It does not clear Homepage credentials or touch NewsGo browser data. This change is in the existing handoff PR, with Safari verification pending; it must not be presented as a confirmed browser fix before owner testing.
+Owner Safari revision (2026-11-04): the large bordered Back to Homepage control was visually too prominent. All four apps now use a 12px text-sized, subdued link placed immediately beneath each primary heading, with hover background and underline rather than a full-height button. NewsGo also removes the duplicate signed-out 'Open from Homepage' prompt and 'Open Homepage' action; the signed-in token Renew control remains. Updated code and tests are in the existing draft PR; Mac/Safari acceptance remains unverified.
