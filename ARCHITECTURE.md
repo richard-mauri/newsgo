@@ -43,3 +43,5 @@ The account status near the top shows authenticated identity and a seconds-accur
 
 ## Return to Homepage navigation
 NewsGo's browser UI exposes a visible native anchor `<a href="https://home.themauris.org/">← Back to Homepage</a>` with no `target` and no JavaScript history manipulation. It navigates in the current tab and can be used regardless of account sign-in. The link adds no new server endpoints, exposes no credentials, and does not modify app-local state. This is coordinated with Homepage Issue #11 / draft PR #12, where card clicks now navigate in the same tab.
+
+The suite-wide return button uses the same `.suite-home-link` presentation in all four apps: 38px minimum height, 8px/12px padding, 10px radius, muted border at rest, accent border and darker fill on hover, and a visible keyboard focus outline. Place one link at the upper-left above the primary content/heading.
