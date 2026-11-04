@@ -13,7 +13,17 @@ func TestBackToHomepageNativeLink(t *testing.T) {
  if strings.Contains(markup, `class="suite-home-link" target="_blank"`) {
   t.Fatal("Homepage return must not open a new tab")
  }
- if !strings.Contains(markup,".suite-home-row{flex:0 0 100%;width:100%}") {t.Fatal("Homepage link must be in upper-left header row")}
- if !strings.Contains(markup,".suite-home-link:hover{background:rgba(96,151,172,.22);border-color:var(--accent,#69c6d3);text-decoration:none}") {t.Fatal("standardized hover border style missing")}
+ if !strings.Contains(markup,`<div class="brand">News<span>Go</span><div><a class="suite-home-link"`) {t.Fatal("return link must follow NewsGo heading")}
+ if !strings.Contains(markup,".suite-home-link:hover{background:rgba(96,151,172,.16);color:var(--accent,#69c6d3);text-decoration:underline;opacity:1}") {t.Fatal("standardized hover border style missing")}
 
+}
+
+func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
+ script := PersonalScript()
+ if strings.Contains(script,"Not signed in · Open from Homepage") || strings.Contains(script,"suiteHomeLink") || strings.Contains(script,"textContent='Open Homepage'") {
+  t.Fatal("NewsGo account status must not create another Homepage link")
+ }
+ if !strings.Contains(script,"suiteRenewButton.addEventListener('click',renewSuiteAccount)") {
+  t.Fatal("signed-in renewal must remain available")
+ }
 }
