@@ -874,7 +874,7 @@ function mountAccountActions(){
 }
 const syncCredentialKey='newsgo.sync.token.v1';
 let isAdmin=false,adminRevision=0;
-let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
+let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false,syncConnectPending=false;
 const syncStatus=t=>{el('sync-status').textContent=t};
 function syncAppearance(){
  el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
@@ -928,9 +928,15 @@ function resolveConnectDifference(){
  });
 }
 async function connectSync(token=el('sync-token').value.trim(),remember=true){
+ if(syncConnectPending)return;
  if(accountReady){syncStatus('Account sync is active; legacy Server Sync is unavailable.');return}
- if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter the 64-character approved token distributed by Richard.');return}
- syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
+ if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter a valid 64-character approved token. Browser preferences are unchanged.');return}
+ syncConnectPending=true;
+ const connectButton=el('sync-connect');
+ connectButton.disabled=true;
+ connectButton.textContent='Connecting…';
+ connectButton.setAttribute('aria-busy','true');
+ syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Checking approved token…');
  let needsSave=false;
  try{
   const data=await syncRequest('GET');
@@ -965,8 +971,17 @@ async function connectSync(token=el('sync-token').value.trim(),remember=true){
   el('sync-token').value='';syncAppearance();
   // Update counters and management list even when the server profile is already current.
   if(syncConnected)renderManager();
- }catch(e){syncToken='';syncConnected=false;isAdmin=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
- finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
+ }catch(e){
+  syncToken='';syncConnected=false;isAdmin=false;
+  const invalid=/HTTP (401|403)(\D|$)/.test(e.message);
+  syncStatus(invalid?'Sign-in failed: token was rejected or has expired. Check your token and try again. Browser preferences remain unchanged.':'Could not connect: '+e.message+'. Browser preferences remain available.');
+  syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey);
+ }
+ finally{
+  syncReading=false;syncConnectPending=false;
+  connectButton.disabled=false;connectButton.textContent='Connect';connectButton.removeAttribute('aria-busy');
+  if(needsSave&&syncConnected)scheduleServerSave();
+ }
 }
 async function loadSync(force=false){
  if(!syncConnected||syncBusy||syncReading)return;
