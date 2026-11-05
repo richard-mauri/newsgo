@@ -707,7 +707,7 @@ function showSuiteCountdown(){
   homepageIdentity=null;accountSessionState();
   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
  }
- const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in';
+ const label=homepageIdentity?'Signed in as '+homepageIdentity.user:'Not signed in';
  suiteAccountLine.textContent=label;
 }
 function initSuiteAccountHeader(){
