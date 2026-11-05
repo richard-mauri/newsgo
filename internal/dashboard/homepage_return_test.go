@@ -30,3 +30,16 @@ func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
   t.Fatal("explicit signed-out launch must clear the previous app bearer")
  }
 }
+
+func TestHomepageAccountHeaderOmitsMinuteCountdown(t *testing.T) {
+ script:=personalJS
+ if !strings.Contains(script,"const label=homepageIdentity?'Signed in as '+homepageIdentity.user:'Not signed in';") {
+  t.Fatal("account header must show identity only, with no remaining-minute display")
+ }
+ if !strings.Contains(script,"if(remaining===0 && homepageIdentity)") {
+  t.Fatal("the hidden session expiration enforcement must remain")
+ }
+ if strings.Contains(script,"remaining':'Not signed in'") {
+  t.Fatal("old signed-in session countdown still shown")
+ }
+}
