@@ -35,15 +35,18 @@ The semantic version is obtained from the dashboard's header version and used by
 
 Refer to code and tests for precise validation bounds and to [CURRENT_WORK.md](CURRENT_WORK.md) for known open bugs and acceptance results.
 
-## Homepage one-hour bearer handoff (candidate)
+## Homepage session-bound bearer handoff
 NewsGo reads `#suite_token=...` from Homepage launcher links, immediately removes it from the visible URL, retains the bearer in tab-scoped `sessionStorage`, and verifies it with Homepage `/api/session/profile`. Homepage's revisioned `/api/storage/newsgo` GET/PUT uses an Authorization bearer header. There is no cookie fallback: an absent or invalid token leaves NewsGo in browser-only mode. The prior `/api/homepage/session` cookie proxy and its tests have been removed. No token is passed to NewsGo server endpoints, and normal reader subscriptions remain local until an explicit account load/save. An expired bearer requires navigating again through Homepage.
 
-## Session status and renewal
-The account status near the top shows authenticated identity and a seconds-accurate remaining lifetime based on Homepage's `expiresAt` profile field. The Renew button calls Homepage `POST /api/handoff/renew` directly with the current bearer, rotates the per-tab credential and updates the remaining time. No cookie or navigation needed while the token is valid; an expired token requires launching from Homepage. This is manual renewal, never silent auto-renewal.
+## Session status
+The account status near the top shows only the authenticated identity (`Signed in as …`) or `Not signed in`, without a visible expiration countdown. The client still enforces the original twelve-hour Homepage session expiry using Homepage's `expiresAt` profile field. There is no independent app token renewal. Once the Homepage session expires, the user returns to Homepage and signs in again to restore account access.
 
 ## Return to Homepage navigation
 NewsGo's browser UI exposes a visible native anchor `<a href="https://home.themauris.org/">← Back to Homepage</a>` with no `target` and no JavaScript history manipulation. It navigates in the current tab and can be used regardless of account sign-in. The link adds no new server endpoints, exposes no credentials, and does not modify app-local state. This is coordinated with Homepage Issue #11 / draft PR #12, where card clicks now navigate in the same tab.
 
 The suite-wide return button uses the same `.suite-home-link` presentation in all four apps: 38px minimum height, 8px/12px padding, 10px radius, muted border at rest, accent border and darker fill on hover, and a visible keyboard focus outline. Place one link at the upper-left above the primary content/heading.
 
-The shared suite navigation style is now intentionally a quiet 12px text link directly below each page's primary heading, with subtle hover background and underline and keyboard focus outline (rather than the former 38px bordered button). NewsGo does not render an additional signed-out Homepage action; only the account Renew control appears during an active token session.
+The shared suite navigation style is a quiet 12px text link below each page's primary heading, with subtle hover background and underline and keyboard focus outline. NewsGo has no duplicate Homepage link or Renew button.
+
+## Twelve-hour Homepage sign-in handoff
+NewsGo receives a one-time transfer bearer from Homepage for its current twelve-hour login session. The bearer is valid only while that Homepage parent session remains active and is rejected by Homepage after sign-out or session expiry. NewsGo does not offer independent token renewal. A Homepage `#suite_mode=local` launch explicitly discards any older cached bearer, preserving browser-only reading preferences. A launch with `#suite_token=...` replaces the cached bearer, and ordinary reloads may reuse it until server validation rejects it. Account save/load continues to require live server validation. This change is paired with Homepage draft PR #12; deploy the coordinated changes together only after owner Safari acceptance.

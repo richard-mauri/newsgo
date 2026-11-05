@@ -681,9 +681,17 @@ const suiteHandoffKey='newsgo.homepage.handoff.v1';
 function readSuiteHandoff(){
  const fragment=new URLSearchParams(location.hash.slice(1));
  const delivered=fragment.get('suite_token');
- if(delivered!==null){
+ const browserOnly=fragment.get('suite_mode')==='local';
+ if(delivered!==null || browserOnly){
   history.replaceState(null,'',location.pathname+location.search);
-  if(/^[a-f0-9]{64}$/.test(delivered)){try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}}
+  if(browserOnly){
+   // Explicit signed-out launch: do not reuse an older Safari tab bearer.
+   try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+  }else if(/^[a-f0-9]{64}$/.test(delivered)){
+   try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
+  }else {
+   try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+  }
  }
  try{suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||''}catch(_){suiteHandoff=''}
  if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
@@ -691,7 +699,7 @@ function readSuiteHandoff(){
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 let suiteExpiresAt=0;
-let suiteAccountLine=null,suiteRenewButton=null;
+let suiteAccountLine=null;
 function showSuiteCountdown(){
  if(!suiteAccountLine)return;
  const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
@@ -699,42 +707,20 @@ function showSuiteCountdown(){
   homepageIdentity=null;accountSessionState();
   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
  }
- const label=homepageIdentity?'Signed in as '+homepageIdentity.user+' · '+String(Math.floor(remaining/60)).padStart(2,'0')+':'+String(remaining%60).padStart(2,'0')+' remaining':'Not signed in';
+ const label=homepageIdentity?'Signed in as '+homepageIdentity.user:'Not signed in';
  suiteAccountLine.textContent=label;
- const active=!!homepageIdentity && remaining>0;
- suiteRenewButton.hidden=!active;
- suiteRenewButton.disabled=!active;
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
  const container=document.createElement('div');
  container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
  suiteAccountLine=document.createElement('span');
- suiteRenewButton=document.createElement('button');
- suiteRenewButton.type='button';suiteRenewButton.textContent='Renew';
- suiteRenewButton.style.cssText='padding:5px 10px;border:1px solid var(--accent);border-radius:8px;background:transparent;color:var(--accent);cursor:pointer';
- suiteRenewButton.addEventListener('click',renewSuiteAccount);
- container.append(suiteAccountLine,suiteRenewButton);
+ container.append(suiteAccountLine);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
  showSuiteCountdown();
  setInterval(showSuiteCountdown,1000);
 }
-async function renewSuiteAccount(){
- if(!suiteHandoff || Date.now()>=suiteExpiresAt){showSuiteCountdown();return}
- suiteRenewButton.disabled=true;
- try{
-  const response=await fetch(homepageOrigin+'/api/handoff/renew',{method:'POST',credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
-  if(!response.ok)throw Error('Renewal failed (HTTP '+response.status+')');
-  const data=await response.json();
-  if(!/^[a-f0-9]{64}$/.test(data.token)||!Date.parse(data.expiresAt))throw Error('Invalid renewal response');
-  suiteHandoff=data.token;suiteExpiresAt=Date.parse(data.expiresAt);
-  try{sessionStorage.setItem(suiteHandoffKey,suiteHandoff)}catch(_){}
-  await checkHomepageSession();
- }catch(e){homepageSessionStatus.textContent=e.message;homepageSessionStatus.hidden=false}
- finally{showSuiteCountdown()}
-}
-
 function accountSessionState(){
  const available=!!homepageIdentity;
  const nav=el('manage-sync');if(nav)nav.hidden=!available;
