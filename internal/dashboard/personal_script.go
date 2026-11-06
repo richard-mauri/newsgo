@@ -560,7 +560,7 @@ function renderManager(){
  const allRow=document.createElement('div');allRow.className='personal-row';
  const allInfo=document.createElement('strong');allInfo.textContent='All Subscriptions';
  const allActions=document.createElement('div');allActions.className='personal-form';
-  allActions.append(button('Read All Articles',()=>chooseAllSubscriptions(false)),button('Read Lead Articles',()=>chooseAllSubscriptions(true)),button('Download ScraperGo URLs',downloadScraperTraceBatch));
+  allActions.append(button('Read All Articles',()=>chooseAllSubscriptions(false)),button('Read Lead Articles',()=>chooseAllSubscriptions(true)));
   allRow.append(allInfo,allActions);root.append(allRow);
  // Legacy subscription records that could not be mapped remain visible
  // with a clear explanation and an unsubscribe option; do not lose them.
@@ -596,6 +596,7 @@ async function refresh(){
  const refreshStart=performance.now();let batchDuration=0;
  const sequence=++refreshSequence;
  scraperTraceBatch=[];
+ el('download-scrapergo-urls').hidden=true;
  const loading=el('personal-loading');
  if(activeReadingSelection===null)return;
  renderReading();
@@ -624,6 +625,7 @@ async function refresh(){
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
    if(activeReadingSelection==='all'&&!leadOnlyAllSubscriptions) scraperTraceBatch=eligibleScraperTraceURLs(allPersonalArticles);
+   el('download-scrapergo-urls').hidden=scraperTraceBatch.length===0;
   loading.classList.remove('is-refreshing');
   const renderStart=performance.now();renderPersonalArticles();
   latestTiming={totalMs:performance.now()-refreshStart,batchMs:batchDuration,feedMs:data.reduce((n,g)=>n+(g.feedDurationMs||0),0),classifyMs:data.reduce((n,g)=>n+(g.classificationDurationMs||0),0),renderMs:performance.now()-renderStart};updateDiagnostics();
@@ -846,7 +848,8 @@ async function accountLoad(){
   // Disconnect the old browser token before applying central settings, so
   // legacy sync never receives changes loaded from Homepage.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
-  localStorage.removeItem(syncCredentialKey);syncAppearance();
+  localStorage.removeItem(syncCredentialKey);el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
+syncAppearance();
   applyServerPreferences({...record.data,revision:record.revision});
   accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
   accountStatus('Loaded Homepage settings. Future changes save automatically.');
