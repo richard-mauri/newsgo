@@ -6,7 +6,7 @@
 
 **Implementation:** For each validated URL the existing local replay CLI calls `/api/classify` and `/api/read` in sequence, prints the article index, classification, both ScraperGo HTTP status codes, bounded reader error kind, and upstream publisher HTTP status when supplied. Marks when classification says article but read fails, and totals such mismatches. Retains request pacing, numeric-loopback restriction, no redirects, and privacy: console output contains no full URLs, article text, response errors, or query strings. Exit status reflects read failures, preserving existing behavior. Note that `/api/classify` invokes ScraperGo's reader and can use a classification cache, so repeated upstream access and disagreement are possible.
 
-**Validation:** Go regression tests include classification/read disagreement, read-kind/publisher status parsing, malformed classification payload and output privacy. Exact final-head CI and Mac acceptance must be recorded below before merge.
+**Validation:** Go regression tests include classification/read disagreement, read-kind/publisher status parsing, malformed classification payload and output privacy. GitHub Actions [run 42299091038](https://github.com/richard-mauri/newsgo/actions/runs/42299091038) passed tests and build at code head `54df3c29d850b5b0dfaa0a0e82167d8fdc3f0b44`. A documentation-only update to this snapshot follows that run; CI must be rechecked at the resulting latest head. Owner Mac acceptance is still pending.
 
 **Owner Mac review:**
 
