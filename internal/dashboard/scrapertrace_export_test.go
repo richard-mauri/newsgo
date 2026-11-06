@@ -9,7 +9,9 @@ func TestScraperTraceURLExportWiredToCompletedReadAll(t *testing.T) {
  for _,needle:=range []string{
   "let scraperTraceBatch=[];",
   "if(activeReadingSelection==='all'&&!leadOnlyAllSubscriptions) scraperTraceBatch=eligibleScraperTraceURLs(allPersonalArticles)",
-  "el('download-scrapergo-urls').hidden=scraperTraceBatch.length===0",
+  "updateScraperTraceExportVisibility();",
+  "action.hidden=!(homepageIdentity&&homepageIdentity.role==='admin'&&suiteHandoff&&suiteExpiresAt>Date.now()",
+  "if(!homepageIdentity||homepageIdentity.role!=='admin'||!suiteHandoff||suiteExpiresAt<=Date.now())",
   "el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch)",
   "if(!article||typeof article.url!=='string'||excludedURL(article.url)||articleExcluded(article.url))continue;",
   "u.hash='';",
@@ -18,9 +20,12 @@ func TestScraperTraceURLExportWiredToCompletedReadAll(t *testing.T) {
  } {
   if !strings.Contains(personalJS,needle) {t.Errorf("missing diagnostic export contract %q",needle)}
  }
- if !strings.Contains(page.Tree.Root.String(),"id=\"download-scrapergo-urls\" hidden") {
+ if !strings.Contains(page.Tree.Root.String(),"id=\"download-scrapergo-urls\" class=\"article-url-export-button\" hidden>Download Article URLs") {
   t.Fatal("missing opt-in download button in briefing")
  }
+ if strings.Contains(page.Tree.Root.String(),">Download ScraperGo URLs</button>") { t.Fatal("old export label remains") }
+ if !strings.Contains(page.Tree.Root.String(),".article-url-export-button[hidden]{display:none!important}") {t.Fatal("admin export hidden state not styled")}
+ if !strings.Contains(personalJS,"function accountSessionState(){\n updateScraperTraceExportVisibility();") {t.Fatal("signed-in state changes must update export visibility")}
  // The handler must be wired in the unconditional startup section, not
  // inside accountLoad() or any profile/account action.
  listener:="el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch)"
