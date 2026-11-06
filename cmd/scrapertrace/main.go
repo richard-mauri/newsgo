@@ -189,10 +189,11 @@ func replayWithWorkers(ctx context.Context,urls []string,endpoint string,client 
   mismatch:=c.Classification=="article"&&(r.RequestError||r.HTTPStatus<200||r.HTTPStatus>=300)
   if mismatch{mismatched++}
   if !r.RequestError&&r.HTTPStatus>=200&&r.HTTPStatus<300{good++}else{bad++}
-  fmt.Fprintf(output,"Article %d/%d: classification=%s classify_http=%s read_http=%s classify_wall=%s read_wall=%s",item.index+1,len(urls),label,classHTTP,readHTTP,c.WallTime.Round(time.Millisecond),r.WallTime.Round(time.Millisecond))
+  fmt.Fprintf(output,"Article %d/%d: classification=%s classify_http=%s read_http=%s",item.index+1,len(urls),label,classHTTP,readHTTP)
   if r.Kind!=""{fmt.Fprintf(output," read_kind=%s",r.Kind)}
   if r.PublisherHTTPStatus!=0{fmt.Fprintf(output," publisher_http=%d",r.PublisherHTTPStatus)}
   if mismatch{fmt.Fprint(output," mismatch=classified_article_but_unreadable")}
+  fmt.Fprintf(output," classify_wall=%s read_wall=%s",c.WallTime.Round(time.Microsecond),r.WallTime.Round(time.Microsecond))
   fmt.Fprintln(output)
  }
  bad+=len(urls)-completed
