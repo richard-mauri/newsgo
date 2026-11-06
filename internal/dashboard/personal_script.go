@@ -313,7 +313,7 @@ function downloadScraperTraceBatch() {
   return;
  }
  const batch={schema:'newsgo.scrapergo-batch.v1',capturedAt:new Date().toISOString(),urls:scraperTraceBatch};
- const blob=new Blob([JSON.stringify(batch,null,2)+'\\n'],{type:'application/json'});
+ const blob=new Blob([JSON.stringify(batch,null,2)+'\n'],{type:'application/json'});
  const address=URL.createObjectURL(blob),link=document.createElement('a');
  link.href=address;link.download='newsgo-scrapergo-urls.json';link.style.display='none';
  document.body.append(link);link.click();link.remove();
@@ -848,8 +848,8 @@ async function accountLoad(){
   // Disconnect the old browser token before applying central settings, so
   // legacy sync never receives changes loaded from Homepage.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
-  localStorage.removeItem(syncCredentialKey);el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
-syncAppearance();
+  localStorage.removeItem(syncCredentialKey);
+   syncAppearance();
   applyServerPreferences({...record.data,revision:record.revision});
   accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
   accountStatus('Loaded Homepage settings. Future changes save automatically.');
@@ -1140,6 +1140,7 @@ el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
 window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
+el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
 syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
