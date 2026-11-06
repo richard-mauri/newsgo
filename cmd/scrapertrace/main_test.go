@@ -8,6 +8,8 @@ import (
  "net/http/httptest"
  "strings"
  "testing"
+ "sync/atomic"
+ "time"
 )
 
 func TestValidateBatchDeduplicatesAndDiscardsFragments(t *testing.T) {
@@ -110,4 +112,59 @@ func TestProbeRestrictsUntrustedResponseLabels(t *testing.T) {
  var out bytes.Buffer
  _,_=replay(context.Background(),[]string{"https://example.org/test"},server.URL+"/api/read",server.Client(),0,&out)
  if strings.Contains(out.String(),"INJECTED")||strings.Contains(out.String(),"publisher_http="){t.Fatal(out.String())}
+}
+
+func TestReplayConcurrentTimingAndBound(t *testing.T) {
+ var active,maxActive int64
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  current:=atomic.AddInt64(&active,1)
+  for {
+   previous:=atomic.LoadInt64(&maxActive)
+   if current<=previous||atomic.CompareAndSwapInt64(&maxActive,previous,current){break}
+  }
+  time.Sleep(20*time.Millisecond)
+  atomic.AddInt64(&active,-1)
+  w.Header().Set("Content-Type","application/json")
+  if r.URL.Path=="/api/classify"{
+   _,_=w.Write([]byte(`{"classification":"article"}`))
+  }else if r.URL.Path=="/api/read"{
+   _,_=w.Write([]byte(`{"title":"ok"}`))
+  }else{t.Errorf("unexpected path %s",r.URL.Path)}
+ }))
+ defer server.Close()
+ urls:=[]string{
+  "https://example.org/1","https://example.org/2",
+  "https://example.org/3","https://example.org/4",
+  "https://example.org/5","https://example.org/6",
+ }
+ var output bytes.Buffer
+ good,bad:=replayWithWorkers(context.Background(),urls,server.URL+"/api/read",server.Client(),0,4,&output)
+ if good!=len(urls)||bad!=0{t.Fatalf("bad totals good=%d bad=%d",good,bad)}
+ if atomic.LoadInt64(&maxActive)<2||atomic.LoadInt64(&maxActive)>4{t.Fatalf("unexpected concurrency=%d",maxActive)}
+ for _,wanted:=range []string{"classify_wall=","read_wall=","Classification wall latency: n=6","Read wall latency: n=6","Batch elapsed wall time:"}{
+  if !strings.Contains(output.String(),wanted){t.Errorf("missing %q in %s",wanted,output.String())}
+ }
+}
+
+func TestReplayDispatchDelayExcludedFromLatency(t *testing.T){
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`));return}
+  _,_=w.Write([]byte(`{"title":"ok"}`))
+ }))
+ defer server.Close()
+ urls:=[]string{"https://example.org/1","https://example.org/2"}
+ var output bytes.Buffer
+ started:=time.Now()
+ good,bad:=replayWithWorkers(context.Background(),urls,server.URL+"/api/read",server.Client(),100*time.Millisecond,1,&output)
+ if good!=2||bad!=0{t.Fatalf("bad counts: %d %d",good,bad)}
+ if time.Since(started)<100*time.Millisecond{t.Fatal("dispatch throttle omitted")}
+ if !strings.Contains(output.String(),"dispatch_delay=100ms"){t.Fatal(output.String())}
+}
+
+func TestLatencySummaryPercentiles(t *testing.T){
+ values:=[]time.Duration{5*time.Millisecond,1*time.Millisecond,4*time.Millisecond,2*time.Millisecond,3*time.Millisecond}
+ result:=latencySummary(values)
+ for _,item:=range []string{"n=5","min=1ms","mean=3ms","p50=3ms","p95=5ms","max=5ms"}{
+  if !strings.Contains(result,item){t.Errorf("missing %s in %s",item,result)}
+ }
 }
