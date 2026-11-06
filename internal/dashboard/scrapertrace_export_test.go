@@ -18,7 +18,7 @@ func TestScraperTraceURLExportWiredToCompletedReadAll(t *testing.T) {
  } {
   if !strings.Contains(personalJS,needle) {t.Errorf("missing diagnostic export contract %q",needle)}
  }
- if !strings.Contains(dashboardHTML,"id=\"download-scrapergo-urls\" hidden") {
+ if !strings.Contains(page.Tree.Root.String(),"id=\"download-scrapergo-urls\" hidden") {
   t.Fatal("missing opt-in download button in briefing")
  }
 }
