@@ -291,6 +291,44 @@ function queryEdited(){
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
+// Only the last successful, explicit Read All Articles refresh may be exported.
+let scraperTraceBatch=[];
+function eligibleScraperTraceURLs(articles) {
+ const out=[],seen=new Set();
+ for(const article of articles) {
+  if(!article||typeof article.url!=='string'||excludedURL(article.url)||articleExcluded(article.url))continue;
+  try {
+   const u=new URL(article.url);
+   if((u.protocol!=='http:'&&u.protocol!=='https:')||u.username||u.password)continue;
+   u.hash='';
+   if(u.href.length>2048||seen.has(u.href))continue;
+   seen.add(u.href);out.push(u.href);
+  }catch(_){}
+ }
+ return out;
+}
+function downloadScraperTraceBatch() {
+ if(!homepageIdentity||homepageIdentity.role!=='admin'||!suiteHandoff||suiteExpiresAt<=Date.now()){
+  message('Download Article URLs requires a signed-in Homepage administrator.');
+  updateScraperTraceExportVisibility();
+  return;
+ }
+ if(activeReadingSelection!=='all'||leadOnlyAllSubscriptions||!scraperTraceBatch.length) {
+  message('Choose Read All Articles and finish refreshing before exporting diagnostic URLs.');
+  return;
+ }
+ const batch={schema:'newsgo.scrapergo-batch.v1',capturedAt:new Date().toISOString(),urls:scraperTraceBatch};
+ const blob=new Blob([JSON.stringify(batch,null,2)+'\n'],{type:'application/json'});
+ const address=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=address;link.download='newsgo-scrapergo-urls.json';link.style.display='none';
+ document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(address),1000);
+ message('Downloaded '+scraperTraceBatch.length+' eligible article URLs for local ScraperGo diagnostics.');
+}
+function updateScraperTraceExportVisibility(){
+ const action=el('download-scrapergo-urls');
+ action.hidden=!(homepageIdentity&&homepageIdentity.role==='admin'&&suiteHandoff&&suiteExpiresAt>Date.now()&&activeReadingSelection==='all'&&!leadOnlyAllSubscriptions&&scraperTraceBatch.length>0);
+}
 function chooseAllSubscriptions(leadOnly=false){
  const modeChanged=leadOnlyAllSubscriptions!==leadOnly;
  leadOnlyAllSubscriptions=leadOnly;
@@ -566,6 +604,8 @@ let refreshSequence=0;
 async function refresh(){
  const refreshStart=performance.now();let batchDuration=0;
  const sequence=++refreshSequence;
+ scraperTraceBatch=[];
+ updateScraperTraceExportVisibility();
  const loading=el('personal-loading');
  if(activeReadingSelection===null)return;
  renderReading();
@@ -593,6 +633,8 @@ async function refresh(){
   latestReadStats={mode:rssMetadataOnly?'RSS metadata only':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
+   if(activeReadingSelection==='all'&&!leadOnlyAllSubscriptions) scraperTraceBatch=eligibleScraperTraceURLs(allPersonalArticles);
+   updateScraperTraceExportVisibility();
   loading.classList.remove('is-refreshing');
   const renderStart=performance.now();renderPersonalArticles();
   latestTiming={totalMs:performance.now()-refreshStart,batchMs:batchDuration,feedMs:data.reduce((n,g)=>n+(g.feedDurationMs||0),0),classifyMs:data.reduce((n,g)=>n+(g.classificationDurationMs||0),0),renderMs:performance.now()-renderStart};updateDiagnostics();
@@ -722,6 +764,7 @@ function initSuiteAccountHeader(){
  setInterval(showSuiteCountdown,1000);
 }
 function accountSessionState(){
+ updateScraperTraceExportVisibility();
  const available=!!homepageIdentity;
  const nav=el('manage-sync');if(nav)nav.hidden=!available;
  if(!available&& !el('sync-panel').classList.contains('personal-hidden'))showView('news');
@@ -815,7 +858,8 @@ async function accountLoad(){
   // Disconnect the old browser token before applying central settings, so
   // legacy sync never receives changes loaded from Homepage.
   clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
-  localStorage.removeItem(syncCredentialKey);syncAppearance();
+  localStorage.removeItem(syncCredentialKey);
+   syncAppearance();
   applyServerPreferences({...record.data,revision:record.revision});
   accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
   accountStatus('Loaded Homepage settings. Future changes save automatically.');
@@ -1106,6 +1150,7 @@ el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
 window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
+el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
 syncAppearance();
 const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
 if(rememberedSyncToken)connectSync(rememberedSyncToken,false);

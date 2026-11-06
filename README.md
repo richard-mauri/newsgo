@@ -51,3 +51,9 @@ In **Reading Preferences**, enable **Use RSS metadata only** to bypass ScraperGo
 
 
 Reading Preferences also offer browser-local Maximum Lead Stories (1–20, default 3) and Lead Stories only in All Subscriptions (default off). The latter skips Latest Articles rendering, not feed fetching or classification. These coexist with RSS metadata only and admin Diagnostics.
+
+## Administrator article URL export (diagnostic)
+
+After a completed **Read All Articles** refresh, the **Download Article URLs** button appears in the briefing **only for a verified Homepage administrator signed in through NewsGo's Homepage handoff**. It is hidden for ordinary users, signed-out browsers and expired sessions, and its click handler rechecks the admin role before exporting. The control uses the normal NewsGo action styling. On localhost without a signed-in Homepage session, the export action remains hidden. This is a client-side export of already visible article URLs, not a server-side privileged download API.
+
+Click to save `newsgo-scrapergo-urls.json` (which may contain publisher URL query strings; keep it private). With ScraperGo running and recovery tracing enabled, run `go run ./cmd/scrapertrace -input ~/Downloads/newsgo-scrapergo-urls.json` from `~/projects/newsgo`. From `~/projects/scrapergo`, run `go run ./cmd/recoveryreport` for cumulative results. Exporting does not automatically submit article requests.
