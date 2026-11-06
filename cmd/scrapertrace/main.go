@@ -91,7 +91,7 @@ func probe(ctx context.Context,address,endpoint string,client *http.Client,isCla
  response,err:=client.Do(req)
  if err!=nil{return probeResult{RequestError:true}}
  defer response.Body.Close()
- result:=probeResult{HTTPStatus:response.StatusCode}
+ result=probeResult{HTTPStatus:response.StatusCode}
  // Bound response inspection and decode only documented, non-sensitive fields.
  limited,err:=io.ReadAll(io.LimitReader(response.Body,8193))
  if err!=nil||len(limited)>8192{return result}
