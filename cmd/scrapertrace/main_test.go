@@ -8,7 +8,6 @@ import (
  "net/http/httptest"
  "strings"
  "testing"
- "sync/atomic"
  "time"
 )
 
@@ -114,35 +113,22 @@ func TestProbeRestrictsUntrustedResponseLabels(t *testing.T) {
  if strings.Contains(out.String(),"INJECTED")||strings.Contains(out.String(),"publisher_http="){t.Fatal(out.String())}
 }
 
-func TestReplayConcurrentTimingAndBound(t *testing.T) {
- var active,maxActive int64
+func TestReplayIsSequentialAndReportsLatency(t *testing.T){
+ var active,maxActive int
  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  current:=atomic.AddInt64(&active,1)
-  for {
-   previous:=atomic.LoadInt64(&maxActive)
-   if current<=previous||atomic.CompareAndSwapInt64(&maxActive,previous,current){break}
-  }
-  time.Sleep(20*time.Millisecond)
-  atomic.AddInt64(&active,-1)
-  w.Header().Set("Content-Type","application/json")
-  if r.URL.Path=="/api/classify"{
-   _,_=w.Write([]byte(`{"classification":"article"}`))
-  }else if r.URL.Path=="/api/read"{
-   _,_=w.Write([]byte(`{"title":"ok"}`))
-  }else{t.Errorf("unexpected path %s",r.URL.Path)}
+  active++
+  if active>maxActive{maxActive=active}
+  time.Sleep(5*time.Millisecond)
+  active--
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`))}
+  if r.URL.Path=="/api/read"{_,_=w.Write([]byte(`{"title":"ok"}`))}
  }))
  defer server.Close()
- urls:=[]string{
-  "https://example.org/1","https://example.org/2",
-  "https://example.org/3","https://example.org/4",
-  "https://example.org/5","https://example.org/6",
- }
  var output bytes.Buffer
- good,bad:=replayWithWorkers(context.Background(),urls,server.URL+"/api/read",server.Client(),0,4,&output)
- if good!=len(urls)||bad!=0{t.Fatalf("bad totals good=%d bad=%d",good,bad)}
- if atomic.LoadInt64(&maxActive)<2||atomic.LoadInt64(&maxActive)>4{t.Fatalf("unexpected concurrency=%d",maxActive)}
- for _,wanted:=range []string{"classify_wall=","read_wall=","Classification wall latency: n=6","Read wall latency: n=6","Batch elapsed wall time:"}{
-  if !strings.Contains(output.String(),wanted){t.Errorf("missing %q in %s",wanted,output.String())}
+ good,bad:=replay(context.Background(),[]string{"https://example.org/1","https://example.org/2"},server.URL+"/api/read",server.Client(),0,&output)
+ if good!=2||bad!=0||maxActive!=1{t.Fatalf("expected sequential requests: good=%d bad=%d active=%d",good,bad,maxActive)}
+ for _,term:=range []string{"classify_wall=","read_wall=","Classification wall latency: n=2","Read wall latency: n=2","Batch elapsed wall time:"}{
+  if !strings.Contains(output.String(),term){t.Errorf("missing %q from %s",term,output.String())}
  }
 }
 
@@ -152,12 +138,11 @@ func TestReplayDispatchDelayExcludedFromLatency(t *testing.T){
   _,_=w.Write([]byte(`{"title":"ok"}`))
  }))
  defer server.Close()
- urls:=[]string{"https://example.org/1","https://example.org/2"}
  var output bytes.Buffer
- started:=time.Now()
- good,bad:=replayWithWorkers(context.Background(),urls,server.URL+"/api/read",server.Client(),100*time.Millisecond,1,&output)
- if good!=2||bad!=0{t.Fatalf("bad counts: %d %d",good,bad)}
- if time.Since(started)<100*time.Millisecond{t.Fatal("dispatch throttle omitted")}
+ start:=time.Now()
+ good,bad:=replay(context.Background(),[]string{"https://example.org/1","https://example.org/2"},server.URL+"/api/read",server.Client(),100*time.Millisecond,&output)
+ if good!=2||bad!=0{t.Fatalf("counts %d %d",good,bad)}
+ if time.Since(start)<100*time.Millisecond{t.Fatal("missing pacing delay")}
  if !strings.Contains(output.String(),"dispatch_delay=100ms"){t.Fatal(output.String())}
 }
 
