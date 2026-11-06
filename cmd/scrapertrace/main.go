@@ -62,24 +62,83 @@ func validateEndpoint(raw string) (string,error) {
  return u.String(),nil
 }
 
+// replay records classification and reader results independently. Classification
+// invokes ScraperGo's normal reader internally, but may be cached or time out.
+type probeResult struct {
+ HTTPStatus int
+ Classification string
+ Kind string
+ PublisherHTTPStatus int
+ RequestError bool
+}
+
+func endpointForRead(readEndpoint,path string) string {
+ u,_:=url.Parse(readEndpoint)
+ u.Path=path
+ return u.String()
+}
+
+func probe(ctx context.Context,address,endpoint string,client *http.Client,isClassification bool) probeResult {
+ body,_:=json.Marshal(map[string]string{"url":address})
+ req,err:=http.NewRequestWithContext(ctx,http.MethodPost,endpoint,bytes.NewReader(body))
+ if err!=nil{return probeResult{RequestError:true}}
+ req.Header.Set("Content-Type","application/json")
+ response,err:=client.Do(req)
+ if err!=nil{return probeResult{RequestError:true}}
+ defer response.Body.Close()
+ result:=probeResult{HTTPStatus:response.StatusCode}
+ // Bound response inspection and decode only documented, non-sensitive fields.
+ limited,err:=io.ReadAll(io.LimitReader(response.Body,8193))
+ if err!=nil||len(limited)>8192{return result}
+ var decoded struct {
+  Classification string `json:"classification"`
+  Kind string `json:"kind"`
+  PublisherHTTPStatus int `json:"publisherHttpStatus"`
+ }
+ if json.Unmarshal(limited,&decoded)!=nil{return result}
+ if isClassification {
+  switch decoded.Classification {
+  case "article","homepage","unreadable","unavailable","unknown":
+   result.Classification=decoded.Classification
+  }
+ } else {
+  // Restrict free-form upstream content to a small stable diagnostic vocabulary.
+  switch decoded.Kind {
+  case "page_index","extraction_error","publisher_access_denied","access_error","pdf_download_failed","pdf_extraction_failed":
+   result.Kind=decoded.Kind
+  }
+  if decoded.PublisherHTTPStatus>=100&&decoded.PublisherHTTPStatus<=599 {
+   result.PublisherHTTPStatus=decoded.PublisherHTTPStatus
+  }
+ }
+ return result
+}
+
 func replay(ctx context.Context, urls []string, endpoint string, client *http.Client, pace time.Duration, output io.Writer) (int,int) {
- succeeded,failed:=0,0
+ succeeded,failed,mismatched:=0,0,0
+ classificationEndpoint:=endpointForRead(endpoint,"/api/classify")
  for i,address:=range urls {
   if i>0&&pace>0{
    select {case <-ctx.Done():return succeeded,failed+len(urls)-i;case <-time.After(pace):}
   }
-  body,_:=json.Marshal(map[string]string{"url":address})
-  req,err:=http.NewRequestWithContext(ctx,http.MethodPost,endpoint,bytes.NewReader(body))
-  if err==nil{req.Header.Set("Content-Type","application/json");var response *http.Response;response,err=client.Do(req);if err==nil{
-   _,_=io.Copy(io.Discard,io.LimitReader(response.Body,1024))
-   _=response.Body.Close()
-   if response.StatusCode>=200&&response.StatusCode<300 {succeeded++} else {
-    failed++
-    fmt.Fprintf(output,"Article %d/%d: HTTP %d\n",i+1,len(urls),response.StatusCode)
-   }
-  }}
-  if err!=nil{failed++;fmt.Fprintf(output,"Article %d/%d: request failed (%T)\n",i+1,len(urls),err)}
+  classification:=probe(ctx,address,classificationEndpoint,client,true)
+  read:=probe(ctx,address,endpoint,client,false)
+  classLabel:=classification.Classification
+  if classLabel==""{classLabel="unreported"}
+  classHTTP:=fmt.Sprintf("%d",classification.HTTPStatus)
+  if classification.RequestError{classHTTP="request_failed"}
+  readHTTP:=fmt.Sprintf("%d",read.HTTPStatus)
+  if read.RequestError{readHTTP="request_failed"}
+  disagreement:=classification.Classification=="article"&&(read.RequestError||read.HTTPStatus<200||read.HTTPStatus>=300)
+  if disagreement{mismatched++}
+  if !read.RequestError&&read.HTTPStatus>=200&&read.HTTPStatus<300{succeeded++}else{failed++}
+  fmt.Fprintf(output,"Article %d/%d: classification=%s classify_http=%s read_http=%s",i+1,len(urls),classLabel,classHTTP,readHTTP)
+  if read.Kind!=""{fmt.Fprintf(output," read_kind=%s",read.Kind)}
+  if read.PublisherHTTPStatus!=0{fmt.Fprintf(output," publisher_http=%d",read.PublisherHTTPStatus)}
+  if disagreement{fmt.Fprint(output," mismatch=classified_article_but_unreadable")}
+  fmt.Fprintln(output)
  }
+ fmt.Fprintf(output,"Classification/read disagreements (article classified, read failed): %d\n",mismatched)
  return succeeded,failed
 }
 
@@ -102,7 +161,7 @@ func main() {
  urls,err:=validateBatch(data)
  if err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(2)}
  client:=&http.Client{Timeout:45*time.Second,CheckRedirect:func(_ *http.Request,_ []*http.Request)error{return http.ErrUseLastResponse}}
- fmt.Printf("Sending %d distinct article URLs to local ScraperGo; pause %s between requests.\n",len(urls),*pace)
+ fmt.Printf("Classifying and reading %d distinct article URLs with local ScraperGo; pause %s between URL pairs.\n",len(urls),*pace)
  good,bad:=replay(context.Background(),urls,endpoint,client,*pace,os.Stdout)
  fmt.Printf("Finished: %d succeeded, %d failed. Inspect ScraperGo: go run ./cmd/recoveryreport (from its repository).\n",good,bad)
  if bad>0{os.Exit(1)}
