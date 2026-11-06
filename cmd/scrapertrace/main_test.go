@@ -36,25 +36,78 @@ func TestValidateEndpointLoopbackOnly(t *testing.T) {
  if _,err:=validateEndpoint("http://127.0.0.1:8083/api/read");err!=nil{t.Fatal(err)}
 }
 
-func TestReplayUsesNormalReadPOSTAndReportsOnlyIndex(t *testing.T) {
- requested:=[]string{}
+func TestReplayReportsClassificationAndReadStatusWithoutURLs(t *testing.T) {
+ var classify,read []string
  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  if r.Method!=http.MethodPost||r.URL.Path!="/api/read" {t.Errorf("unexpected request %s %s",r.Method,r.URL.Path)}
-  var input map[string]string
+  if r.Method!=http.MethodPost {t.Errorf("wrong method: %s",r.Method)}
+  var input struct{URL string `json:"url"`}
   if err:=json.NewDecoder(r.Body).Decode(&input);err!=nil{t.Error(err)}
-  requested=append(requested,input["url"])
-  if strings.Contains(input["url"],"fail") {http.Error(w,"publisher unavailable",422)}
+  w.Header().Set("Content-Type","application/json")
+  switch r.URL.Path {
+  case "/api/classify":
+   classify=append(classify,input.URL)
+   if strings.Contains(input.URL,"bad") {
+    _,_=w.Write([]byte(`{"classification":"article","readableArticle":true}`))
+   } else {
+    _,_=w.Write([]byte(`{"classification":"article","readableArticle":true}`))
+   }
+  case "/api/read":
+   read=append(read,input.URL)
+   if strings.Contains(input.URL,"bad"){
+    w.WriteHeader(422)
+    _,_=w.Write([]byte(`{"kind":"publisher_access_denied","publisherHttpStatus":403,"error":"contains-private-data"}`))
+   }else{
+    _,_=w.Write([]byte(`{"title":"Test article"}`))
+   }
+  default:t.Errorf("unexpected endpoint %s",r.URL.Path)
+  }
  }))
  defer server.Close()
  endpoint,err:=validateEndpoint(server.URL+"/api/read")
  if err!=nil{t.Fatal(err)}
+ urls:=[]string{"https://example.org/story?secret=one","https://example.org/bad?token=two"}
  var output bytes.Buffer
- urls:=[]string{"https://example.org/story?secret=one","https://example.org/fail?token=two"}
  success,failed:=replay(context.Background(),urls,endpoint,server.Client(),0,&output)
- if success!=1||failed!=1||len(requested)!=2||requested[0]!=urls[0]||requested[1]!=urls[1]{
-  t.Fatalf("unexpected results: success=%d failed=%d received=%#v",success,failed,requested)
+ if success!=1||failed!=1||len(classify)!=2||len(read)!=2{t.Fatalf("unexpected totals: successes=%d failures=%d classify=%d read=%d",success,failed,len(classify),len(read))}
+ for i:=range urls {if classify[i]!=urls[i]||read[i]!=urls[i]{t.Fatal("wrong URL submitted")}}
+ result:=output.String()
+ for _,need:=range []string{"Article 1/2: classification=article classify_http=200 read_http=200","Article 2/2: classification=article classify_http=200 read_http=422 read_kind=publisher_access_denied publisher_http=403 mismatch=classified_article_but_unreadable","Classification/read disagreements (article classified, read failed): 1"} {
+  if !strings.Contains(result,need){t.Errorf("missing output %q from %s",need,result)}
  }
- if strings.Contains(output.String(),"secret")||strings.Contains(output.String(),"token")||strings.Contains(output.String(),"story"){
-  t.Fatalf("batch output leaked URL: %s",output.String())
+ for _,private:=range []string{"secret","token","example.org","contains-private-data"}{
+  if strings.Contains(result,private){t.Errorf("leaked private content %q",private)}
  }
+}
+
+func TestReplayHandlesUnclassifiedAndNonJSONResponses(t *testing.T){
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/api/classify"{
+   w.WriteHeader(422)
+   _,_=w.Write([]byte("not json"))
+   return
+  }
+  w.WriteHeader(422)
+  _,_=w.Write([]byte(`{"kind":"extraction_error","error":"secret"}`))
+ }))
+ defer server.Close()
+ var output bytes.Buffer
+ good,bad:=replay(context.Background(),[]string{"https://example.org/private"},server.URL+"/api/read",server.Client(),0,&output)
+ if good!=0||bad!=1 {t.Fatalf("unexpected totals %d %d",good,bad)}
+ if !strings.Contains(output.String(),"classification=unreported classify_http=422 read_http=422 read_kind=extraction_error"){t.Fatal(output.String())}
+ if strings.Contains(output.String(),"secret")||strings.Contains(output.String(),"example.org"){t.Fatal("diagnostic leaked content")}
+}
+
+func TestProbeRestrictsUntrustedResponseLabels(t *testing.T) {
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/api/classify"{
+   _,_=w.Write([]byte(`{"classification":"article\\nINJECTED"}`))
+  }else{
+   w.WriteHeader(422)
+   _,_=w.Write([]byte(`{"kind":"custom\\nINJECTED","publisherHttpStatus":999}`))
+  }
+ }))
+ defer server.Close()
+ var out bytes.Buffer
+ _,_=replay(context.Background(),[]string{"https://example.org/test"},server.URL+"/api/read",server.Client(),0,&out)
+ if strings.Contains(out.String(),"INJECTED")||strings.Contains(out.String(),"publisher_http="){t.Fatal(out.String())}
 }
