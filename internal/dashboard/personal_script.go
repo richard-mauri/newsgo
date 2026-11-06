@@ -291,6 +291,35 @@ function queryEdited(){
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
+// Only the last successful, explicit Read All Articles refresh may be exported.
+let scraperTraceBatch=[];
+function eligibleScraperTraceURLs(articles) {
+ const out=[],seen=new Set();
+ for(const article of articles) {
+  if(!article||typeof article.url!=='string'||excludedURL(article.url)||articleExcluded(article.url))continue;
+  try {
+   const u=new URL(article.url);
+   if((u.protocol!=='http:'&&u.protocol!=='https:')||u.username||u.password)continue;
+   u.hash='';
+   if(u.href.length>2048||seen.has(u.href))continue;
+   seen.add(u.href);out.push(u.href);
+  }catch(_){}
+ }
+ return out;
+}
+function downloadScraperTraceBatch() {
+ if(activeReadingSelection!=='all'||leadOnlyAllSubscriptions||!scraperTraceBatch.length) {
+  message('Choose Read All Articles and finish refreshing before exporting diagnostic URLs.');
+  return;
+ }
+ const batch={schema:'newsgo.scrapergo-batch.v1',capturedAt:new Date().toISOString(),urls:scraperTraceBatch};
+ const blob=new Blob([JSON.stringify(batch,null,2)+'\\n'],{type:'application/json'});
+ const address=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=address;link.download='newsgo-scrapergo-urls.json';link.style.display='none';
+ document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(address),1000);
+ message('Downloaded '+scraperTraceBatch.length+' eligible article URLs for local ScraperGo diagnostics.');
+}
 function chooseAllSubscriptions(leadOnly=false){
  const modeChanged=leadOnlyAllSubscriptions!==leadOnly;
  leadOnlyAllSubscriptions=leadOnly;
@@ -531,7 +560,7 @@ function renderManager(){
  const allRow=document.createElement('div');allRow.className='personal-row';
  const allInfo=document.createElement('strong');allInfo.textContent='All Subscriptions';
  const allActions=document.createElement('div');allActions.className='personal-form';
-  allActions.append(button('Read All Articles',()=>chooseAllSubscriptions(false)),button('Read Lead Articles',()=>chooseAllSubscriptions(true)));
+  allActions.append(button('Read All Articles',()=>chooseAllSubscriptions(false)),button('Read Lead Articles',()=>chooseAllSubscriptions(true)),button('Download ScraperGo URLs',downloadScraperTraceBatch));
   allRow.append(allInfo,allActions);root.append(allRow);
  // Legacy subscription records that could not be mapped remain visible
  // with a clear explanation and an unsubscribe option; do not lose them.
@@ -566,6 +595,7 @@ let refreshSequence=0;
 async function refresh(){
  const refreshStart=performance.now();let batchDuration=0;
  const sequence=++refreshSequence;
+ scraperTraceBatch=[];
  const loading=el('personal-loading');
  if(activeReadingSelection===null)return;
  renderReading();
@@ -593,6 +623,7 @@ async function refresh(){
   latestReadStats={mode:rssMetadataOnly?'RSS metadata only':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
+   if(activeReadingSelection==='all'&&!leadOnlyAllSubscriptions) scraperTraceBatch=eligibleScraperTraceURLs(allPersonalArticles);
   loading.classList.remove('is-refreshing');
   const renderStart=performance.now();renderPersonalArticles();
   latestTiming={totalMs:performance.now()-refreshStart,batchMs:batchDuration,feedMs:data.reduce((n,g)=>n+(g.feedDurationMs||0),0),classifyMs:data.reduce((n,g)=>n+(g.classificationDurationMs||0),0),renderMs:performance.now()-renderStart};updateDiagnostics();
