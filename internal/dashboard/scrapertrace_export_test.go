@@ -21,4 +21,16 @@ func TestScraperTraceURLExportWiredToCompletedReadAll(t *testing.T) {
  if !strings.Contains(page.Tree.Root.String(),"id=\"download-scrapergo-urls\" hidden") {
   t.Fatal("missing opt-in download button in briefing")
  }
+ // The handler must be wired in the unconditional startup section, not
+ // inside accountLoad() or any profile/account action.
+ listener:="el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch)"
+ if strings.Count(personalJS,listener)!=1 {t.Fatal("download listener must be registered exactly once")}
+ setup:=strings.Index(personalJS,"window.addEventListener('beforeunload'")
+ listenerAt:=strings.Index(personalJS,listener)
+ startup:=strings.Index(personalJS,"const rememberedSyncToken=localStorage.getItem(syncCredentialKey)")
+ if setup<0||listenerAt<setup||startup<listenerAt {t.Fatal("download listener must be in startup initialization")}
+ if !strings.Contains(personalJS,"JSON.stringify(batch,null,2)+'\\n'") {
+  t.Fatal("downloaded JSON needs a real newline escape, not a literal backslash-n suffix")
+ }
+
 }
