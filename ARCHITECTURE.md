@@ -28,7 +28,8 @@ This document describes **how the current application works**, not ongoing task 
 - `POST /api/diagnostic/feed-trace` is localhost-restricted and traces a requested URL through a supplied feed's matching/processing decisions.
 - `/api/discover` and `/api/search-feeds` support finding feeds; `/health` returns process health.
 - URL validation, bounded response handling, safe network routing, per-request timeouts and token checks are security boundaries. Admin-only UI visibility is never a substitute for server authorization.
-- Recognized article classification outcomes are cached for limited periods; transient `unknown` outcomes are not persisted by NewsGo's classification cache. Actual browser and publisher behavior is verified separately from Go tests.
+- Recognized article classification outcomes are cached for limited periods; transient `unknown` outcomes are not persisted by NewsGo's classification cache.
+- **Download Article URLs** is a client-side export of the completed Read All briefing, shown only while NewsGo has a verified Homepage `admin` session. The browser also checks the role on click and responds to session expiry. No new server-side privileged URL export API exists; already displayed article URLs remain available to readers. Actual browser and publisher behavior is verified separately from Go tests.
 
 ## Build identification
 The semantic version is obtained from the dashboard's header version and used by the CLI. `devbuild.sh` injects the Mac-local sequential build number into both binaries through Go linker flags. Build numbering is a debugging identifier, not an API or data-format migration.
