@@ -913,8 +913,9 @@ function syncAppearance(){
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
  el('manage-admin').hidden=!(syncConnected&&isAdmin);
- el('manage-diagnostics').hidden=!(syncConnected&&isAdmin);
- if(!(syncConnected&&isAdmin)&&(!el('admin-panel').classList.contains('personal-hidden')||!el('diagnostics-panel').classList.contains('personal-hidden')))showView('news');
+ // Latest-reading diagnostics report browser-owned data, not admin settings.
+ el('manage-diagnostics').hidden=false;
+ if(!(syncConnected&&isAdmin)&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
 }
 function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 async function syncRequest(method,body){
@@ -1133,7 +1134,7 @@ el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
 el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
-el('manage-diagnostics').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('diagnostics');updateDiagnostics()}});
+el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
