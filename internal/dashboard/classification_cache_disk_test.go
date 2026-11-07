@@ -16,7 +16,7 @@ func TestClassificationCacheDurableRestartExpiryAndBypass(t *testing.T) {
  dir:=t.TempDir()
  store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
  oldSettings:=currentArticleSettings()
- cfg:=defaultArticleSettings();cfg.ClassificationCacheMinutes=60
+ cfg:=defaultArticleSettings();cfg.ClassificationCacheMinutes=720
  activeArticleSettings.Store(cfg)
  defer activeArticleSettings.Store(oldSettings)
  newsClassificationCache.Lock()
@@ -78,9 +78,9 @@ func TestClassificationCacheRejectsBadEntriesAndBounds(t *testing.T) {
  defer func(){newsClassificationCache.Lock();newsClassificationCache.path=oldPath;newsClassificationCache.entries=oldEntries;newsClassificationCache.Unlock()}()
  now:=time.Now()
  saved:=persistedClassificationCache{Version:1,Entries:map[string]persistedClassificationEntry{
-  "https://reader.example|https://example.org/valid":{Value:"article",ExpiresAt:now.Add(30*time.Minute)},
+  "https://reader.example|https://example.org/valid":{Value:"article",ExpiresAt:now.Add(6*time.Hour)},
   "https://reader.example|https://example.org/bad":{Value:"unknown",ExpiresAt:now.Add(30*time.Minute)},
-  "https://reader.example|https://example.org/future":{Value:"article",ExpiresAt:now.Add(2*time.Hour)},
+  "https://reader.example|https://example.org/future":{Value:"article",ExpiresAt:now.Add(13*time.Hour)},
   "invalid":{Value:"article",ExpiresAt:now.Add(30*time.Minute)},
  }}
  if err=atomicJSON(filepath.Join(dir,classificationCacheFile),saved);err!=nil{t.Fatal(err)}
@@ -103,7 +103,7 @@ func TestClassificationCacheEffectiveTTL(t *testing.T) {
  old:=currentArticleSettings()
  defer activeArticleSettings.Store(old)
  cfg:=defaultArticleSettings()
- for _,tc:=range []struct{configured,want int}{{0,0},{15,15},{60,60},{1440,60}}{
+ for _,tc:=range []struct{configured,want int}{{0,0},{15,15},{60,60},{720,720},{1440,720}}{
   cfg.ClassificationCacheMinutes=tc.configured;activeArticleSettings.Store(cfg)
   if got:=classificationTTLMinutes();got!=tc.want{t.Fatalf("configured %d effective %d want %d",tc.configured,got,tc.want)}
  }
@@ -135,4 +135,49 @@ func TestClassificationCacheDoesNotPersistFailures(t *testing.T) {
  n:=len(newsClassificationCache.entries)
  newsClassificationCache.Unlock()
  if n!=0 {t.Fatalf("cached %d unknown/unavailable/failure results",n)}
+}
+
+func TestClassificationCacheStartupCompactsExpiredEntries(t *testing.T) {
+ dir:=t.TempDir()
+ store,err:=NewSettingsStore(dir)
+ if err!=nil{t.Fatal(err)}
+ newsClassificationCache.Lock()
+ oldPath,oldEntries:=newsClassificationCache.path,newsClassificationCache.entries
+ newsClassificationCache.path=""
+ newsClassificationCache.entries=map[string]newsClassificationEntry{}
+ newsClassificationCache.Unlock()
+ defer func(){
+  newsClassificationCache.Lock()
+  newsClassificationCache.path=oldPath
+  newsClassificationCache.entries=oldEntries
+  newsClassificationCache.Unlock()
+ }()
+ now:=time.Now()
+ validKey:="https://reader.example|https://example.org/current"
+ expiredKey:="https://reader.example|https://example.org/expired"
+ saved:=persistedClassificationCache{Version:1,Entries:map[string]persistedClassificationEntry{
+  validKey:{Value:"article",ExpiresAt:now.Add(11*time.Hour)},
+  expiredKey:{Value:"homepage",ExpiresAt:now.Add(-time.Minute)},
+ }}
+ file:=filepath.Join(dir,classificationCacheFile)
+ if err=atomicJSON(file,saved);err!=nil{t.Fatal(err)}
+ store.ActivateClassificationCache()
+ newsClassificationCache.Lock()
+ count:=len(newsClassificationCache.entries)
+ _,valid:=newsClassificationCache.entries[validKey]
+ newsClassificationCache.Unlock()
+ if count!=1||!valid{t.Fatalf("memory entries=%d valid=%v",count,valid)}
+ raw,err:=os.ReadFile(file)
+ if err!=nil{t.Fatal(err)}
+ var cleaned persistedClassificationCache
+ if err=json.Unmarshal(raw,&cleaned);err!=nil{t.Fatal(err)}
+ if len(cleaned.Entries)!=1{t.Fatalf("disk still has %d entries after startup cleanup",len(cleaned.Entries))}
+ if _,exists:=cleaned.Entries[expiredKey];exists{t.Fatal("expired entry remained on disk")}
+ if _,exists:=cleaned.Entries[validKey];!exists{t.Fatal("valid entry removed from disk")}
+ // A second startup preserves the cleaned, still-fresh entry.
+ store.ActivateClassificationCache()
+ newsClassificationCache.Lock()
+ count=len(newsClassificationCache.entries)
+ newsClassificationCache.Unlock()
+ if count!=1{t.Fatalf("cleaned cache not reusable after second startup: %d",count)}
 }
