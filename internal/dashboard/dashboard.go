@@ -18,7 +18,7 @@ var tannerPhoto embed.FS
 type State struct {
 	sources   []feeds.Source // Discovery catalog only, never fetched automatically.
 	reader    string
-	syncStore *SyncStore
+	settingsStore *SettingsStore
  homepageProfileURL string // private test override; production uses the fixed Homepage endpoint
 }
 
@@ -33,7 +33,7 @@ func New(sources []feeds.Source, reader string, _ *http.Client) (*State, error) 
 	return &State{sources: append([]feeds.Source(nil), sources...), reader: strings.TrimRight(reader, "/")}, nil
 }
 
-func (s *State) SetSyncStore(store *SyncStore) { s.syncStore = store }
+func (s *State) SetSettingsStore(store *SettingsStore) { s.settingsStore = store }
 
 type view struct {
 	Catalog []feeds.Source
@@ -59,14 +59,12 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/api/admin/classification-diagnostic" { s.serveAdminClassificationDiagnostic(w,r); return }
 	if r.URL.Path == "/api/admin/settings" {
-		if s.syncStore == nil {
-			http.Error(w, "Sync unavailable", 503)
-		} else {
-			s.syncStore.serveAdminSettingsAuthorized(w, r, s.homepageAdminVerified(r))
-		}
-		return
-	}
- if r.URL.Path == "/api/sync" {http.NotFound(w,r);return}
+  if s.settingsStore == nil {http.Error(w,"Settings unavailable",503)} else {
+   s.settingsStore.ServeAdminSettings(w,r,s.homepageAdminVerified(r))
+  }
+  return
+ }
+
 	if r.URL.Path == "/api/discover" {
 		s.serveDiscover(w, r)
 		return
