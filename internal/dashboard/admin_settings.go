@@ -98,6 +98,9 @@ func (s *SyncStore) CurrentServerSettings() serverSettings {
 	return v
 }
 func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
+ s.serveAdminSettingsAuthorized(w,r,false)
+}
+func (s *SyncStore) serveAdminSettingsAuthorized(w http.ResponseWriter, r *http.Request, homepageAdmin bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if r.Method != http.MethodGet && r.Method != http.MethodPut {
@@ -113,15 +116,11 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	token, status := s.authenticate(r)
-	if status != 200 {
-		http.Error(w, "Approved token required", status)
-		return
-	}
-	if token.Role != "admin" {
-		http.Error(w, "Administrator required", 403)
-		return
-	}
+ if !homepageAdmin {
+  token,status:=s.authenticate(r)
+  if status!=200 {http.Error(w,"Approved token required",status);return}
+  if token.Role!="admin"{http.Error(w,"Administrator required",403);return}
+ }
 	current, e := s.loadServerSettings()
 	if e != nil {
 		http.Error(w, "Server settings unavailable", 500)
