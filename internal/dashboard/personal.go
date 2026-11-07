@@ -19,6 +19,7 @@ type personalRequest struct {
 	Feeds []feeds.Source `json:"feeds"`
  MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
  RSSMetadataOnly bool `json:"rssMetadataOnly,omitempty"`
+ UseClassificationCache *bool `json:"useClassificationCache,omitempty"`
 }
 type personalResult struct {
 	Source   feeds.Source      `json:"source"`
@@ -205,7 +206,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    if req.RSSMetadataOnly {
      for i,a := range articles {if articleTooOld(a.Published,req.MaxArticleAgeDays,time.Now()){decisions[i]="too-old"}else{decisions[i]="article"}}
    } else {
-     decisions = classifyFeedArticlesWithAge(r.Context(), s.reader, articles, req.MaxArticleAgeDays)
+     decisions = classifyFeedArticlesWithAgeCache(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache)
    }
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
@@ -284,6 +285,9 @@ func classifyFeedArticles(ctx context.Context, reader string, articles []feeds.A
  return classifyFeedArticlesWithAge(ctx, reader, articles, 0)
 }
 func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []feeds.Article, days int) []string {
+ return classifyFeedArticlesWithAgeCache(ctx,reader,articles,days,true)
+}
+func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
@@ -296,12 +300,15 @@ func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []
 			continue
 		}
 		wg.Add(1)
-		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassify(ctx, reader, article) }(i, a.URL)
+		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCache(ctx, reader, article, useCache) }(i, a.URL)
 	}
 	wg.Wait()
 	return out
 }
 func newsClassify(ctx context.Context, reader, article string) string {
+ return newsClassifyWithCache(ctx,reader,article,true)
+}
+func newsClassifyWithCache(ctx context.Context, reader, article string, useCache bool) string {
  article = normalizeClassificationURL(article)
 	if !safeURL(article) {
 		return "unknown"
@@ -310,7 +317,7 @@ func newsClassify(ctx context.Context, reader, article string) string {
 	newsClassificationCache.Lock()
 	entry, ok := newsClassificationCache.entries[key]
 	newsClassificationCache.Unlock()
-	if currentArticleSettings().ClassificationCacheMinutes>0 && ok && time.Now().Before(entry.expiry) {
+	if useCache && currentArticleSettings().ClassificationCacheMinutes>0 && ok && time.Now().Before(entry.expiry) {
 		return entry.value
 	}
 	select {
@@ -344,7 +351,7 @@ func newsClassify(ctx context.Context, reader, article string) string {
 		return "unknown"
 	}
  // Cache only successful classifications, when enabled. Never cache unavailable failures.
- if ttl:=currentArticleSettings().ClassificationCacheMinutes;ttl>0 && result.Classification!="unavailable" {
+ if ttl:=currentArticleSettings().ClassificationCacheMinutes;useCache && ttl>0 && result.Classification!="unavailable" {
   newsClassificationCache.Lock()
   if len(newsClassificationCache.entries)>=2048 {
    for k:=range newsClassificationCache.entries {delete(newsClassificationCache.entries,k);break}
