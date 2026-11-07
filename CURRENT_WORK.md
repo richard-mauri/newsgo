@@ -17,7 +17,7 @@ Regression tests cover cold population, simulated process restart/new activation
 
 ## Validation and remaining owner acceptance
 
-- Previous 12-hour cache and startup compaction CI passed on the prior PR head. **The export button move and updated tests require final exact-head CI verification.**
+- The Admin Settings export relocation, regression tests and existing suite passed at code/documentation head `41af1ec1c74e3ecd583ed824752e29922816544d`, [Actions run 42402901695](https://github.com/richard-mauri/newsgo/actions/runs/42402901695) (Go tests and build). Verify CI once more after this status-documentation commit.
 - This session cannot run the owner Mac or Safari, and GitHub CI cannot validate the live Homepage account/session, real feeds, local rebuild, cloud tunnel or practical performance.
 - Owner also needs to check that Download Article URLs appears only inside Admin Settings for a current Homepage administrator after an eligible all-subscriptions read, and still downloads the same JSON. Owner still needs to validate Homepage Save/Load, administrator settings GET/PUT, ordinary user refusal, session expiry, subscriptions/exclusions persistence, and `/api/sync` returning 404.
 - **Restart acceptance:** Read an identical subscription batch, stop and restart the actual NewsGo **server process** within 12 hours, read again, verify substantial cache hits and lower classification latency. Restarting only Safari does not prove process-level persistence. Check the effective displayed TTL is 720 minutes; update any saved 60-minute administrator setting to 720 before testing the new policy. Existing cache entries keep their original expirations.
