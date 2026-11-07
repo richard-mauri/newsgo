@@ -1064,11 +1064,11 @@ const feedCacheInput=document.getElementById('admin-feed-cache');
 if(feedCacheInput){
  const label=document.createElement('label');
  label.setAttribute('for','admin-classification-cache');
- label.textContent='Successful classification cache (minutes, 0–30)';
+ label.textContent='Successful classification cache (minutes, 0–1440)';
  label.style.display='block';label.style.marginTop='1rem';
  const input=document.createElement('input');
- input.type='number';input.min='0';input.max='30';input.step='1';input.required=true;
- input.id='admin-classification-cache';input.value='30';
+ input.type='number';input.min='0';input.max='1440';input.step='1';input.required=true;
+ input.id='admin-classification-cache';input.value='1440';
  input.style.display='block';input.style.width='100%';input.style.maxWidth='22rem';
  label.append(input);
  const parent=feedCacheInput.closest('label')||feedCacheInput.parentElement;
