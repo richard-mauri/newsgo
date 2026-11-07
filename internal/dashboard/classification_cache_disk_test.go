@@ -108,3 +108,31 @@ func TestClassificationCacheEffectiveTTL(t *testing.T) {
   if got:=classificationTTLMinutes();got!=tc.want{t.Fatalf("configured %d effective %d want %d",tc.configured,got,tc.want)}
  }
 }
+
+func TestClassificationCacheDoesNotPersistFailures(t *testing.T) {
+ dir:=t.TempDir()
+ store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
+ oldSettings:=currentArticleSettings()
+ activeArticleSettings.Store(defaultArticleSettings())
+ defer activeArticleSettings.Store(oldSettings)
+ newsClassificationCache.Lock()
+ oldPath,oldEntries:=newsClassificationCache.path,newsClassificationCache.entries
+ newsClassificationCache.path=""
+ newsClassificationCache.entries=map[string]newsClassificationEntry{}
+ newsClassificationCache.Unlock()
+ defer func(){newsClassificationCache.Lock();newsClassificationCache.path=oldPath;newsClassificationCache.entries=oldEntries;newsClassificationCache.Unlock()}()
+ store.ActivateClassificationCache()
+ for _,reply:=range []string{`{"classification":"unknown"}`,`{"classification":"unavailable"}`,`{"classification":"something-else"}`,`bad-json`} {
+  upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+   w.Header().Set("Content-Type","application/json")
+   _,_=w.Write([]byte(reply))
+  }))
+  _=newsClassifyWithCache(context.Background(),upstream.URL,"https://example.org/failure",true)
+  upstream.Close()
+ }
+ store.ActivateClassificationCache()
+ newsClassificationCache.Lock()
+ n:=len(newsClassificationCache.entries)
+ newsClassificationCache.Unlock()
+ if n!=0 {t.Fatalf("cached %d unknown/unavailable/failure results",n)}
+}
