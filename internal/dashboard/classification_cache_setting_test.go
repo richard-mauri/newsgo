@@ -10,7 +10,7 @@ import (
 
 func TestClassificationCacheSettingPersistence(t *testing.T){
  def:=defaultArticleSettings()
- if def.ClassificationCacheMinutes!=1440{t.Fatalf("default %d",def.ClassificationCacheMinutes)}
+ if def.ClassificationCacheMinutes!=60{t.Fatalf("default %d",def.ClassificationCacheMinutes)}
  for _,n:=range []int{0,1,30,1440}{
   cfg:=def;cfg.ClassificationCacheMinutes=n
   if !validArticleSettings(cfg){t.Fatalf("valid value %d rejected",n)}
@@ -22,7 +22,7 @@ func TestClassificationCacheSettingPersistence(t *testing.T){
  dir:=t.TempDir()
  store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
  fresh,err:=store.loadServerSettings();if err!=nil{t.Fatal(err)}
- if fresh.Articles.ClassificationCacheMinutes!=1440{t.Fatalf("fresh default=%d",fresh.Articles.ClassificationCacheMinutes)}
+ if fresh.Articles.ClassificationCacheMinutes!=60{t.Fatalf("fresh default=%d",fresh.Articles.ClassificationCacheMinutes)}
  cfg:=defaultServerSettings();cfg.Articles.ClassificationCacheMinutes=0
  raw,err:=json.Marshal(cfg);if err!=nil{t.Fatal(err)}
  if err=os.WriteFile(filepath.Join(dir,"server-settings.json"),raw,0600);err!=nil{t.Fatal(err)}
