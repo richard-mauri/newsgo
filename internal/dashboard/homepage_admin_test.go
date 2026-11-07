@@ -25,7 +25,7 @@ func TestHomepageAdminRoleVerifiedOnServer(t *testing.T) {
  state:=&State{homepageProfileURL:home.URL+"/api/session/profile"}
  req:=func(token string)*http.Request{
   r:=httptest.NewRequest(http.MethodGet,"/api/admin/settings",nil)
-  if token!=""{r.Header.Set("Authorization","Bearer "+token)}
+  if token!=""{r.Header.Set("X-NewsGo-Homepage-Authorization","Bearer "+token)}
   return r
  }
  if !state.homepageAdminVerified(req(strings.Repeat("a",64))){t.Fatal("signed-in Homepage admin not verified")}
@@ -52,7 +52,7 @@ func TestHomepageRoleEnforcedForAdminSettingsWithoutLegacyToken(t *testing.T){
  state:=&State{syncStore:store,homepageProfileURL:home.URL}
  request:=func(method string,payload []byte)*httptest.ResponseRecorder{
   req:=httptest.NewRequest(method,"https://newsgo.themauris.org/api/admin/settings",bytes.NewReader(payload))
-  req.Header.Set("Authorization","Bearer "+strings.Repeat("a",64))
+  req.Header.Set("X-NewsGo-Homepage-Authorization","Bearer "+strings.Repeat("a",64))
   if method==http.MethodPut{req.Header.Set("Origin","https://newsgo.themauris.org")}
   w:=httptest.NewRecorder();state.ServeHTTP(w,req);return w
  }
