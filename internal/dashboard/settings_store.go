@@ -9,7 +9,7 @@ import (
 )
 
 // SettingsStore persists operational server settings independently of identity.
-// Existing data/server-settings.json remains in place during the migration.
+// The server settings file is data/server-settings.json by default.
 type SettingsStore struct {
  mu sync.Mutex
  dir string
