@@ -632,7 +632,7 @@ async function refresh(){
   }
   if(sequence!==refreshSequence)return;
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();
-  latestReadStats={mode:rssMetadataOnly?'RSS metadata only':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
+  latestReadStats={mode:rssMetadataOnly?'RSS metadata + ScraperGo verified':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
    if(activeReadingSelection==='all'&&!leadOnlyAllSubscriptions) scraperTraceBatch=eligibleScraperTraceURLs(allPersonalArticles);
