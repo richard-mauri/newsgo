@@ -7,7 +7,7 @@ GitHub `main` is authoritative. For each new work item, check the current `main`
 
 ## Validation and review
 1. At session start read AGENTS, DEVELOPMENT, ARCHITECTURE and CURRENT_WORK on the working branch. Identify actual branch, merged baseline, PR and pending constraints; explicitly summarize intended workflow before development.
-2. Preserve user subscriptions, exclusions, reading preferences, tokens, private `data/`, Cloudflare tunnel configuration, existing launchers and local build counter. Add regression tests for changes, format touched Go code and honor security boundaries.
+2. Preserve active user subscriptions, exclusions, reading preferences, Homepage credentials, private settings data, Cloudflare tunnel configuration, launchers and local build counter unless the owner explicitly authorizes a clean reset. Add regression tests for changes, format touched Go code and honor security boundaries.
 3. After commit/push, inspect GitHub Actions at the **exact PR head** (`go test -count=1 ./...` and `go build ./...`). Green CI does not validate live feeds, Safari, tunnel behavior or publisher access.
 4. Update and verify the real PR title/description, current commit, Issue reference, change scope, CI result, owner acceptance and limitations. Keep CURRENT_WORK.md a single factual current snapshot.
 5. For a code/runtime PR give the owner complete Mac commands, replacing the branch placeholder with its exact PR head branch:
@@ -29,5 +29,3 @@ GitHub `main` is authoritative. For each new work item, check the current `main`
 - `archive/`, `release/`, or other intentionally retained branches require separate owner authorization for deletion. Existing historical branches require **individual review and separate owner approval for bulk cleanup**; this policy does not authorize blanket deletion.
 - `main` retains merged commit history after head branch deletion. The next Issue starts from updated `main`, not from the previous head branch.
 
-## Current legacy branch
-NewsGo's former shared `dev` has already served merged PR #10. It is not a permitted head for new tasks; handle its eventual deletion separately after verifying local and remote branch safety.
