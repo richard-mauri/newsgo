@@ -50,7 +50,7 @@ func currentImageSettings() ImageSettings {
 	}
 	return defaultServerSettings().Image
 }
-func (s *SyncStore) ActivateServerSettings() error {
+func (s *SettingsStore) ActivateServerSettings() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, e := s.loadServerSettings()
@@ -68,7 +68,7 @@ func validServerSettings(c serverSettings) bool {
 	i := c.Image
 	return validArticleSettings(c.Articles) && i.MetadataTimeoutMs >= 500 && i.MetadataTimeoutMs <= 10000 && i.MaxHTMLKiB >= 128 && i.MaxHTMLKiB <= 2048 && i.ParallelRequests >= 1 && i.ParallelRequests <= 16 && i.EnrichmentDeadlineSeconds >= 10 && i.EnrichmentDeadlineSeconds <= 60 && i.MissingImageCacheSeconds >= 30 && i.MissingImageCacheSeconds <= 600
 }
-func (s *SyncStore) loadServerSettings() (serverSettings, error) {
+func (s *SettingsStore) loadServerSettings() (serverSettings, error) {
 	b, e := os.ReadFile(s.file("server-settings.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return defaultServerSettings(), nil
@@ -88,7 +88,7 @@ func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	}
 	return v, nil
 }
-func (s *SyncStore) CurrentServerSettings() serverSettings {
+func (s *SettingsStore) CurrentServerSettings() serverSettings {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, e := s.loadServerSettings()
@@ -97,10 +97,7 @@ func (s *SyncStore) CurrentServerSettings() serverSettings {
 	}
 	return v
 }
-func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
- s.serveAdminSettingsAuthorized(w,r,false)
-}
-func (s *SyncStore) serveAdminSettingsAuthorized(w http.ResponseWriter, r *http.Request, homepageAdmin bool) {
+func (s *SettingsStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request, homepageAdmin bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if r.Method != http.MethodGet && r.Method != http.MethodPut {
