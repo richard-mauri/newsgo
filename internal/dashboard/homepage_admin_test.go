@@ -52,8 +52,8 @@ func TestHomepageRoleEnforcedForAdminSettingsWithoutLegacyToken(t *testing.T){
   _=json.NewEncoder(w).Encode(map[string]string{"user":"reader","role":role,"expiresAt":time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
  }))
  defer home.Close()
- store,err:=NewSyncStore(t.TempDir());if err!=nil{t.Fatal(err)}
- state:=&State{syncStore:store,homepageProfileURL:home.URL}
+ store,err:=NewSettingsStore(t.TempDir());if err!=nil{t.Fatal(err)}
+ state:=&State{settingsStore:store,homepageProfileURL:home.URL}
  request:=func(method string,payload []byte)*httptest.ResponseRecorder{
   req:=httptest.NewRequest(method,"https://newsgo.themauris.org/api/admin/settings",bytes.NewReader(payload))
   req.Header.Set("X-NewsGo-Homepage-Authorization","Bearer "+strings.Repeat("a",64))
