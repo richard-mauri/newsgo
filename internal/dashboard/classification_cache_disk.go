@@ -78,7 +78,7 @@ func persistClassificationCacheLocked() error {
    continue
   }
   if validClassificationKey(key) && validCachedClassification(entry.value) &&
-   !entry.expiry.After(now.Add(60*time.Minute)) {
+   !entry.expiry.After(now.Add(12*time.Hour)) {
    disk.Entries[key]=persistedClassificationEntry{entry.value,entry.expiry}
   }
  }
