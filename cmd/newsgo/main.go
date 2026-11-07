@@ -51,6 +51,7 @@ func main() {
 	if e = settingsStore.ActivateServerSettings(); e != nil {
 		log.Fatal(e)
 	}
+	settingsStore.ActivateClassificationCache()
 	app.SetSettingsStore(settingsStore)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
