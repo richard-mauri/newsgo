@@ -203,11 +203,9 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
    classifyStarted:=time.Now()
    decisions := make([]string,len(articles))
-   if req.RSSMetadataOnly {
-     for i,a := range articles {if articleTooOld(a.Published,req.MaxArticleAgeDays,time.Now()){decisions[i]="too-old"}else{decisions[i]="article"}}
-   } else {
-     decisions = classifyFeedArticlesWithAgeCache(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache)
-   }
+   // RSS metadata-only controls presentation, not article eligibility.
+   // Both reading modes require ScraperGo-confirmed articles.
+   decisions = classifyFeedArticlesWithAgeCache(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache)
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
