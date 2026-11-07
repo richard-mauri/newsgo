@@ -7,7 +7,7 @@ import (
 
 func TestExclusionControlsPreserveSubscriptionFlows(t *testing.T) {
 	for _, required := range []string{
-		"const key='newsgo.subscriptions.v2'",
+		"const unifiedKey='newsgo.subscriptions.unified.v1'",
 		"function loadSubscriptions()",
 		"function subscribeRecord(record)",
 		"function unsubscribeRecord(id)",
