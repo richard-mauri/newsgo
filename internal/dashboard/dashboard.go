@@ -19,6 +19,7 @@ type State struct {
 	sources   []feeds.Source // Discovery catalog only, never fetched automatically.
 	reader    string
 	syncStore *SyncStore
+ homepageProfileURL string // private test override; production uses the fixed Homepage endpoint
 }
 
 func New(sources []feeds.Source, reader string, _ *http.Client) (*State, error) {
@@ -61,7 +62,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.syncStore == nil {
 			http.Error(w, "Sync unavailable", 503)
 		} else {
-			s.syncStore.ServeAdminSettings(w, r)
+			s.syncStore.serveAdminSettingsAuthorized(w, r, s.homepageAdminVerified(r))
 		}
 		return
 	}
