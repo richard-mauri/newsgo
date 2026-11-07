@@ -2,16 +2,12 @@ package dashboard
 
 const personalJS = `(function(){
 'use strict';
-const key='newsgo.subscriptions.v2';
-const legacyPersonalKey='newsgo.personalFeeds.v1';
-const legacyIncludedKey='newsgo.includedSubscriptions.v1';
 const catalog=Array.from(document.querySelectorAll('[data-included-source]'),b=>({name:b.dataset.includedSource,url:b.dataset.feedUrl,category:b.dataset.category||'Other'}));
 const catalogByName=new Map(catalog.map(f=>[f.name,f]));
 const feedIdentity=u=>{try{const x=new URL(u);x.hash='';return 'feed:'+x.href}catch(_){return 'feed:'+u}};
-const sharedRecord=name=>({id:'shared:'+name,kind:'shared',name});
 const feedRecord=f=>({id:feedIdentity(f.url),kind:'feed',name:f.name,url:f.url,category:f.category||'Other'});
 const recordValid=r=>r&&typeof r.id==='string'&&typeof r.name==='string'&&r.name.length>0&&r.name.length<=140&&
- (r.kind==='shared'||(r.kind==='feed'&&typeof r.url==='string'&&/^https?:\/\/[^\s/]+/i.test(r.url)&&r.url.length<=2048));
+ (r.kind==='feed'&&typeof r.url==='string'&&/^https?:\/\/[^\s/]+/i.test(r.url)&&r.url.length<=2048);
 // Publisher exclusions are independent of subscription membership.
 const exclusionKey='newsgo.excludedDomains.v1';
 let excludedDomains=[],articleDomains=[],exclusionError='';
@@ -29,7 +25,7 @@ let useClassificationCache=localStorage.getItem(classificationCachePreferenceKey
 const allowedAges=[0,1,3,7,14,30,60];
 function normalizedAge(v){const n=Number(v);return allowedAges.includes(n)?n:0}
 let maxArticleAgeDays=normalizedAge(localStorage.getItem(agePreferenceKey)||0);
-function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);scheduleServerSave();refresh();}
+function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);scheduleAccountSave();refresh();}
 
 function hostOf(value){
  try{const u=new URL(value.includes('://')?value:'https://'+value);if(!/^https?:$/.test(u.protocol)||u.username||u.password)return '';return u.hostname.toLowerCase().replace(/\.$/,'').replace(/^www\./,'')}
@@ -95,17 +91,17 @@ async function setUnifiedDomain(domain,allow){
  }
  excludedDomains=allow?nextPublishers:[...nextPublishers,domain];articleDomains=allow?nextArticles:[...nextArticles,domain];
  registry=nextRegistry;syncDerived();
- refreshExclusionViews();renderPersonalArticles();scheduleServerSave();refresh();
+ refreshExclusionViews();renderPersonalArticles();scheduleAccountSave();refresh();
  message(allow?'Allowed '+domain:'Excluded '+domain+(affected.length?' and removed '+affected.length+' subscription(s)':''));
  return true;
 }
 function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
-function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleServerSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
+function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleAccountSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
 function toggleArticleDomain(value){toggleDomain(value)}
 function excludedURL(value){return domainIsExcluded(value)}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
 function saveExclusions(list){
- try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleServerSave();return true}
+ try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleAccountSave();return true}
  catch(e){message('Could not save exclusions: '+e.message);return false}
 }
 function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedURL(domain))setUnifiedDomain(domain,false);else message(domain+' is already excluded.')}
@@ -157,44 +153,16 @@ let registry=[], storageError='';
 const unifiedKey='newsgo.subscriptions.unified.v1';
 function loadSubscriptions(){
  try{
-  const current=localStorage.getItem(unifiedKey)||localStorage.getItem(key);
-  if(current!==null){
-   const value=JSON.parse(current);
-   if(!Array.isArray(value))throw Error('Subscription registry has an invalid format.');
-   if(value.some(r=>!recordValid(r)))throw Error('Subscription registry contains invalid entries; no data was discarded.');
-   registry=convertLegacy(value);
-   localStorage.setItem(unifiedKey,JSON.stringify(registry));
-   return;
-  }
-  const oldFeeds=JSON.parse(localStorage.getItem(legacyPersonalKey)||'[]');
-  const oldIncluded=JSON.parse(localStorage.getItem(legacyIncludedKey)||'[]');
-  if(!Array.isArray(oldFeeds)||!Array.isArray(oldIncluded))throw Error('Legacy subscription data is invalid.');
-  const proposed=[
-   ...oldIncluded.filter(n=>typeof n==='string').map(sharedRecord),
-   ...oldFeeds.map(feedRecord)
-  ];
-  if(proposed.some(r=>!recordValid(r)))throw Error('Legacy records require review; migration was not performed.');
-  const unique=new Map(proposed.map(r=>[r.id,r]));
-  const migrated=[...unique.values()];
-  localStorage.setItem(key,JSON.stringify(migrated)); // Migration commits only after a successful write.
-  registry=convertLegacy(migrated);
-  localStorage.setItem(unifiedKey,JSON.stringify(registry));
+  const current=localStorage.getItem(unifiedKey);
+  if(current===null){registry=[];return}
+  const records=JSON.parse(current);
+  if(!Array.isArray(records)||records.some(r=>!recordValid(r)))throw Error('Subscription registry contains invalid records');
+  registry=[...new Map(records.map(r=>[r.id,r])).values()];
  }catch(e){storageError='Subscription storage: '+e.message+' Existing records were left unchanged.'}
 }
-// Catalog publisher subscriptions migrate to identical feed records. Unknown
-// legacy publishers are preserved for review instead of being discarded.
-function convertLegacy(records){
- const converted=records.map(r=>{
-  if(r.kind!=='shared')return r;
-  const src=catalogByName.get(r.name);
-  return src&&src.url?feedRecord(src):r;
- });
- return [...new Map(converted.map(r=>[r.id,r])).values()];
-}
 loadSubscriptions();
-let included=[], feeds=[];
+let feeds=[];
 function syncDerived(){
- included=registry.filter(r=>r.kind==='shared').map(r=>r.name); // unresolved legacy records only
  feeds=registry.filter(r=>r.kind==='feed').map(r=>({name:r.name,url:r.url,category:r.category||'Other'}));
 }
 syncDerived();
@@ -202,7 +170,7 @@ function saveSubscriptions(next){
  try{
   const serialized=JSON.stringify(next);
   localStorage.setItem(unifiedKey,serialized);
-  registry=next;syncDerived();scheduleServerSave();return true;
+  registry=next;syncDerived();scheduleAccountSave();return true;
  }catch(e){message('Could not save subscriptions. No changes were applied: '+e.message);return false}
 }
 function hasSubscription(id){return registry.some(r=>r.id===id)}
@@ -235,7 +203,7 @@ function restoreReadingSelection(value){
 }
 function rememberReadingSelection(value){
  localStorage.setItem(readingSelectionKey,value);
- scheduleServerSave();
+ scheduleAccountSave();
 }
 
 function message(t){el('personal-message').textContent=t}
@@ -335,7 +303,7 @@ function chooseAllSubscriptions(leadOnly=false){
  const modeChanged=leadOnlyAllSubscriptions!==leadOnly;
  leadOnlyAllSubscriptions=leadOnly;
  localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
- if(modeChanged)scheduleServerSave();
+ if(modeChanged)scheduleAccountSave();
  activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -452,7 +420,7 @@ function renderFilteredSubscriptionOffer(){
   // Keep the reading view unselected after removal; never load all feeds implicitly.
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  localStorage.removeItem(readingSelectionKey);scheduleServerSave();
+  localStorage.removeItem(readingSelectionKey);scheduleAccountSave();
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
@@ -573,9 +541,6 @@ function renderManager(){
  const allActions=document.createElement('div');allActions.className='personal-form';
   allActions.append(button('Read All Articles',()=>chooseAllSubscriptions(false)),button('Read Lead Articles',()=>chooseAllSubscriptions(true)));
   allRow.append(allInfo,allActions);root.append(allRow);
- // Legacy subscription records that could not be mapped remain visible
- // with a clear explanation and an unsubscribe option; do not lose them.
- included.forEach(name=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('strong');info.textContent=name+' · Feed unavailable — select a feed in Find Subscriptions';row.append(info,button('Unsubscribe',()=>{if(unsubscribeRecord('shared:'+name)){renderManager();refresh()}}));root.append(row)});
  document.querySelectorAll('.read-included').forEach(b=>{
   const followed=feeds.some(f=>f.url===b.dataset.feedUrl);
   b.textContent=followed?'Subscribed':'Subscribe';b.disabled=followed;
@@ -699,9 +664,9 @@ el('personal-import').addEventListener('click',()=>el('personal-file').click());
 el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());const records=Array.isArray(data)?data:data&&data.format==='newsgo-preferences-v3'?data.subscriptions:null;if(!Array.isArray(records))throw Error('Invalid subscription list');
    const importedExclusions=Array.isArray(data)?null:data.excludedDomains;if(importedExclusions!==null&&(!Array.isArray(importedExclusions)||importedExclusions.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)))throw Error('Invalid exclusion list');
    const importedArticles=Array.isArray(data)?null:(data.excludedArticleDomains===undefined?null:data.excludedArticleDomains);if(importedArticles!==null&&(!Array.isArray(importedArticles)||importedArticles.some(d=>typeof d!=='string'||articleDomain(d)!==d)))throw Error('Invalid article exclusion list');
-   const migrated=convertLegacy(records.map(r=>r&&r.kind?r:feedRecord(r)));
- if(migrated.some(r=>!recordValid(r)))throw Error('Invalid subscription entry');
- const unique=[...new Map(migrated.map(r=>[r.id,r])).values()];
+   const entries=records.map(r=>r&&r.kind?r:feedRecord(r));
+ if(entries.some(r=>!recordValid(r)))throw Error('Invalid subscription entry');
+ const unique=[...new Map(entries.map(r=>[r.id,r])).values()];
  if(!saveSubscriptions(unique))return;
    if(importedExclusions!==null&&!saveExclusions(importedExclusions))return;
    if(importedArticles!==null&&!saveArticleExclusions(importedArticles))return;
@@ -768,7 +733,7 @@ function initSuiteAccountHeader(){
 function accountSessionState(){
  updateScraperTraceExportVisibility();
  const available=!!homepageIdentity;
- syncAppearance();
+ updateAccountControls();
  const nav=el('manage-sync');if(nav)nav.hidden=!available;
  if(!available&& !el('sync-panel').classList.contains('personal-hidden'))showView('news');
  const save=el('account-save-button'),load=el('account-load-button');
@@ -891,7 +856,7 @@ function mountAccountActions(){
  wrap.append(save,load);panel.append(explanation,wrap,status);
 }
 let adminRevision=0;
-function syncAppearance(){
+function updateAccountControls(){
  el('manage-admin').hidden=!homepageAdminActive();
  el('manage-diagnostics').hidden=false;
  if(!homepageAdminActive()&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
@@ -899,9 +864,9 @@ function syncAppearance(){
 function applyAccountPreferences(data){
  if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||!Array.isArray(data.excludedArticleDomains||[]))throw Error('Invalid server profile');
  if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Server profile contains invalid entries');
- const migrated=convertLegacy(data.subscriptions);
- localStorage.setItem(unifiedKey,JSON.stringify(migrated));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));localStorage.setItem(articleExclusionKey,JSON.stringify(data.excludedArticleDomains||[]));
- registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);
+ const entries=[...new Map(data.subscriptions.map(r=>[r.id,r])).values()];
+ localStorage.setItem(unifiedKey,JSON.stringify(entries));localStorage.setItem(exclusionKey,JSON.stringify(data.excludedDomains));localStorage.setItem(articleExclusionKey,JSON.stringify(data.excludedArticleDomains||[]));
+ registry=entries;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);
   maximumLeadStories=normalizedLeadCount(data.maximumLeadStories||3);leadOnlyAllSubscriptions=data.leadOnlyAllSubscriptions===true;
   localStorage.setItem(leadCountKey,String(maximumLeadStories));localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
   el('maximum-lead-stories').value=String(maximumLeadStories);
@@ -911,11 +876,10 @@ function applyAccountPreferences(data){
 
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
-function scheduleServerSave(){scheduleAccountSave()}
 el('manage-sync').addEventListener('click',()=>showView('sync'));
 el('close-sync').addEventListener('click',()=>showView('news'));
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
-// Admin control is created beside the existing feed-cache input so no server template migration is needed.
+// Add classification-cache TTL control alongside feed-cache settings.
 const feedCacheInput=document.getElementById('admin-feed-cache');
 if(feedCacheInput){
  const label=document.createElement('label');
@@ -930,7 +894,7 @@ if(feedCacheInput){
  const parent=feedCacheInput.closest('label')||feedCacheInput.parentElement;
  parent.insertAdjacentElement('afterend',label);
 }
-let retainedLegacyImageSettings=null;
+let currentImageSettings=null;
 let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
 const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
@@ -942,7 +906,7 @@ async function adminRequest(method,payload){
 async function loadAdmin(){
  if(!mayAdminister())return false;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
-  retainedLegacyImageSettings=data.image;
+  currentImageSettings=data.image;
   for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
   adminSavedValues=adminValues();
   adminStatus('Server settings loaded (revision '+adminRevision+').');
@@ -950,12 +914,12 @@ async function loadAdmin(){
  }catch(e){adminStatus('Could not load settings: '+e.message);return false}
 }
 async function saveAdmin(){
- if(!mayAdminister()||!retainedLegacyImageSettings)return false;
+ if(!mayAdminister()||!currentImageSettings)return false;
  const form=el('admin-form');
  if(!form.reportValidity())return false;
  const articles=Object.fromEntries(Object.entries(adminValues()).map(([key,value])=>[key,Number(value)]));
- try{const result=await adminRequest('PUT',{revision:adminRevision,image:retainedLegacyImageSettings,articles});
-  adminRevision=result.revision;retainedLegacyImageSettings=result.image;adminSavedValues=adminValues();
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image:currentImageSettings,articles});
+  adminRevision=result.revision;currentImageSettings=result.image;adminSavedValues=adminValues();
   adminStatus('Saved server settings (revision '+adminRevision+').');return true;
  }catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.');return false}
 }
@@ -981,9 +945,9 @@ async function confirmAdminLeave(action){
 el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('maximum-lead-stories').value=String(maximumLeadStories);
-el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleServerSave();renderPersonalArticles()});
+el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleAccountSave();renderPersonalArticles()});
 el('use-classification-cache').checked=useClassificationCache;
-el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));scheduleServerSave();});
+el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));scheduleAccountSave();});
 el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
@@ -996,7 +960,7 @@ el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
 window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
 el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
-syncAppearance();
+updateAccountControls();
 restoreReadingSelection(localStorage.getItem(readingSelectionKey));
 mountAccountActions();
 void checkHomepageSession();
