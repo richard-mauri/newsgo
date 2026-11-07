@@ -4,10 +4,13 @@ import (
  "bytes"
  "context"
  "encoding/json"
+ "fmt"
  "net/http"
  "net/http/httptest"
  "strings"
+ "sync/atomic"
  "testing"
+ "time"
 )
 
 func TestValidateBatchDeduplicatesAndDiscardsFragments(t *testing.T) {
@@ -36,25 +39,156 @@ func TestValidateEndpointLoopbackOnly(t *testing.T) {
  if _,err:=validateEndpoint("http://127.0.0.1:8083/api/read");err!=nil{t.Fatal(err)}
 }
 
-func TestReplayUsesNormalReadPOSTAndReportsOnlyIndex(t *testing.T) {
- requested:=[]string{}
+func TestReplayReportsClassificationAndReadStatusWithoutURLs(t *testing.T) {
+ var classify,read []string
  server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
-  if r.Method!=http.MethodPost||r.URL.Path!="/api/read" {t.Errorf("unexpected request %s %s",r.Method,r.URL.Path)}
-  var input map[string]string
+  if r.Method!=http.MethodPost {t.Errorf("wrong method: %s",r.Method)}
+  var input struct{URL string `json:"url"`}
   if err:=json.NewDecoder(r.Body).Decode(&input);err!=nil{t.Error(err)}
-  requested=append(requested,input["url"])
-  if strings.Contains(input["url"],"fail") {http.Error(w,"publisher unavailable",422)}
+  w.Header().Set("Content-Type","application/json")
+  switch r.URL.Path {
+  case "/api/classify":
+   classify=append(classify,input.URL)
+   if strings.Contains(input.URL,"bad") {
+    _,_=w.Write([]byte(`{"classification":"article","readableArticle":true}`))
+   } else {
+    _,_=w.Write([]byte(`{"classification":"article","readableArticle":true}`))
+   }
+  case "/api/read":
+   read=append(read,input.URL)
+   if strings.Contains(input.URL,"bad"){
+    w.WriteHeader(422)
+    _,_=w.Write([]byte(`{"kind":"publisher_access_denied","publisherHttpStatus":403,"error":"contains-private-data"}`))
+   }else{
+    _,_=w.Write([]byte(`{"title":"Test article"}`))
+   }
+  default:t.Errorf("unexpected endpoint %s",r.URL.Path)
+  }
  }))
  defer server.Close()
  endpoint,err:=validateEndpoint(server.URL+"/api/read")
  if err!=nil{t.Fatal(err)}
+ urls:=[]string{"https://example.org/story?secret=one","https://example.org/bad?token=two"}
  var output bytes.Buffer
- urls:=[]string{"https://example.org/story?secret=one","https://example.org/fail?token=two"}
  success,failed:=replay(context.Background(),urls,endpoint,server.Client(),0,&output)
- if success!=1||failed!=1||len(requested)!=2||requested[0]!=urls[0]||requested[1]!=urls[1]{
-  t.Fatalf("unexpected results: success=%d failed=%d received=%#v",success,failed,requested)
+ if success!=1||failed!=1||len(classify)!=2||len(read)!=2{t.Fatalf("unexpected totals: successes=%d failures=%d classify=%d read=%d",success,failed,len(classify),len(read))}
+ for i:=range urls {if classify[i]!=urls[i]||read[i]!=urls[i]{t.Fatal("wrong URL submitted")}}
+ result:=output.String()
+ for _,need:=range []string{"Article 1/2: classification=article classify_http=200 read_http=200","Article 2/2: classification=article classify_http=200 read_http=422 read_kind=publisher_access_denied publisher_http=403 mismatch=classified_article_but_unreadable","Classification/read disagreements (article classified, read failed): 1"} {
+  if !strings.Contains(result,need){t.Errorf("missing output %q from %s",need,result)}
  }
- if strings.Contains(output.String(),"secret")||strings.Contains(output.String(),"token")||strings.Contains(output.String(),"story"){
-  t.Fatalf("batch output leaked URL: %s",output.String())
+ for _,private:=range []string{"secret","token","example.org","contains-private-data"}{
+  if strings.Contains(result,private){t.Errorf("leaked private content %q",private)}
  }
+}
+
+func TestReplayHandlesUnclassifiedAndNonJSONResponses(t *testing.T){
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/api/classify"{
+   w.WriteHeader(422)
+   _,_=w.Write([]byte("not json"))
+   return
+  }
+  w.WriteHeader(422)
+  _,_=w.Write([]byte(`{"kind":"extraction_error","error":"secret"}`))
+ }))
+ defer server.Close()
+ var output bytes.Buffer
+ good,bad:=replay(context.Background(),[]string{"https://example.org/private"},server.URL+"/api/read",server.Client(),0,&output)
+ if good!=0||bad!=1 {t.Fatalf("unexpected totals %d %d",good,bad)}
+ if !strings.Contains(output.String(),"classification=unreported classify_http=422 read_http=422 read_kind=extraction_error"){t.Fatal(output.String())}
+ if strings.Contains(output.String(),"secret")||strings.Contains(output.String(),"example.org"){t.Fatal("diagnostic leaked content")}
+}
+
+func TestProbeRestrictsUntrustedResponseLabels(t *testing.T) {
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/api/classify"{
+   _,_=w.Write([]byte(`{"classification":"article\\nINJECTED"}`))
+  }else{
+   w.WriteHeader(422)
+   _,_=w.Write([]byte(`{"kind":"custom\\nINJECTED","publisherHttpStatus":999}`))
+  }
+ }))
+ defer server.Close()
+ var out bytes.Buffer
+ _,_=replay(context.Background(),[]string{"https://example.org/test"},server.URL+"/api/read",server.Client(),0,&out)
+ if strings.Contains(out.String(),"INJECTED")||strings.Contains(out.String(),"publisher_http="){t.Fatal(out.String())}
+}
+
+func TestReplayIsSequentialAndReportsLatency(t *testing.T){
+ var active,maxActive int
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  active++
+  if active>maxActive{maxActive=active}
+  time.Sleep(5*time.Millisecond)
+  active--
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`))}
+  if r.URL.Path=="/api/read"{_,_=w.Write([]byte(`{"title":"ok"}`))}
+ }))
+ defer server.Close()
+ var output bytes.Buffer
+ good,bad:=replay(context.Background(),[]string{"https://example.org/1","https://example.org/2"},server.URL+"/api/read",server.Client(),0,&output)
+ if good!=2||bad!=0||maxActive!=1{t.Fatalf("expected sequential requests: good=%d bad=%d active=%d",good,bad,maxActive)}
+ for _,term:=range []string{"classify_wall=","read_wall=","Classification wall latency: n=2","Read wall latency: n=2","Batch elapsed wall time:"}{
+  if !strings.Contains(output.String(),term){t.Errorf("missing %q from %s",term,output.String())}
+ }
+}
+
+func TestReplayDispatchDelayExcludedFromLatency(t *testing.T){
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`));return}
+  _,_=w.Write([]byte(`{"title":"ok"}`))
+ }))
+ defer server.Close()
+ var output bytes.Buffer
+ start:=time.Now()
+ good,bad:=replay(context.Background(),[]string{"https://example.org/1","https://example.org/2"},server.URL+"/api/read",server.Client(),100*time.Millisecond,&output)
+ if good!=2||bad!=0{t.Fatalf("counts %d %d",good,bad)}
+ if time.Since(start)<100*time.Millisecond{t.Fatal("missing pacing delay")}
+ if !strings.Contains(output.String(),"dispatch_delay=100ms"){t.Fatal(output.String())}
+}
+
+func TestLatencySummaryPercentiles(t *testing.T){
+ values:=[]time.Duration{5*time.Millisecond,1*time.Millisecond,4*time.Millisecond,2*time.Millisecond,3*time.Millisecond}
+ result:=latencySummary(values)
+ for _,item:=range []string{"n=5","min=1ms","mean=3ms","p50=3ms","p95=5ms","max=5ms"}{
+  if !strings.Contains(result,item){t.Errorf("missing %s in %s",item,result)}
+ }
+}
+
+func TestOptInConcurrentReplayBoundedAndReportsEachURL(t *testing.T) {
+ var active,maxActive atomic.Int32
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  current:=active.Add(1)
+  for {old:=maxActive.Load();if current<=old||maxActive.CompareAndSwap(old,current){break}}
+  defer active.Add(-1)
+  time.Sleep(15*time.Millisecond)
+  w.Header().Set("Content-Type","application/json")
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`));return}
+  _,_=w.Write([]byte(`{"title":"ok"}`))
+ }))
+ defer server.Close()
+ urls:=[]string{"https://example.org/a","https://example.org/b","https://example.org/c","https://example.org/d","https://example.org/e"}
+ var out bytes.Buffer
+ good,bad:=replayConcurrent(context.Background(),urls,server.URL+"/api/read",server.Client(),0,2,&out)
+ if good!=len(urls)||bad!=0{t.Fatalf("unexpected result: good=%d bad=%d: %s",good,bad,out.String())}
+ if maxActive.Load()!=2{t.Fatalf("expected two workers, max simultaneous requests=%d",maxActive.Load())}
+ for i:=range urls{term:=fmt.Sprintf("Article %d/%d: classification=article classify_http=200 read_http=200",i+1,len(urls));if !strings.Contains(out.String(),term){t.Fatalf("missing %q",term)}}
+ if !strings.Contains(out.String(),"workers=2")||!strings.Contains(out.String(),"Classification/read disagreements (article classified, read failed): 0"){t.Fatal(out.String())}
+}
+
+func TestConcurrentReplayFallsBackToSequentialDefault(t *testing.T){
+ var active,maxActive atomic.Int32
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  n:=active.Add(1)
+  for {v:=maxActive.Load();if n<=v||maxActive.CompareAndSwap(v,n){break}}
+  defer active.Add(-1)
+  time.Sleep(3*time.Millisecond)
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`));return}
+  _,_=w.Write([]byte(`{"title":"ok"}`))
+ }))
+ defer server.Close()
+ var out bytes.Buffer
+ good,bad:=replayConcurrent(context.Background(),[]string{"https://example.org/a","https://example.org/b"},server.URL+"/api/read",server.Client(),0,1,&out)
+ if good!=2||bad!=0||maxActive.Load()!=1{t.Fatalf("sequential fallback failed: good=%d bad=%d max=%d",good,bad,maxActive.Load())}
 }

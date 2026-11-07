@@ -18,12 +18,14 @@ let excludedDomains=[],articleDomains=[],exclusionError='';
 const articleExclusionKey='newsgo.excludedArticleDomains.v1';
 const agePreferenceKey='newsgo.maxArticleAgeDays.v1';
 const rssOnlyPreferenceKey='newsgo.rssMetadataOnly.v1';
+const classificationCachePreferenceKey='newsgo.useClassificationCache.v1';
 const leadCountKey='newsgo.maximumLeadStories.v1';
 const leadOnlyKey='newsgo.leadOnlyAllSubscriptions.v1';
 function normalizedLeadCount(v){const n=Number(v);return Number.isInteger(n)&&n>=1&&n<=20?n:3}
 let maximumLeadStories=normalizedLeadCount(localStorage.getItem(leadCountKey));
 let leadOnlyAllSubscriptions=localStorage.getItem(leadOnlyKey)==='true';
 let rssMetadataOnly=localStorage.getItem(rssOnlyPreferenceKey)==='true';
+let useClassificationCache=localStorage.getItem(classificationCachePreferenceKey)!=='false';
 const allowedAges=[0,1,3,7,14,30,60];
 function normalizedAge(v){const n=Number(v);return allowedAges.includes(n)?n:0}
 let maxArticleAgeDays=normalizedAge(localStorage.getItem(agePreferenceKey)||0);
@@ -620,7 +622,7 @@ async function refresh(){
   for(let offset=0;offset<snapshot.length;offset+=8){
    const batch=snapshot.slice(offset,offset+8);
    const batchStart=performance.now();
-   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly})});
+   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache})});
    if(sequence!==refreshSequence)return;
    if(!res.ok)throw new Error('HTTP '+res.status);
    data.push(...await res.json());batchDuration+=performance.now()-batchStart;
@@ -630,7 +632,7 @@ async function refresh(){
   }
   if(sequence!==refreshSequence)return;
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();
-  latestReadStats={mode:rssMetadataOnly?'RSS metadata only':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
+  latestReadStats={mode:rssMetadataOnly?'RSS metadata + ScraperGo verified':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
    if(activeReadingSelection==='all'&&!leadOnlyAllSubscriptions) scraperTraceBatch=eligibleScraperTraceURLs(allPersonalArticles);
@@ -670,7 +672,7 @@ function subscribeClick(f,trigger){
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);const domain=publisherForFeed(f);markSite(info,domain);const subscribeButton=button('Subscribe',()=>subscribeClick(f,subscribeButton));row.append(info,subscribeButton);const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
@@ -813,7 +815,7 @@ async function homepageReaderRecord(){
 // load, and revision-checked saves after the user establishes an account copy.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
 const accountStatus=message=>{const e=el('account-sync-status');if(e)e.textContent=message};
-function accountSnapshot(){const p=syncSnapshot();return {subscriptions:p.subscriptions,excludedDomains:p.excludedDomains,excludedArticleDomains:p.excludedArticleDomains,maxArticleAgeDays:p.maxArticleAgeDays,maximumLeadStories:p.maximumLeadStories,leadOnlyAllSubscriptions:p.leadOnlyAllSubscriptions,lastReadingSelection:p.lastReadingSelection}}
+function accountSnapshot(){const p=syncSnapshot();return {subscriptions:p.subscriptions,excludedDomains:p.excludedDomains,excludedArticleDomains:p.excludedArticleDomains,maxArticleAgeDays:p.maxArticleAgeDays,maximumLeadStories:p.maximumLeadStories,leadOnlyAllSubscriptions:p.leadOnlyAllSubscriptions,useClassificationCache:p.useClassificationCache,lastReadingSelection:p.lastReadingSelection}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
 async function accountSave(){
  await checkHomepageSession();
@@ -914,7 +916,7 @@ function syncAppearance(){
  el('manage-diagnostics').hidden=!(syncConnected&&isAdmin);
  if(!(syncConnected&&isAdmin)&&(!el('admin-panel').classList.contains('personal-hidden')||!el('diagnostics-panel').classList.contains('personal-hidden')))showView('news');
 }
-function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
+function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 async function syncRequest(method,body){
  const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
  if(response.status===404){const data=await response.json();return {...data,notFound:true}}
@@ -930,6 +932,7 @@ function applyServerPreferences(data){
   maximumLeadStories=normalizedLeadCount(data.maximumLeadStories||3);leadOnlyAllSubscriptions=data.leadOnlyAllSubscriptions===true;
   localStorage.setItem(leadCountKey,String(maximumLeadStories));localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
   el('maximum-lead-stories').value=String(maximumLeadStories);syncRevision=data.revision;
+   useClassificationCache=data.useClassificationCache!==false;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));el('use-classification-cache').checked=useClassificationCache;
  const restored=validReadingSelection(data.lastReadingSelection);if(restored===null)localStorage.removeItem(readingSelectionKey);else localStorage.setItem(readingSelectionKey,restored);
  restoreReadingSelection(restored);
  syncDirty=false;syncPending=false;syncConflict=false;
@@ -940,7 +943,7 @@ function samePreferences(data){
  const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
  const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
  const domains=x=>[...new Set(x)].sort().join('\n');
- return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays&&normalizedLeadCount(data.maximumLeadStories||3)===maximumLeadStories&&(data.leadOnlyAllSubscriptions===true)===leadOnlyAllSubscriptions&&(activeReadingSelection===null||validReadingSelection(data.lastReadingSelection)===validReadingSelection(activeReadingSelection));
+ return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays&&normalizedLeadCount(data.maximumLeadStories||3)===maximumLeadStories&&(data.leadOnlyAllSubscriptions===true)===leadOnlyAllSubscriptions&&(data.useClassificationCache!==false)===useClassificationCache&&(activeReadingSelection===null||validReadingSelection(data.lastReadingSelection)===validReadingSelection(activeReadingSelection));
 }
 function resolveConnectDifference(){
  return new Promise(resolve=>{
@@ -1061,11 +1064,11 @@ const feedCacheInput=document.getElementById('admin-feed-cache');
 if(feedCacheInput){
  const label=document.createElement('label');
  label.setAttribute('for','admin-classification-cache');
- label.textContent='Successful classification cache (minutes, 0–30)';
+ label.textContent='Successful classification cache (minutes, 0–1440)';
  label.style.display='block';label.style.marginTop='1rem';
  const input=document.createElement('input');
- input.type='number';input.min='0';input.max='30';input.step='1';input.required=true;
- input.id='admin-classification-cache';input.value='30';
+ input.type='number';input.min='0';input.max='1440';input.step='1';input.required=true;
+ input.id='admin-classification-cache';input.value='1440';
  input.style.display='block';input.style.width='100%';input.style.maxWidth='22rem';
  label.append(input);
  const parent=feedCacheInput.closest('label')||feedCacheInput.parentElement;
@@ -1123,6 +1126,8 @@ el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('maximum-lead-stories').value=String(maximumLeadStories);
 el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleServerSave();renderPersonalArticles()});
+el('use-classification-cache').checked=useClassificationCache;
+el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));scheduleServerSave();});
 el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));

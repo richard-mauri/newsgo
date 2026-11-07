@@ -1,25 +1,26 @@
 # Current work
 
-**Authoritative merged baseline:** GitHub `main` at `d62dbbfbdd0e676e1bb8e296e760772c80c8971a` (verified November 6, 2026). No open PRs at start of this issue; unrelated open Issues #55, #56 and #57 remain untouched. Older note about draft PR #54 is stale and not current.
+**Merged baseline:** GitHub main `83f773e911dd304c2b8ed6f48a0fc689c5789cb9` at feature start, verified November 7, 2026.
 
-**Active task:** [Issue #58](https://github.com/richard-mauri/newsgo/issues/58): export the result of **Read All Articles** as an explicit URL batch and provide a local replay command that sends those URLs to ScraperGo for persistent recovery-trace observations. Scope limited to NewsGo. Branch `feat/58-scrapergo-url-batch`; one draft PR against `main`. ScraperGo is not modified and its recovery tracer must be running independently for observations to be recorded.
+**Active feature:** [Issue #65](https://github.com/richard-mauri/newsgo/issues/65), branch `feat/65-verified-reading-cache` from main. Consolidates superseded Issues #62/#63 and draft PR #64 into **one issue, one branch, one draft PR**. Diagnostic Issue #60 / PR #61 is superseded and closed; the safe sequential classification-aware scrapertrace implementation and regression tests were incorporated into this one feature branch. GitHub main is authoritative; do not merge without explicit owner acceptance and authorization.
 
-**Current implementation:** The browser builds a deduplicated, exclusion-filtered URL list from the successful current Read All refresh and enables a **Download Article URLs** button in the completed briefing only while a verified Homepage administrator is signed in. The button is styled to match NewsGo actions, hidden for normal users and expired sessions, and the click handler rechecks the role. Download happens only on click. It writes `newsgo-scrapergo-urls.json` with a `newsgo.scrapergo-batch.v1` marker and URL array. `cmd/scrapertrace` loads this file, validates bounds and HTTP(S) URLs, enforces numeric loopback-only ScraperGo target, submits sequential `POST /api/read` requests with pacing, and reports response totals without printing full URLs. Unit tests validate batch deduplication, safety, loopback and request behavior; dashboard tests validate export wiring. No NewsGo server routes, subscription data or session-verification logic have changed; the export is client-side gated, not a privileged server route.
+**Implementation:** Both normal and RSS metadata-only briefing modes require ScraperGo `/api/classify` to confirm `article` eligibility; homepages, unreadable, unavailable and unknown are filtered and counted. RSS-only still uses RSS headline metadata, dates and images; no longer bypasses classification. Existing server classification cache is shared; a default-on **Use classification cache** reader preference controls optional cache lookup/insertion, persists through localStorage, Homepage account and legacy Server Sync, and affects both modes. The default positive-result TTL is now 1440 minutes (24h), accepted administrator range 0–1440; saved explicit TTL values remain unchanged. No ScraperGo or unrelated suite changes.
 
-**Pending verification:** The owner previously confirmed Safari download and a 300-URL ScraperGo replay before this new admin-only interface. Recheck the new button visibility and styling in Safari after updating.  Exact latest-head GitHub Actions `go test -count=1 ./...` and `go build ./...`, then owner Mac `./devbuild.sh` and `./newsgo.sh`, Safari Read All selection/export flow and manual command invoking a **running** ScraperGo at localhost:8083. Verify ScraperGo's own `go run ./cmd/recoveryreport` shows added observations. CI cannot establish real Safari or publisher access. Do not merge, tag, release, change version or delete branches without owner authorization.
+**Diagnostic:** The integrated `cmd/scrapertrace` validates NewsGo accepted-URL exports with sequential ScraperGo classification and reading, reporting separate request HTTP status and wall-clock timing. Defaults: 10 URLs, sequential one worker and one-second pacing. Opt-in `-workers 4 -delay 0s` is available on the owner's newer 32 GB M6 MacBook, with at most four simultaneous ScraperGo requests and no guarantee of faster performance or memory safety; start with a small sample. Explicitly use `-limit 276` for the owner's accepted-URL export. Do not use the older read-only runner or the superseded diagnostic branch.
+\n**Tests:** Regression tests cover RSS-only classification gate and filtered accounting, cache reuse across modes and bypass without purging shared entries, compatibility of absent preference fields and UI/account persistence, classification TTL migration and bounds. CI for final PR head must run `go test -count=1 ./...` and `go build ./...`. Mac/Safari live acceptance not yet conducted.
 
-**Mac review commands:**
+**Mac commands:**
 
 ```sh
 cd ~/projects/newsgo
 git fetch origin
-git checkout feat/58-scrapergo-url-batch
-git pull --ff-only origin feat/58-scrapergo-url-batch
+git checkout feat/65-verified-reading-cache
+git pull --ff-only origin feat/65-verified-reading-cache
 go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
 
-Then select **Read All Articles** in Safari, wait for the refresh to finish, choose **Download Article URLs**, and run `go run ./cmd/scrapertrace -input ~/Downloads/newsgo-scrapergo-urls.json` in the NewsGo repository. After the batch, inspect `go run ./cmd/recoveryreport` in the ScraperGo repository.
+Safari acceptance: confirm Reading Preferences has cache enabled by default, disable/enable remains saved after reload and account restore, run Read All in both RSS-only and regular modes, and verify known homepages appear in Filtered / unprocessed rather than visible headlines. Check server admin classification cache minutes and ensure no excessive CPU/memory or new timeouts; stop testing if machine instability occurs. Note bypass only controls NewsGo's cache, not ScraperGo's internal caches. First verify a sample of 3–10 URLs; a full 276-URL run requires explicit `-limit 276`, may take several minutes due to pacing and publisher response times, and should be attempted only if machine load is acceptable.
 
-**Deferred:** ScraperGo behavioral dead-code elimination is the higher-level goal; NewsGo only produces inputs to its independent diagnostic collector. Leave unrelated subscriber UI/admin/security work in its own issues.
+**Gate:** One draft PR, no version bump, no tag or merge without owner approval. Superseded diagnostic PR #61 / Issue #60 are closed without merging.

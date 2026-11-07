@@ -35,6 +35,7 @@ type storedPrefs struct {
  MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
  MaximumLeadStories int `json:"maximumLeadStories,omitempty"`
  LeadOnlyAllSubscriptions bool `json:"leadOnlyAllSubscriptions,omitempty"`
+  UseClassificationCache *bool `json:"useClassificationCache,omitempty"`
  LastReadingSelection string `json:"lastReadingSelection,omitempty"`
 	UpdatedAt              string             `json:"updatedAt"`
 }
