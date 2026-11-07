@@ -20,7 +20,7 @@ func TestClassificationCacheSettingPersistenceAndMigration(t *testing.T) {
   if validArticleSettings(v){t.Fatalf("out of bounds %d accepted",n)}
  }
  dir:=t.TempDir()
- store,err:=NewSyncStore(dir);if err!=nil {t.Fatal(err)}
+ store,err:=NewSettingsStore(dir);if err!=nil {t.Fatal(err)}
  legacy:=defaultServerSettings()
  legacy.Articles.ClassificationCacheMinutes=0
  raw,err:=json.Marshal(legacy);if err!=nil {t.Fatal(err)}
