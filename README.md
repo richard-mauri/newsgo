@@ -52,6 +52,12 @@ In **Reading Preferences**, enable **Use RSS metadata only** to bypass ScraperGo
 
 Reading Preferences also offer browser-local Maximum Lead Stories (1–20, default 3) and Lead Stories only in All Subscriptions (default off). The latter skips Latest Articles rendering, not feed fetching or classification. These coexist with RSS metadata only and admin Diagnostics.
 
+## Verified article filtering and shared cache
+
+Both normal reading and **Use RSS metadata only** classify eligible feed links with ScraperGo before presenting headlines; only confirmed `article` classifications are displayed. Non-article classifications, including `homepage`, `unreadable`, `unavailable`, and `unknown`, are shown in the filtered-articles audit. RSS metadata-only mode still uses feed-provided headlines, publication dates, and safe RSS images rather than ScraperGo thumbnails.
+
+Reading Preferences includes **Use classification cache**, enabled by default (including legacy accounts). Cache entries are shared server-side across reading modes and readers. Disabling this preference bypasses both lookup and insertion for that reader's requests without clearing the shared cache; ScraperGo itself may implement separate internal caching. Confirmed stable classifications `article`, `homepage`, and `unreadable` are eligible for caching, while `unavailable` and `unknown` are not. New server settings default classification TTL to 1440 minutes (24 hours), configurable by administrators from 0–1440 minutes. Existing saved explicit TTL settings are preserved; they are not silently overwritten.
+
 ## Administrator article URL export (diagnostic)
 
 After a completed **Read All Articles** refresh, the **Download Article URLs** button appears in the briefing **only for a verified Homepage administrator signed in through NewsGo's Homepage handoff**. It is hidden for ordinary users, signed-out browsers and expired sessions, and its click handler rechecks the admin role before exporting. The control uses the normal NewsGo action styling. On localhost without a signed-in Homepage session, the export action remains hidden. This is a client-side export of already visible article URLs, not a server-side privileged download API.
