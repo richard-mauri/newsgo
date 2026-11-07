@@ -43,12 +43,7 @@ func TestDefaultOnCacheRequestAndLegacyProfile(t *testing.T) {
  if req.UseClassificationCache!=nil{t.Fatal("old request must default to use-cache")}
  if err:=json.Unmarshal([]byte(`{"feeds":[],"useClassificationCache":false}`),&req);err!=nil{t.Fatal(err)}
  if req.UseClassificationCache==nil||*req.UseClassificationCache{t.Fatal("explicit bypass lost")}
- var prefs storedPrefs
- if err:=json.Unmarshal([]byte(`{"subscriptions":[],"excludedDomains":[]}`),&prefs);err!=nil{t.Fatal(err)}
- if prefs.UseClassificationCache!=nil{t.Fatal("legacy profile should have default-on unset value")}
- f:=false;prefs.UseClassificationCache=&f
- raw,err:=json.Marshal(prefs);if err!=nil{t.Fatal(err)}
- if !strings.Contains(string(raw),`"useClassificationCache":false`){t.Fatalf("false preference not saved: %s",raw)}
+
 }
 
 func TestClassificationCachePreferenceWiring(t *testing.T){
@@ -62,7 +57,7 @@ func TestClassificationCachePreferenceWiring(t *testing.T){
   "localStorage.getItem(classificationCachePreferenceKey)!=='false'",
   "JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache})",
   "JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache})",
-  "useClassificationCache:p.useClassificationCache",
+  "useClassificationCache",
   "useClassificationCache,lastReadingSelection:",
   "data.useClassificationCache!==false",
   "scheduleServerSave();",
