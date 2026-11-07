@@ -29,7 +29,7 @@ type ArticleSettings struct {
  FeedSearchTimeoutSeconds int `json:"feedSearchTimeoutSeconds"`
  ClassificationCacheMinutes int `json:"classificationCacheMinutes"`
 }
-func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 60} }
+func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 720} }
 func validArticleSettings(a ArticleSettings) bool {
  return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30 && a.ClassificationCacheMinutes >= 0 && a.ClassificationCacheMinutes <= 1440
 }
