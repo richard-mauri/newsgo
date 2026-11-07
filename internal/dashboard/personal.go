@@ -217,7 +217,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    res.ClassificationCacheMisses=cacheStats.misses.Load()
    res.ClassificationCacheBypasses=cacheStats.bypasses.Load()
    res.ClassificationCacheDisabled=cacheStats.disabled.Load()
-   res.ClassificationCacheTTLMinutes=currentArticleSettings().ClassificationCacheMinutes
+   res.ClassificationCacheTTLMinutes=classificationTTLMinutes()
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
@@ -277,12 +277,14 @@ type newsClassificationEntry struct {
 var newsClassificationCache = struct {
 	sync.Mutex
 	entries map[string]newsClassificationEntry
+ path string
 }{entries: make(map[string]newsClassificationEntry)}
 var newsClassificationSlots = make(chan struct{}, 16)
 
 func clearNewsClassificationCache(){
  newsClassificationCache.Lock()
  newsClassificationCache.entries=make(map[string]newsClassificationEntry)
+ _=persistClassificationCacheLocked()
  newsClassificationCache.Unlock()
 }
 
@@ -334,12 +336,12 @@ func newsClassifyWithCacheStats(ctx context.Context, reader, article string, use
 	newsClassificationCache.Lock()
 	entry, ok := newsClassificationCache.entries[key]
 	newsClassificationCache.Unlock()
-	if useCache && currentArticleSettings().ClassificationCacheMinutes>0 && ok && time.Now().Before(entry.expiry) {
+	if useCache && classificationTTLMinutes()>0 && ok && time.Now().Before(entry.expiry) {
   if stats!=nil {stats.hits.Add(1)}
 		return entry.value
 	}
  if stats!=nil {
-  if !useCache {stats.bypasses.Add(1)} else if currentArticleSettings().ClassificationCacheMinutes==0 {stats.disabled.Add(1)} else {stats.misses.Add(1)}
+  if !useCache {stats.bypasses.Add(1)} else if classificationTTLMinutes()==0 {stats.disabled.Add(1)} else {stats.misses.Add(1)}
  }
 	select {
 	case newsClassificationSlots <- struct{}{}:
@@ -372,12 +374,21 @@ func newsClassifyWithCacheStats(ctx context.Context, reader, article string, use
 		return "unknown"
 	}
  // Cache only successful classifications, when enabled. Never cache unavailable failures.
- if ttl:=currentArticleSettings().ClassificationCacheMinutes;useCache && ttl>0 && result.Classification!="unavailable" {
+ if ttl:=classificationTTLMinutes();useCache && ttl>0 && validCachedClassification(result.Classification) && validClassificationKey(key) {
   newsClassificationCache.Lock()
-  if len(newsClassificationCache.entries)>=2048 {
-   for k:=range newsClassificationCache.entries {delete(newsClassificationCache.entries,k);break}
+  if len(newsClassificationCache.entries)>=classificationCacheCapacity {
+   // Expired entries go first; otherwise evict the soonest-to-expire entry.
+   victim:=""
+   var earliest time.Time
+   now:=time.Now()
+   for k,v:=range newsClassificationCache.entries {
+    if !now.Before(v.expiry) {victim=k;break}
+    if victim=="" || v.expiry.Before(earliest) {victim=k;earliest=v.expiry}
+   }
+   if victim!="" {delete(newsClassificationCache.entries,victim)}
   }
   newsClassificationCache.entries[key]=newsClassificationEntry{result.Classification,time.Now().Add(time.Duration(ttl)*time.Minute)}
+  _=persistClassificationCacheLocked()
   newsClassificationCache.Unlock()
  }
 	return result.Classification
