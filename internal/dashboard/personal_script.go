@@ -917,6 +917,7 @@ function syncAppearance(){
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
  el('manage-admin').hidden=!mayAdminister();
+ el('admin-exit').hidden=homepageAdminActive();
  // Latest-reading diagnostics report browser-owned data, not admin settings.
  el('manage-diagnostics').hidden=false;
  if(!mayAdminister()&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
