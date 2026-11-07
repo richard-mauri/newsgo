@@ -52,6 +52,10 @@ In **Reading Preferences**, enable **Use RSS metadata only** to bypass ScraperGo
 
 Reading Preferences also offer browser-local Maximum Lead Stories (1–20, default 3) and Lead Stories only in All Subscriptions (default off). The latter skips Latest Articles rendering, not feed fetching or classification. These coexist with RSS metadata only and admin Diagnostics.
 
+## Per-reader classification cache preference
+
+Reading Preferences includes **Use classification cache**, checked by default. Verified article readings reuse NewsGo's shared server-side classifications while the administrator-configured cache TTL remains valid. Unchecking it makes that reader's future classifications bypass NewsGo's cache for both lookup and insertion, without clearing cache entries used by others. It does not disable caching inside ScraperGo and has no effect on RSS Metadata Only mode (which never classifies entries). The choice is preserved in browser storage, Homepage account save/load and existing Server Sync profiles. Older profiles without the field default to enabled. This feature does not extend the server's classification-cache TTL to 24 hours; that is a separate setting/policy consideration.
+
 ## Administrator article URL export (diagnostic)
 
 After a completed **Read All Articles** refresh, the **Download Article URLs** button appears in the briefing **only for a verified Homepage administrator signed in through NewsGo's Homepage handoff**. It is hidden for ordinary users, signed-out browsers and expired sessions, and its click handler rechecks the admin role before exporting. The control uses the normal NewsGo action styling. On localhost without a signed-in Homepage session, the export action remains hidden. This is a client-side export of already visible article URLs, not a server-side privileged download API.
