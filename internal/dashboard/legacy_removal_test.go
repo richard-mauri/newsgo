@@ -19,20 +19,12 @@ func TestLegacySyncRouteRetired(t *testing.T){
   if rec.Code!=http.StatusNotFound{t.Fatalf("legacy route %s returned %d, want 404",method,rec.Code)}
  }
 }
-func TestSettingsStoreDoesNotAlterHistoricalUserFiles(t *testing.T){
+func TestSettingsStoreStartsWithoutLegacyFiles(t *testing.T){
  dir:=t.TempDir()
- historical:=map[string]string{
-  "approved-tokens.json":`[{"user":"retired","digest":"historical"}]`,
-  "user-preferences.json":`{"retired":{"revision":5}}`,
- }
- for name,data:=range historical{
-  if err:=os.WriteFile(filepath.Join(dir,name),[]byte(data),0600);err!=nil{t.Fatal(err)}
- }
  store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
- if err:=store.ActivateServerSettings();err!=nil{t.Fatal(err)}
- for name,want:=range historical{
-  got,err:=os.ReadFile(filepath.Join(dir,name));if err!=nil{t.Fatal(err)}
-  if string(got)!=want{t.Fatalf("historical %s modified",name)}
+ if err=store.ActivateServerSettings();err!=nil{t.Fatal(err)}
+ for _,name:=range []string{"approved-tokens.json","user-preferences.json"}{
+  if _,err=os.Stat(filepath.Join(dir,name));!os.IsNotExist(err){t.Fatalf("unwanted legacy data file %q: %v",name,err)}
  }
 }
 func TestHomepageOnlyFrontendHasNoLegacyTokenFlow(t *testing.T){
