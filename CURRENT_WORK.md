@@ -1,36 +1,30 @@
 # Current work — NewsGo
 
-## Verified repository state (November 7, 2026)
+## Verified development state (November 7, 2026)
 
-- **Merged baseline:** GitHub `main`, commit `046783f1c020938a4d431711eb5bb905ea179727`, after the owner-approved PR #66 merge and Issue #65 closure.
-- **Active workstream:** [Issue #67](https://github.com/richard-mauri/newsgo/issues/67), branch `feat/67-homepage-auth-diagnostics`, [draft PR #68](https://github.com/richard-mauri/newsgo/pull/68) targeting `main`. The code at the last verified development head before this documentation change was `780038161f21110dff4aea44ae991adb1eaef487`; retrieve the **actual latest PR head** at session start.
-- **Owner approval boundary:** Owner approved removing all obsolete Server Sync code, backward compatibility and migration logic. **No approval to merge PR #68, modify `main`, tag or release.**
-- At the start of a new session, read `AGENTS.md`, `DEVELOPMENT.md`, `ARCHITECTURE.md`, and this file **from this feature branch**, then check the actual GitHub PR and CI status. The branch, not an older assistant summary, is authoritative for unmerged work.
+- **Merged baseline:** GitHub `main` at `046783f1c020938a4d431711eb5bb905ea179727` following owner-approved PR #66.
+- **Active scope:** Issue [#67](https://github.com/richard-mauri/newsgo/issues/67), `feat/67-homepage-auth-diagnostics`, draft [PR #68](https://github.com/richard-mauri/newsgo/pull/68) targeting `main`.
+- **Merge boundary:** No authorization to merge, tag, release, change `main`, modify ScraperGo/Cloudflare, delete historical user data, or bump the semantic version. Keep PR draft.
+- **Repository process:** Read `AGENTS.md`, `DEVELOPMENT.md`, `ARCHITECTURE.md` and this file from the PR branch. Always inspect the actual latest PR head and its exact-head CI when resuming.
 
-## Implemented and previously tested
+## Scope implemented in PR #68
 
-- Homepage is NewsGo's sole live account and administrator identity and the sole per-user account store. The browser uses Homepage's revisioned `/api/storage/newsgo` for account save/load. Privileged NewsGo endpoints independently verify the active Homepage `admin` bearer against Homepage's fixed session profile endpoint; no legacy token fallback.
-- Legacy Server Sync implementation, token-issuing CLI, `/api/sync` endpoint, browser login/auto-sync workflow, legacy migration helpers and obsolete hidden article-exclusion controls/listeners have been removed from PR #68. Current operational server settings use independent `SettingsStore` and `data/server-settings.json`. Existing historical token/profile files, if still on disk, are not used by runtime. Owner is sole current user and does not require migration or preservation of compatibility behavior; do not add it back.
-- Both reader modes require ScraperGo-confirmed `article` classification. Reading Diagnostics shows latest-read cache hits, misses, bypasses, disabled-cache counts, configured TTL, hit rate and timing.
-- Owner Safari tests established that an old saved TTL of zero disabled caching. Setting the TTL to 1440 minutes produced 329 hits and 6 misses (98%) and a warm read of 245 ms versus a cold 11.71 s. **These tests prove in-process cache reuse, not persistence across a NewsGo restart.**
-- On November 7 around 10:07 AM Pacific, the owner showed a subsequent read with **13 cache hits, 321 misses, 4% hit rate, TTL 1440 minutes, 41.68 s total refresh**. This can result from a cold process-local cache; the precise restart history for that read was not verified. Do not conclude it was a valid 60-minute persistent-cache test.
+Homepage is the only active NewsGo account/profile and admin authorization provider. Legacy Server Sync login, tokens, API, token CLI and related browser workflow were removed with owner approval. Homepage per-user revisioned save/load and server-side administrator verification remain. Operational settings use `data/server-settings.json`; historical token/user-profile files are not touched or read. Both reading modes require successful ScraperGo `article` classification. Latest-read Diagnostics reports cache hits/misses/bypasses/disabled counts, hit rate and classification timings.
 
-## Highest-priority open requirement — NOT IMPLEMENTED
+**Persistent 60-minute classification cache has now been implemented on this feature branch**, replacing the earlier process-only cache. `internal/dashboard/classification_cache_disk.go` saves validated classifications as permission-restricted atomic snapshots in `<settings-dir>/classification-cache.json`. Startup restores only unexpired, valid entries, preserving absolute expiration across a restart/rebuild; corrupt/oversized data fails to a cold cache. The cache has a 2,048-entry bound, with expired/soonest-to-expire eviction. Failures, unknown and unavailable outcomes are never stored as durable classifications; reader cache bypass avoids both lookup and insertion and does not erase entries. An explicit administrator TTL of zero continues to disable caching. New default is **60 minutes**; historical saved values above 60 are effectively capped to 60 at runtime without overwriting `server-settings.json` or otherwise changing user configuration. Administrator settings updates clear the cache and its disk snapshot.
 
-The owner explicitly clarified: **a persistent NewsGo classification cache with a one-hour (60-minute) TTL**. “Persistent” means cached classification decisions **survive stopping/restarting/rebuilding the NewsGo process**, not just closing a Safari tab. This is **not** satisfied by the current process-local `newsClassificationCache` in `internal/dashboard/personal.go`, even when its TTL is positive. The currently configured 1440-minute (24-hour) TTL is **not** the requested one-hour policy.
+Regression tests added for cold population, simulated process restart/new activation and normalized URL hits, simulated expiry without sleeps, bypass, malformed disk, unsupported entries, capacity bounds and 0/60/1440 effective settings. Other prior authentication and diagnostics tests remain.
 
-**Next engineering task within draft PR #68:** implement durable on-disk storage of validated classification decisions and their absolute expiration times; restore valid entries on startup; expire/reclassify entries after 60 minutes, including across restarts; preserve bounded storage, concurrency safety, strict eligibility and error behavior, URL normalization, and the per-reader cache-bypass semantics. Use the existing NewsGo settings/data directory or a clearly documented separate file; do not recreate Server Sync or a new identity system. Keep disk I/O bounded and protect the cache from malformed or corrupted state. Determine whether the administrator cache TTL control should be fixed at 60 or retain a configurable value with a 60-minute default, but **do not describe a 1440-minute default as fulfilling the owner's requirement**. Favor the explicit one-hour retention request and seek owner input only if a material unresolved choice blocks correct implementation.
+## Validation and remaining owner acceptance
 
-**Required regression tests:** cold first read populates durable cache; restart/new NewsGo instance yields cache hits for the same normalized URLs; after simulated expiration the same URL triggers fresh ScraperGo classification; failures/unavailable/unknown do not become durable positive cache entries; reader opt-out bypasses lookup and insertion without erasing cached entries; malformed durable data fails safely; capacity bounds hold; server settings and user/account data remain separate and unaffected. For durability tests, avoid long sleeps by injecting/testing timestamps or clock boundaries.
+- GitHub CI for the new cache implementation was green at commit `3c94db8a92d357bfa86d67f03673f6429ad519d7`, [Actions run 42400832112](https://github.com/richard-mauri/newsgo/actions/runs/42400832112). **The later documentation/capacity commits require another exact-head CI verification**.
+- This session cannot run the owner Mac or Safari, and GitHub CI cannot validate the live Homepage account/session, real feeds, local rebuild, cloud tunnel or practical performance.
+- Owner still needs to validate Homepage Save/Load, administrator settings GET/PUT, ordinary user refusal, session expiry, subscriptions/exclusions persistence, and `/api/sync` returning 404.
+- **Restart acceptance:** Read an identical subscription batch, stop and restart the actual NewsGo **server process** within 60 minutes, read again, verify substantial cache hits and lower classification latency. Restarting only Safari does not prove process-level persistence. Check the effective displayed TTL is 60, even if an older server setting was saved as 1440.
+- Evaluate on-Mac classification-cache disk write performance under real feed batches; writes currently use atomic snapshots on each successful cache insertion. Do not claim performance acceptance solely from green CI.
+- Keep the PR draft and unmerged until owner approval.
 
-## Remaining validation and release gate
-
-- Verify exact **current PR head** and rerun/inspect GitHub Actions (`go test -count=1 ./...` and build) after any changes. The earlier head `7800381` passed CI; this is **not** evidence for later commits or the pending persistent-cache feature.
-- Owner must still validate Homepage-only account save/load, administrator read/save, ordinary user denied admin, and account/session expiry in Safari. Existing classification/diagnostic Safari screenshots do not establish all those behaviors.
-- Once durable caching is implemented, have owner read the same subscription batch, stop and restart **NewsGo**, read again within 60 minutes, and confirm substantial cache hits and faster classification, then verify expiration behavior with tests. Distinguish a Safari tab restart from a server process restart.
-- Keep PR #68 **draft and unmerged** until explicit owner approval. Do not modify ScraperGo, Cloudflare configuration, private data, or the semantic application version without separate authorization.
-
-## Owner Mac commands for the active branch
+## Owner Mac commands
 
 ```bash
 cd ~/projects/newsgo
@@ -43,6 +37,6 @@ go test -count=1 ./...
 ./newsgo.sh
 ```
 
-## Handoff instruction for the next agent
+## Next handoff
 
-**Resume existing Issue #67 / draft PR #68, not a new PR.** First inspect repository state and this file on the feature branch. The **first unfinished functional requirement** is restart-surviving, 60-minute classification caching; the present TTL setting and in-memory cache are not sufficient. Implement and test it before treating PR #68 as ready for owner acceptance. Update this file, `ARCHITECTURE.md` and the PR description to reflect what is actually implemented; cite exact-head CI. Do not merge without owner authorization.
+Check actual PR head and exact-head GitHub Actions. Perform Mac/Safari restart acceptance and real-batch performance check, review any remaining regressions, update the PR evidence, and request owner approval before merging. Do not change `main` or release without explicit authorization.
