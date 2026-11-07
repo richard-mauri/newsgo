@@ -1,16 +1,14 @@
 # Current work
 
-**Merged baseline:** GitHub `main` at `046783f1c020938a4d431711eb5bb905ea179727` after owner-authorized merge of PR #66, verified November 7, 2026. Feature Issue #65 closed completed. No change to ScraperGo.
+**Merged baseline:** GitHub `main` at `046783f1c020938a4d431711eb5bb905ea179727`, verified November 7, 2026 following approved PR #66 merge and Issue #65 closure.
 
-**Active issue:** [#67](https://github.com/richard-mauri/newsgo/issues/67) — migrate NewsGo from legacy Server Sync administration to Homepage-first authorization, and show reader-owned diagnostic/cache metrics. Branch `feat/67-homepage-auth-diagnostics`, created from the verified merged main, one draft PR. Do not merge without owner's explicit authorization.
+**Active issue and candidate:** [Issue #67](https://github.com/richard-mauri/newsgo/issues/67), branch `feat/67-homepage-auth-diagnostics`, [draft PR #68](https://github.com/richard-mauri/newsgo/pull/68), targeting main. Homepage-first authorization and removal of the duplicate-login requirement, while preserving legacy Server Sync data and credentials until migration is accepted. Do not merge without explicit owner authorization.
 
-**Initial committed slice:** The existing latest-reading Diagnostics screen is accessible to any reader, without requiring a legacy Server Sync token. Admin Settings remains legacy-admin-only while the server-verifiable Homepage role-validation integration is designed; no browser-only privilege promotion, no legacy token or user data modification. Regression test checks diagnostics visibility and retains admin gating.
+**Implemented:** Latest-reading Diagnostics is available to everyone (without admin login), with latest-read classification cache hits, misses, bypasses, and hit rate. The NewsGo Go server now independently validates a supplied Homepage bearer against the fixed HTTPS `/api/session/profile` endpoint on each privileged request (three-second timeout, no redirects, strict token form, server-asserted admin role and nonexpired session); valid Homepage admin can use Admin Settings and per-article fresh classification diagnostics. The browser presents and submits Homepage credentials for these endpoints when available. Existing legacy Server Sync admin tokens remain a compatibility fallback. The Account Sync UI identifies Homepage as primary and the legacy token flow as transitional. No credentials are copied, deleted, rotated or persisted in new places.
 
-**Incomplete / next:** Add per-refresh classification cache hit, miss, bypass statistics (currently no counters). Implement NewsGo Go server-side verification of the Homepage bearer against fixed Homepage session/profile endpoint with bounded network timeouts and appropriate role checks for administrator APIs; preserve legacy credentials as compatibility while migrating. Avoid treating the browser-reported `role` as a server privilege. Add negative security tests and verify how Homepage's session handoff can be validated safely from NewsGo's deployment.
+**Pending/risks:** Exact-head CI; live Homepage connectivity and authorization in owner Mac/Safari; negative tests for full endpoint coverage (normal user, expiry, network fail, missing credentials), account data migration acceptance. Do not delete the `/api/sync` legacy backend, token records, user profiles or administrative data until the owner verifies Homepage account load/save and role-based administration. Classification cache remains in memory, so restarting NewsGo clears it; durable persistence is a separate decision.
 
-**Review and acceptance:** GitHub CI must pass at exact draft PR head; Safari on Mac remains untested. The owner should check that Diagnostics is visible after normal reading while Admin Settings still requires authorized legacy credentials until server authorization migration is completed. This draft is **not feature-complete** and must not be merged.
-
-**Mac review commands:**
+**Mac acceptance commands:**
 ```sh
 cd ~/projects/newsgo
 git fetch origin
@@ -21,4 +19,4 @@ go test -count=1 ./...
 ./newsgo.sh
 ```
 
-**Safety:** No changes to approved-token files, existing personal subscriptions/profile records, Cloudflare settings, local build counters, or production privilege validation. No tags, release, or merge without owner approval.
+Safari: Homepage admin should see Admin Settings without legacy token; Homepage regular account should not. Diagnostics available to both and show per-refresh cache counts. Inspect Homepage account save/load and expired/invalid session handling. Verify legacy admin remains available if needed. No changes to ScraperGo, Cloudflare settings, local build counters or private profiles. PR remains draft and unmerged.
