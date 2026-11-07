@@ -744,7 +744,7 @@ readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 function homepageAdminActive(){return !!(homepageIdentity&&homepageIdentity.role==='admin'&&suiteHandoff&&suiteExpiresAt>Date.now())}
 function mayAdminister(){return homepageAdminActive()||(syncConnected&&isAdmin)}
-function adminAuthHeader(){return {Authorization:'Bearer '+(homepageAdminActive()?suiteHandoff:syncToken)}}
+function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{Authorization:'Bearer '+syncToken}}
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
 function showSuiteCountdown(){
