@@ -55,3 +55,7 @@ NewsGo receives a one-time transfer bearer from Homepage for its current twelve-
 ## Bundled acceptance diagnostic
 
 `cmd/scrapertrace` is the sequential-only, numeric-loopback-restricted diagnostic used to validate exported accepted article URLs against ScraperGo `/api/classify` followed by `/api/read`. It defaults to 10 entries, one sequential worker, and 1-second pacing; an explicit `-limit N` is needed to process more, up to 500. An opt-in `-workers 2` through `-workers 4` provides bounded parallel URL pairs on a capable host (never more than four in-flight ScraperGo requests); classification and reading within each worker remain sequential. It reports separate request wall-clock latencies, classification and read HTTP codes, bounded read failure kinds, and mismatch totals without disclosing source URLs. The runner lives in the unified verified-reading feature branch; no separate diagnostic branch is necessary.
+
+## Homepage-first authorization migration (draft Issue #67)
+
+The merged service still uses independent legacy Server Sync tokens for administrator API authorization. The draft migration begins by making the existing browser-local latest-reading Diagnostics available to all readers, without elevating any server privilege. Homepage role-based administration is **not implemented yet**: current administrator HTTP endpoints continue to enforce the existing legacy token until an authenticated server-side Homepage bearer validation mechanism is implemented and tested. Legacy tokens and profiles must remain intact during transition.
