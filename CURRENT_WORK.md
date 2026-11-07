@@ -17,7 +17,7 @@ Regression tests cover cold population, simulated process restart/new activation
 
 ## Validation and remaining owner acceptance
 
-- Previous GitHub Actions passed on the prior 60-minute implementation head. **The new 12-hour cache and startup cleanup must pass exact-head CI before owner acceptance.**
+- The 12-hour cache and startup compaction tests passed GitHub Actions at implementation head `4b84f0ca7d921aab6464ed12f806b51ba2e6c282`, [run 42402161825](https://github.com/richard-mauri/newsgo/actions/runs/42402161825). Check exact-head CI once more after this documentation update.
 - This session cannot run the owner Mac or Safari, and GitHub CI cannot validate the live Homepage account/session, real feeds, local rebuild, cloud tunnel or practical performance.
 - Owner still needs to validate Homepage Save/Load, administrator settings GET/PUT, ordinary user refusal, session expiry, subscriptions/exclusions persistence, and `/api/sync` returning 404.
 - **Restart acceptance:** Read an identical subscription batch, stop and restart the actual NewsGo **server process** within 12 hours, read again, verify substantial cache hits and lower classification latency. Restarting only Safari does not prove process-level persistence. Check the effective displayed TTL is 720 minutes; update any saved 60-minute administrator setting to 720 before testing the new policy. Existing cache entries keep their original expirations.
