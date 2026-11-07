@@ -27,7 +27,7 @@ func validCachedClassification(value string) bool {
 }
 func classificationTTLMinutes() int {
  n:=currentArticleSettings().ClassificationCacheMinutes
- if n>60 {return 60}
+ if n>720 {return 720}
  return n
 }
 func validClassificationKey(key string) bool {
@@ -53,11 +53,18 @@ func (s *SettingsStore) ActivateClassificationCache() {
  var disk persistedClassificationCache
  if json.Unmarshal(raw,&disk)!=nil || disk.Version!=1 || len(disk.Entries)>classificationCacheCapacity {return}
  now:=time.Now()
+ needsCleanup:=false
  for key,entry:=range disk.Entries {
   if !validClassificationKey(key)||!validCachedClassification(entry.Value) ||
-   !now.Before(entry.ExpiresAt) || entry.ExpiresAt.After(now.Add(60*time.Minute)) {continue}
+   !now.Before(entry.ExpiresAt) || entry.ExpiresAt.After(now.Add(12*time.Hour)) {
+   needsCleanup=true
+   continue
+  }
   newsClassificationCache.entries[key]=newsClassificationEntry{entry.Value,entry.ExpiresAt}
  }
+ // Compact only when entries were rejected. An I/O error leaves valid
+ // classifications in memory; no unrelated settings or profile files change.
+ if needsCleanup { _=persistClassificationCacheLocked() }
 }
 // Caller holds newsClassificationCache.Mutex. On failure, in-memory classifications
 // remain valid; disk failures never change article eligibility.
