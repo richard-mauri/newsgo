@@ -34,6 +34,8 @@ type personalResult struct {
  ClassificationCacheHits int64 `json:"classificationCacheHits"`
  ClassificationCacheMisses int64 `json:"classificationCacheMisses"`
  ClassificationCacheBypasses int64 `json:"classificationCacheBypasses"`
+ ClassificationCacheDisabled int64 `json:"classificationCacheDisabled"`
+ ClassificationCacheTTLMinutes int `json:"classificationCacheTTLMinutes"`
 }
 type filteredArticle struct {
  Title string `json:"title"`
@@ -214,6 +216,8 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    res.ClassificationCacheHits=cacheStats.hits.Load()
    res.ClassificationCacheMisses=cacheStats.misses.Load()
    res.ClassificationCacheBypasses=cacheStats.bypasses.Load()
+   res.ClassificationCacheDisabled=cacheStats.disabled.Load()
+   res.ClassificationCacheTTLMinutes=currentArticleSettings().ClassificationCacheMinutes
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
@@ -296,7 +300,7 @@ func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []
 func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool) []string {
  return classifyFeedArticlesWithAgeStats(ctx,reader,articles,days,useCache,nil)
 }
-type classificationCacheStats struct {hits,misses,bypasses atomic.Int64}
+type classificationCacheStats struct {hits,misses,bypasses,disabled atomic.Int64}
 func classifyFeedArticlesWithAgeStats(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool, stats *classificationCacheStats) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
@@ -334,7 +338,9 @@ func newsClassifyWithCacheStats(ctx context.Context, reader, article string, use
   if stats!=nil {stats.hits.Add(1)}
 		return entry.value
 	}
- if stats!=nil {if useCache {stats.misses.Add(1)}else{stats.bypasses.Add(1)}}
+ if stats!=nil {
+  if !useCache {stats.bypasses.Add(1)} else if currentArticleSettings().ClassificationCacheMinutes==0 {stats.disabled.Add(1)} else {stats.misses.Add(1)}
+ }
 	select {
 	case newsClassificationSlots <- struct{}{}:
 		defer func() { <-newsClassificationSlots }()
