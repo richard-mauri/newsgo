@@ -37,7 +37,7 @@ func TestReaderCachePreferenceBypassesWithoutClearingSharedEntry(t *testing.T) {
  if calls.Load()!=1{t.Fatalf("unexpected extra classification request")}
 }
 
-func TestDefaultOnCacheRequestAndLegacyProfile(t *testing.T) {
+func TestDefaultOnCacheRequest(t *testing.T) {
  var req personalRequest
  if err:=json.Unmarshal([]byte(`{"feeds":[]}`),&req);err!=nil{t.Fatal(err)}
  if req.UseClassificationCache!=nil{t.Fatal("old request must default to use-cache")}
@@ -60,7 +60,7 @@ func TestClassificationCachePreferenceWiring(t *testing.T){
   "useClassificationCache",
   "useClassificationCache,lastReadingSelection:",
   "data.useClassificationCache!==false",
-  "scheduleServerSave();",
+  "scheduleAccountSave();",
  }{
   if !strings.Contains(personalJS,needle){t.Errorf("browser wiring missing %q",needle)}
  }
