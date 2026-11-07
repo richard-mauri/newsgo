@@ -21,8 +21,23 @@ func TestScraperTraceURLExportWiredToCompletedReadAll(t *testing.T) {
   if !strings.Contains(personalJS,needle) {t.Errorf("missing diagnostic export contract %q",needle)}
  }
  if !strings.Contains(page.Tree.Root.String(),"id=\"download-scrapergo-urls\" class=\"article-url-export-button\" hidden>Download Article URLs") {
-  t.Fatal("missing opt-in download button in briefing")
+  t.Fatal("missing admin-only URL export button")
  }
+ markup:=page.Tree.Root.String()
+ adminStart:=strings.Index(markup,`<section id="admin-panel"`)
+ diagnosticsStart:=strings.Index(markup,`<section id="diagnostics-panel"`)
+ exportAt:=strings.Index(markup,`id="download-scrapergo-urls"`)
+ newsStart:=strings.Index(markup,`id="news-content"`)
+ if adminStart<0||diagnosticsStart<=adminStart||exportAt<=adminStart||exportAt>=diagnosticsStart {
+  t.Fatal("Download Article URLs must be inside Admin Settings, not Diagnostics or the news briefing")
+ }
+ if strings.Count(markup,`id="download-scrapergo-urls"`)!=1 {
+  t.Fatal("URL export control must appear exactly once")
+ }
+ if newsStart>=0 && exportAt>newsStart {t.Fatal("URL export remained in the news content")}
+ // This export is a separate action; it must not submit or modify server settings.
+ adminFormEnd:=strings.Index(markup,`</form>`)
+ if adminFormEnd<0||exportAt<=adminFormEnd {t.Fatal("export button must be outside the admin settings form")}
  if strings.Contains(page.Tree.Root.String(),">Download ScraperGo URLs</button>") { t.Fatal("old export label remains") }
  if !strings.Contains(page.Tree.Root.String(),".article-url-export-button[hidden]{display:none!important}") {t.Fatal("admin export hidden state not styled")}
  if !strings.Contains(personalJS,"function accountSessionState(){\n updateScraperTraceExportVisibility();") {t.Fatal("signed-in state changes must update export visibility")}
