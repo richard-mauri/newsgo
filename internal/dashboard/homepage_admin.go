@@ -14,7 +14,7 @@ const homepageProfileEndpoint = "https://home.themauris.org/api/session/profile"
 // request. Never trust the browser's role claim or a cached profile. The
 // endpoint is fixed in production; the State override exists for tests only.
 func (s *State) homepageAdminVerified(r *http.Request) bool {
- raw:=r.Header.Get("Authorization")
+ raw:=r.Header.Get("X-NewsGo-Homepage-Authorization")
  if !strings.HasPrefix(raw,"Bearer "){return false}
  token:=strings.TrimPrefix(raw,"Bearer ")
  if len(token)!=64{return false}
