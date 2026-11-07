@@ -16,6 +16,7 @@ import (
  "os"
  "strings"
  "sort"
+ "sync"
  "time"
 )
 
@@ -173,14 +174,88 @@ func replay(ctx context.Context,urls []string,endpoint string,client *http.Clien
  return good,bad
 }
 
+// replayConcurrent is opt-in for hosts with sufficient resources. The bounded
+// worker pool runs a classify/read pair sequentially per URL; only distinct
+// pairs overlap. Output is emitted as each URL finishes.
+func replayConcurrent(ctx context.Context, urls []string, endpoint string, client *http.Client, pace time.Duration, workers int, output io.Writer) (int,int) {
+ if workers<=1{return replay(ctx,urls,endpoint,client,pace,output)}
+ type job struct {index int; address string}
+ type completed struct {index int; classified probeResult; read probeResult}
+ jobs:=make(chan job)
+ done:=make(chan completed,workers)
+ var wg sync.WaitGroup
+ classifyEndpoint:=endpointForRead(endpoint,"/api/classify")
+ started:=time.Now()
+ for j:=0;j<workers;j++ {
+  wg.Add(1)
+  go func(){
+   defer wg.Done()
+   for task:=range jobs {
+    c:=probe(ctx,task.address,classifyEndpoint,client,true)
+    r:=probe(ctx,task.address,endpoint,client,false)
+    done<-completed{index:task.index,classified:c,read:r}
+   }
+  }()
+ }
+ submitted:=0
+ // Dispatch and collection run independently; the output loop alone writes
+ // to the writer. Work is bounded to the worker count plus channel capacity.
+ dispatched:=make(chan int,1)
+ go func(){
+  defer close(jobs)
+  for i,address:=range urls {
+   if i>0&&pace>0 {
+    select {case <-ctx.Done():dispatched<-i;return;case <-time.After(pace):}
+   }
+   select {case <-ctx.Done():dispatched<-i;return;case jobs<-job{index:i,address:address}:}
+  }
+  dispatched<-len(urls)
+ }()
+ go func(){wg.Wait();close(done)}()
+ good,bad,mismatched:=0,0,0
+ classifyTimes:=make([]time.Duration,0,len(urls))
+ readTimes:=make([]time.Duration,0,len(urls))
+ for item:=range done {
+  submitted++
+  c,r:=item.classified,item.read
+  classifyTimes=append(classifyTimes,c.WallTime)
+  readTimes=append(readTimes,r.WallTime)
+  label:=c.Classification
+  if label==""{label="unreported"}
+  classHTTP:=fmt.Sprintf("%d",c.HTTPStatus)
+  if c.RequestError{classHTTP="request_failed"}
+  readHTTP:=fmt.Sprintf("%d",r.HTTPStatus)
+  if r.RequestError{readHTTP="request_failed"}
+  mismatch:=c.Classification=="article"&&(r.RequestError||r.HTTPStatus<200||r.HTTPStatus>=300)
+  if mismatch{mismatched++}
+  if !r.RequestError&&r.HTTPStatus>=200&&r.HTTPStatus<300{good++}else{bad++}
+  fmt.Fprintf(output,"Article %d/%d: classification=%s classify_http=%s read_http=%s",item.index+1,len(urls),label,classHTTP,readHTTP)
+  if r.Kind!=""{fmt.Fprintf(output," read_kind=%s",r.Kind)}
+  if r.PublisherHTTPStatus!=0{fmt.Fprintf(output," publisher_http=%d",r.PublisherHTTPStatus)}
+  if mismatch{fmt.Fprint(output," mismatch=classified_article_but_unreadable")}
+  fmt.Fprintf(output," classify_wall=%s read_wall=%s\n",c.WallTime.Round(time.Microsecond),r.WallTime.Round(time.Microsecond))
+ }
+ count:=<-dispatched
+ if count<len(urls){
+  bad+=len(urls)-submitted
+  fmt.Fprintln(output,"Batch interrupted.")
+ }
+ fmt.Fprintf(output,"Classification/read disagreements (article classified, read failed): %d\n",mismatched)
+ fmt.Fprintf(output,"Classification wall latency: %s\n",latencySummary(classifyTimes))
+ fmt.Fprintf(output,"Read wall latency: %s\n",latencySummary(readTimes))
+ fmt.Fprintf(output,"Batch elapsed wall time: %s (workers=%d, dispatch_delay=%s; request measurements exclude dispatch delay)\n",time.Since(started).Round(time.Millisecond),workers,pace)
+ return good,bad
+}
+
 func main() {
  input:=flag.String("input","","path to NewsGo diagnostic URL export")
  pace:=flag.Duration("delay",time.Second,"delay between URL pairs; excluded from request timings")
  limit:=flag.Int("limit",10,"maximum number of URLs to test (default 10; max 500)")
+ workers:=flag.Int("workers",1,"concurrent URL pairs (default 1; max 4; opt-in for capable hosts)")
  endpointFlag:=flag.String("scrapergo","http://127.0.0.1:8083/api/read","local ScraperGo read endpoint (loopback only)")
  flag.Parse()
- if *input==""||*pace<0||*pace>time.Minute||*limit<1||*limit>maxBatchURLs||flag.NArg()!=0{
-  fmt.Fprintln(os.Stderr,"Usage: go run ./cmd/scrapertrace -input ~/Downloads/newsgo-scrapergo-urls.json [-delay 1s] [-limit 10]")
+ if *input==""||*pace<0||*pace>time.Minute||*limit<1||*limit>maxBatchURLs||*workers<1||*workers>4||flag.NArg()!=0{
+  fmt.Fprintln(os.Stderr,"Usage: go run ./cmd/scrapertrace -input ~/Downloads/newsgo-scrapergo-urls.json [-delay 1s] [-limit 10] [-workers 1]")
   os.Exit(2)
  }
  endpoint,err:=validateEndpoint(*endpointFlag)
@@ -194,8 +269,8 @@ func main() {
  if err!=nil{fmt.Fprintln(os.Stderr,err);os.Exit(2)}
  if len(urls)>*limit{urls=urls[:*limit]}
  client:=&http.Client{Timeout:45*time.Second,CheckRedirect:func(_ *http.Request,_ []*http.Request)error{return http.ErrUseLastResponse}}
- fmt.Printf("Safety-limited sequential replay of %d article URLs to local ScraperGo; delay=%s.\n",len(urls),*pace)
- good,bad:=replay(context.Background(),urls,endpoint,client,*pace,os.Stdout)
+ fmt.Printf("Bounded replay of %d article URLs to local ScraperGo; workers=%d delay=%s.\n",len(urls),*workers,*pace)
+ good,bad:=replayConcurrent(context.Background(),urls,endpoint,client,*pace,*workers,os.Stdout)
  fmt.Printf("Finished: %d succeeded, %d failed. Inspect ScraperGo: go run ./cmd/recoveryreport (from its repository).\n",good,bad)
  if bad>0{os.Exit(1)}
 }
