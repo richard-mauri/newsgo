@@ -32,7 +32,7 @@ The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NN
 
 ## Configuration and care
 - `feeds.json` supplies the discovery catalog, not the user's saved subscriptions.
-- `data/server-settings.json` contains the server's operational settings. The unused historical `data/approved-tokens.json` and `data/user-preferences.json` are left untouched on disk for recovery but are no longer read by NewsGo's active code. Treat all files in `data/` as private.
+- `data/server-settings.json` contains operational settings and is the only NewsGo server-side JSON data store. Homepage holds account preferences; browser `localStorage` holds any unsaved preferences. The old `approved-tokens.json` and `user-preferences.json` files are unused and can be deleted from your Mac after you stop NewsGo, if present.
 - `newsgo.log`, `dist/` binaries, and `.cloudflared/token` are machine-local runtime artifacts. Never publish secrets or overwrite data during updates.
 - Feed and article availability, thumbnails, and publisher blocking can vary. Live Safari checks are required even when Go CI passes.
 
@@ -55,7 +55,7 @@ Reading Preferences also offer browser-local Maximum Lead Stories (1–20, defau
 
 Both normal reading and **Use RSS metadata only** classify eligible feed links with ScraperGo before presenting headlines; only confirmed `article` classifications are displayed. Non-article classifications, including `homepage`, `unreadable`, `unavailable`, and `unknown`, are shown in the filtered-articles audit. RSS metadata-only mode still uses feed-provided headlines, publication dates, and safe RSS images rather than ScraperGo thumbnails.
 
-Reading Preferences includes **Use classification cache**, enabled by default (including previously saved accounts). Cache entries are shared server-side across reading modes and readers. Disabling this preference bypasses both lookup and insertion for that reader's requests without clearing the shared cache; ScraperGo itself may implement separate internal caching. Confirmed stable classifications `article`, `homepage`, and `unreadable` are eligible for caching, while `unavailable` and `unknown` are not. New server settings default classification TTL to 1440 minutes (24 hours), configurable by administrators from 0–1440 minutes. Existing saved explicit TTL settings are preserved; they are not silently overwritten.
+Reading Preferences includes **Use classification cache**, enabled by default. Cache entries are shared server-side across reading modes and readers. Disabling this preference bypasses both lookup and insertion for that reader's requests without clearing the shared cache; ScraperGo itself may implement separate internal caching. Confirmed stable classifications `article`, `homepage`, and `unreadable` are eligible for caching, while `unavailable` and `unknown` are not. New server settings default classification TTL to 1440 minutes (24 hours), configurable by administrators from 0–1440 minutes. Existing saved explicit TTL settings are preserved; they are not silently overwritten.
 
 ## Administrator article URL export (diagnostic)
 
@@ -65,6 +65,6 @@ Click to save `newsgo-scrapergo-urls.json` (which may contain publisher URL quer
 
 ## Homepage-only identity and account storage (draft PR #68)
 
-Issue #67 / draft PR #68 removes NewsGo's former Server Sync browser flow, approved-token authentication, `/api/sync` endpoint, and token-issuing command. Homepage provides the sole active account identity and profile storage; NewsGo verifies Homepage administrator credentials server-side on every privileged request. Legacy token and preference files are not deleted from existing installations, but no runtime code reads or writes them. Operational settings stay in the existing `data/server-settings.json` file via an independent settings store. The `-settings-dir` CLI option selects that directory (default `data`).
+Issue #67 / draft PR #68 removes the old Server Sync runtime, the legacy browser subscription format converters, the token authentication and issuing command, and old `/api/sync` route. Homepage handles user identity and per-user account save/load. NewsGo's administrator endpoints verify Homepage administrator credentials server-side. Server settings use the standalone `data/server-settings.json` store, configurable with `-settings-dir` (default `data`). There is no migration or legacy compatibility path.
 
 A zero-minute saved classification TTL disables NewsGo's classification cache, and the Diagnostics panel identifies disabled requests separately from misses. The classification cache is in memory and is cleared when the NewsGo process restarts; restarting just a Safari tab does not clear it.
