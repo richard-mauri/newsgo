@@ -36,6 +36,10 @@ func TestHomepageAdminRoleVerifiedOnServer(t *testing.T) {
  profile.ExpiresAt=time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
  if state.homepageAdminVerified(req(strings.Repeat("b",64))){t.Fatal("revoked/unknown Homepage token elevated")}
  before:=calls.Load()
+ legacy:=httptest.NewRequest(http.MethodGet,"/api/admin/settings",nil)
+ legacy.Header.Set("Authorization","Bearer "+strings.Repeat("c",64))
+ if state.homepageAdminVerified(legacy){t.Fatal("legacy token accepted as Homepage token")}
+ if calls.Load()!=before{t.Fatal("legacy token was forwarded to Homepage")}
  if state.homepageAdminVerified(req("invalid")){t.Fatal("malformed token elevated")}
  if calls.Load()!=before{t.Fatal("malformed token sent upstream")}
  home.Close()
