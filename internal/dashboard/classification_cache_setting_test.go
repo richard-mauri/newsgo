@@ -8,39 +8,30 @@ import (
  "testing"
 )
 
-func TestClassificationCacheSettingPersistenceAndMigration(t *testing.T) {
+func TestClassificationCacheSettingPersistence(t *testing.T){
  def:=defaultArticleSettings()
- if def.ClassificationCacheMinutes!=1440 {t.Fatalf("default %d",def.ClassificationCacheMinutes)}
- for _,n:=range []int{0,1,30,1440}{
-  v:=def;v.ClassificationCacheMinutes=n
-  if !validArticleSettings(v){t.Fatalf("valid value %d rejected",n)}
+ if def.ClassificationCacheMinutes!=720{t.Fatalf("default %d",def.ClassificationCacheMinutes)}
+ for _,n:=range []int{0,1,30,720,1440}{
+  cfg:=def;cfg.ClassificationCacheMinutes=n
+  if !validArticleSettings(cfg){t.Fatalf("valid value %d rejected",n)}
  }
  for _,n:=range []int{-1,1441}{
-  v:=def;v.ClassificationCacheMinutes=n
-  if validArticleSettings(v){t.Fatalf("out of bounds %d accepted",n)}
+  cfg:=def;cfg.ClassificationCacheMinutes=n
+  if validArticleSettings(cfg){t.Fatalf("out of range %d accepted",n)}
  }
  dir:=t.TempDir()
- store,err:=NewSyncStore(dir);if err!=nil {t.Fatal(err)}
- legacy:=defaultServerSettings()
- legacy.Articles.ClassificationCacheMinutes=0
- raw,err:=json.Marshal(legacy);if err!=nil {t.Fatal(err)}
- var document map[string]any
- if err=json.Unmarshal(raw,&document);err!=nil {t.Fatal(err)}
- articles:=document["articles"].(map[string]any)
- delete(articles,"classificationCacheMinutes")
- raw,err=json.Marshal(document);if err!=nil {t.Fatal(err)}
- if err=os.WriteFile(filepath.Join(dir,"server-settings.json"),raw,0600);err!=nil {t.Fatal(err)}
- migrated,err:=store.loadServerSettings();if err!=nil{t.Fatal(err)}
- if migrated.Articles.ClassificationCacheMinutes!=1440 {t.Fatalf("legacy migration %d",migrated.Articles.ClassificationCacheMinutes)}
- explicit:=defaultServerSettings();explicit.Articles.ClassificationCacheMinutes=0
- raw,err=json.Marshal(explicit);if err!=nil{t.Fatal(err)}
+ store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
+ fresh,err:=store.loadServerSettings();if err!=nil{t.Fatal(err)}
+ if fresh.Articles.ClassificationCacheMinutes!=720{t.Fatalf("fresh default=%d",fresh.Articles.ClassificationCacheMinutes)}
+ cfg:=defaultServerSettings();cfg.Articles.ClassificationCacheMinutes=0
+ raw,err:=json.Marshal(cfg);if err!=nil{t.Fatal(err)}
  if err=os.WriteFile(filepath.Join(dir,"server-settings.json"),raw,0600);err!=nil{t.Fatal(err)}
  reloaded,err:=store.loadServerSettings();if err!=nil{t.Fatal(err)}
- if reloaded.Articles.ClassificationCacheMinutes!=0 {t.Fatalf("explicit zero lost: %d",reloaded.Articles.ClassificationCacheMinutes)}
+ if reloaded.Articles.ClassificationCacheMinutes!=0{t.Fatalf("persisted disabled TTL changed: %d",reloaded.Articles.ClassificationCacheMinutes)}
 }
 
-func TestClassificationCacheAdminPresentation(t *testing.T) {
+func TestClassificationCacheAdminPresentation(t *testing.T){
  for _,fragment:=range []string{"admin-classification-cache","classificationCacheMinutes:'admin-classification-cache'","min='0'","max='1440'"}{
-  if !strings.Contains(personalJS,fragment){t.Errorf("missing control: %s",fragment)}
+  if !strings.Contains(personalJS,fragment){t.Errorf("missing cache control %q",fragment)}
  }
 }

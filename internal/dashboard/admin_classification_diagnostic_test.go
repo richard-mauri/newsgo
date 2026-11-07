@@ -14,7 +14,7 @@ func TestAdminClassificationDiagnosticRequiresAuthentication(t *testing.T) {
  req:=httptest.NewRequest(http.MethodPost,"/api/admin/classification-diagnostic",strings.NewReader(`{"url":"https://example.org/article"}`))
  rec:=httptest.NewRecorder()
  state.serveAdminClassificationDiagnostic(rec,req)
- if rec.Code!=http.StatusServiceUnavailable {t.Fatalf("want 503 without sync store, got %d",rec.Code)}
+ if rec.Code!=http.StatusForbidden {t.Fatalf("want 403 without Homepage admin, got %d",rec.Code)}
 }
 
 func TestFreshClassificationDiagnostics(t *testing.T) {

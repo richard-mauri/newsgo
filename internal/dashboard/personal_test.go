@@ -49,7 +49,7 @@ func TestPersonalAPIValidationAndMarkup(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/personal.js", nil))
-	if !strings.Contains(w.Body.String(), "newsgo.personalFeeds.v1") || !strings.Contains(w.Body.String(), "newsgo-scrapergo") {
+	if !strings.Contains(w.Body.String(), "newsgo.subscriptions.unified.v1") || !strings.Contains(w.Body.String(), "newsgo-scrapergo") {
 		t.Fatal("personal JavaScript missing")
 	}
 }

@@ -37,18 +37,13 @@ func TestReaderCachePreferenceBypassesWithoutClearingSharedEntry(t *testing.T) {
  if calls.Load()!=1{t.Fatalf("unexpected extra classification request")}
 }
 
-func TestDefaultOnCacheRequestAndLegacyProfile(t *testing.T) {
+func TestDefaultOnCacheRequest(t *testing.T) {
  var req personalRequest
  if err:=json.Unmarshal([]byte(`{"feeds":[]}`),&req);err!=nil{t.Fatal(err)}
  if req.UseClassificationCache!=nil{t.Fatal("old request must default to use-cache")}
  if err:=json.Unmarshal([]byte(`{"feeds":[],"useClassificationCache":false}`),&req);err!=nil{t.Fatal(err)}
  if req.UseClassificationCache==nil||*req.UseClassificationCache{t.Fatal("explicit bypass lost")}
- var prefs storedPrefs
- if err:=json.Unmarshal([]byte(`{"subscriptions":[],"excludedDomains":[]}`),&prefs);err!=nil{t.Fatal(err)}
- if prefs.UseClassificationCache!=nil{t.Fatal("legacy profile should have default-on unset value")}
- f:=false;prefs.UseClassificationCache=&f
- raw,err:=json.Marshal(prefs);if err!=nil{t.Fatal(err)}
- if !strings.Contains(string(raw),`"useClassificationCache":false`){t.Fatalf("false preference not saved: %s",raw)}
+
 }
 
 func TestClassificationCachePreferenceWiring(t *testing.T){
@@ -62,10 +57,10 @@ func TestClassificationCachePreferenceWiring(t *testing.T){
   "localStorage.getItem(classificationCachePreferenceKey)!=='false'",
   "JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache})",
   "JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache})",
-  "useClassificationCache:p.useClassificationCache",
+  "useClassificationCache",
   "useClassificationCache,lastReadingSelection:",
   "data.useClassificationCache!==false",
-  "scheduleServerSave();",
+  "scheduleAccountSave();",
  }{
   if !strings.Contains(personalJS,needle){t.Errorf("browser wiring missing %q",needle)}
  }

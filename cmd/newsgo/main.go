@@ -17,7 +17,7 @@ import (
 
 func main() {
 	feedPath := flag.String("feeds", "feeds.json", "feed source JSON file")
-	syncDir := flag.String("sync-dir", "data", "local directory for approved tokens and synced preferences")
+	settingsDir := flag.String("settings-dir", "data", "local directory for operational server settings")
 	addr := flag.String("listen", "127.0.0.1:8084", "HTTP listen address")
 	reader := flag.String("scrapergo", "https://scrapergo.themauris.org", "ScraperGo reader base URL")
 	showVersion := flag.Bool("version", false, "print the executable version and exit")
@@ -44,14 +44,15 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	syncStore, e := dashboard.NewSyncStore(*syncDir)
+	settingsStore, e := dashboard.NewSettingsStore(*settingsDir)
 	if e != nil {
 		log.Fatal(e)
 	}
-	if e = syncStore.ActivateServerSettings(); e != nil {
+	if e = settingsStore.ActivateServerSettings(); e != nil {
 		log.Fatal(e)
 	}
-	app.SetSyncStore(syncStore)
+	settingsStore.ActivateClassificationCache()
+	app.SetSettingsStore(settingsStore)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Feed catalog is for discovery only. Browser requests subscribed feeds via /api/personal.

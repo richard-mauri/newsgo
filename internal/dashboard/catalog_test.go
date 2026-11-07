@@ -12,7 +12,7 @@ func TestRemoteSearchAndSubscriptionPreservation(t *testing.T) {
 			t.Fatalf("missing HTML %s", s)
 		}
 	}
-	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "subscribeClick({name:f.name", "localStorage.getItem(key)", "submitCatalogSearch"} {
+	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "subscribeClick({name:f.name", "localStorage.getItem(unifiedKey)", "submitCatalogSearch"} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing JS %s", s)
 		}

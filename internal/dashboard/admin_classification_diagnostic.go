@@ -63,12 +63,7 @@ func(s *State) serveAdminClassificationDiagnostic(w http.ResponseWriter,r *http.
  w.Header().Set("Content-Type","application/json; charset=utf-8")
  w.Header().Set("X-Content-Type-Options","nosniff")
  if r.Method!=http.MethodPost {w.Header().Set("Allow","POST");http.Error(w,"POST required",http.StatusMethodNotAllowed);return}
- if s.syncStore==nil {http.Error(w,"sync unavailable",http.StatusServiceUnavailable);return}
- s.syncStore.mu.Lock()
- token,status:=s.syncStore.authenticate(r)
- s.syncStore.mu.Unlock()
- if status!=http.StatusOK {http.Error(w,"approved token required",status);return}
- if token.Role!="admin" {http.Error(w,"administrator required",http.StatusForbidden);return}
+ if !s.homepageAdminVerified(r) {http.Error(w,"Homepage administrator required",http.StatusForbidden);return}
  r.Body=http.MaxBytesReader(w,r.Body,4096)
  var req struct {URL string `json:"url"`}
  if json.NewDecoder(r.Body).Decode(&req)!=nil || len(req.URL)>2048 || !safeURL(normalizeClassificationURL(req.URL)) {http.Error(w,"invalid article URL",http.StatusBadRequest);return}

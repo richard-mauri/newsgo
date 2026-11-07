@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+ "sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,11 @@ type personalResult struct {
  FeedEntries int `json:"feedEntries,omitempty"`
  FeedDurationMs int64 `json:"feedDurationMs"`
  ClassificationDurationMs int64 `json:"classificationDurationMs"`
+ ClassificationCacheHits int64 `json:"classificationCacheHits"`
+ ClassificationCacheMisses int64 `json:"classificationCacheMisses"`
+ ClassificationCacheBypasses int64 `json:"classificationCacheBypasses"`
+ ClassificationCacheDisabled int64 `json:"classificationCacheDisabled"`
+ ClassificationCacheTTLMinutes int `json:"classificationCacheTTLMinutes"`
 }
 type filteredArticle struct {
  Title string `json:"title"`
@@ -205,7 +211,13 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    decisions := make([]string,len(articles))
    // RSS metadata-only controls presentation, not article eligibility.
    // Both reading modes require ScraperGo-confirmed articles.
-   decisions = classifyFeedArticlesWithAgeCache(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache)
+   var cacheStats classificationCacheStats
+   decisions = classifyFeedArticlesWithAgeStats(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache, &cacheStats)
+   res.ClassificationCacheHits=cacheStats.hits.Load()
+   res.ClassificationCacheMisses=cacheStats.misses.Load()
+   res.ClassificationCacheBypasses=cacheStats.bypasses.Load()
+   res.ClassificationCacheDisabled=cacheStats.disabled.Load()
+   res.ClassificationCacheTTLMinutes=classificationTTLMinutes()
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
@@ -265,12 +277,14 @@ type newsClassificationEntry struct {
 var newsClassificationCache = struct {
 	sync.Mutex
 	entries map[string]newsClassificationEntry
+ path string
 }{entries: make(map[string]newsClassificationEntry)}
 var newsClassificationSlots = make(chan struct{}, 16)
 
 func clearNewsClassificationCache(){
  newsClassificationCache.Lock()
  newsClassificationCache.entries=make(map[string]newsClassificationEntry)
+ _=persistClassificationCacheLocked()
  newsClassificationCache.Unlock()
 }
 
@@ -286,6 +300,10 @@ func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []
  return classifyFeedArticlesWithAgeCache(ctx,reader,articles,days,true)
 }
 func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool) []string {
+ return classifyFeedArticlesWithAgeStats(ctx,reader,articles,days,useCache,nil)
+}
+type classificationCacheStats struct {hits,misses,bypasses,disabled atomic.Int64}
+func classifyFeedArticlesWithAgeStats(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool, stats *classificationCacheStats) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
@@ -298,7 +316,7 @@ func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articl
 			continue
 		}
 		wg.Add(1)
-		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCache(ctx, reader, article, useCache) }(i, a.URL)
+		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCacheStats(ctx, reader, article, useCache, stats) }(i, a.URL)
 	}
 	wg.Wait()
 	return out
@@ -307,6 +325,9 @@ func newsClassify(ctx context.Context, reader, article string) string {
  return newsClassifyWithCache(ctx,reader,article,true)
 }
 func newsClassifyWithCache(ctx context.Context, reader, article string, useCache bool) string {
+ return newsClassifyWithCacheStats(ctx,reader,article,useCache,nil)
+}
+func newsClassifyWithCacheStats(ctx context.Context, reader, article string, useCache bool, stats *classificationCacheStats) string {
  article = normalizeClassificationURL(article)
 	if !safeURL(article) {
 		return "unknown"
@@ -315,9 +336,13 @@ func newsClassifyWithCache(ctx context.Context, reader, article string, useCache
 	newsClassificationCache.Lock()
 	entry, ok := newsClassificationCache.entries[key]
 	newsClassificationCache.Unlock()
-	if useCache && currentArticleSettings().ClassificationCacheMinutes>0 && ok && time.Now().Before(entry.expiry) {
+	if useCache && classificationTTLMinutes()>0 && ok && time.Now().Before(entry.expiry) {
+  if stats!=nil {stats.hits.Add(1)}
 		return entry.value
 	}
+ if stats!=nil {
+  if !useCache {stats.bypasses.Add(1)} else if classificationTTLMinutes()==0 {stats.disabled.Add(1)} else {stats.misses.Add(1)}
+ }
 	select {
 	case newsClassificationSlots <- struct{}{}:
 		defer func() { <-newsClassificationSlots }()
@@ -349,12 +374,21 @@ func newsClassifyWithCache(ctx context.Context, reader, article string, useCache
 		return "unknown"
 	}
  // Cache only successful classifications, when enabled. Never cache unavailable failures.
- if ttl:=currentArticleSettings().ClassificationCacheMinutes;useCache && ttl>0 && result.Classification!="unavailable" {
+ if ttl:=classificationTTLMinutes();useCache && ttl>0 && validCachedClassification(result.Classification) && validClassificationKey(key) {
   newsClassificationCache.Lock()
-  if len(newsClassificationCache.entries)>=2048 {
-   for k:=range newsClassificationCache.entries {delete(newsClassificationCache.entries,k);break}
+  if len(newsClassificationCache.entries)>=classificationCacheCapacity {
+   // Expired entries go first; otherwise evict the soonest-to-expire entry.
+   victim:=""
+   var earliest time.Time
+   now:=time.Now()
+   for k,v:=range newsClassificationCache.entries {
+    if !now.Before(v.expiry) {victim=k;break}
+    if victim=="" || v.expiry.Before(earliest) {victim=k;earliest=v.expiry}
+   }
+   if victim!="" {delete(newsClassificationCache.entries,victim)}
   }
   newsClassificationCache.entries[key]=newsClassificationEntry{result.Classification,time.Now().Add(time.Duration(ttl)*time.Minute)}
+  _=persistClassificationCacheLocked()
   newsClassificationCache.Unlock()
  }
 	return result.Classification

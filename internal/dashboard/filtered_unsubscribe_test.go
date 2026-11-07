@@ -16,7 +16,7 @@ func TestFilteredSubscriptionOfferContract(t *testing.T) {
   "sync-choice-backdrop",
   "sync-choice-dialog",
   "exclusion-confirm-action",
-  "if(!rememberedSyncToken)renderPersonalArticles()",
+  "renderPersonalArticles();",
   "unsubscribeRecord(record.id)",
   "activeReadingSelection=null;selectedSource=''",
   "Subscription removed. Choose another subscription to read.",

@@ -29,7 +29,7 @@ type ArticleSettings struct {
  FeedSearchTimeoutSeconds int `json:"feedSearchTimeoutSeconds"`
  ClassificationCacheMinutes int `json:"classificationCacheMinutes"`
 }
-func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 1440} }
+func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 720} }
 func validArticleSettings(a ArticleSettings) bool {
  return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30 && a.ClassificationCacheMinutes >= 0 && a.ClassificationCacheMinutes <= 1440
 }
@@ -50,7 +50,7 @@ func currentImageSettings() ImageSettings {
 	}
 	return defaultServerSettings().Image
 }
-func (s *SyncStore) ActivateServerSettings() error {
+func (s *SettingsStore) ActivateServerSettings() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c, e := s.loadServerSettings()
@@ -68,7 +68,7 @@ func validServerSettings(c serverSettings) bool {
 	i := c.Image
 	return validArticleSettings(c.Articles) && i.MetadataTimeoutMs >= 500 && i.MetadataTimeoutMs <= 10000 && i.MaxHTMLKiB >= 128 && i.MaxHTMLKiB <= 2048 && i.ParallelRequests >= 1 && i.ParallelRequests <= 16 && i.EnrichmentDeadlineSeconds >= 10 && i.EnrichmentDeadlineSeconds <= 60 && i.MissingImageCacheSeconds >= 30 && i.MissingImageCacheSeconds <= 600
 }
-func (s *SyncStore) loadServerSettings() (serverSettings, error) {
+func (s *SettingsStore) loadServerSettings() (serverSettings, error) {
 	b, e := os.ReadFile(s.file("server-settings.json"))
 	if errors.Is(e, os.ErrNotExist) {
 		return defaultServerSettings(), nil
@@ -80,15 +80,12 @@ func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	if e = json.Unmarshal(b, &v); e != nil {
 		return v, e
 	}
-	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() }
- if v.Articles.FeedSearchTimeoutSeconds == 0 { v.Articles.FeedSearchTimeoutSeconds = defaultArticleSettings().FeedSearchTimeoutSeconds } // migrate historical saved settings
- if !bytes.Contains(b, []byte(`"classificationCacheMinutes"`)) { v.Articles.ClassificationCacheMinutes = defaultArticleSettings().ClassificationCacheMinutes } // migrate pre-setting files without overwriting explicit zero
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
 	return v, nil
 }
-func (s *SyncStore) CurrentServerSettings() serverSettings {
+func (s *SettingsStore) CurrentServerSettings() serverSettings {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, e := s.loadServerSettings()
@@ -97,7 +94,7 @@ func (s *SyncStore) CurrentServerSettings() serverSettings {
 	}
 	return v
 }
-func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
+func (s *SettingsStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request, homepageAdmin bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if r.Method != http.MethodGet && r.Method != http.MethodPut {
@@ -113,15 +110,7 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	token, status := s.authenticate(r)
-	if status != 200 {
-		http.Error(w, "Approved token required", status)
-		return
-	}
-	if token.Role != "admin" {
-		http.Error(w, "Administrator required", 403)
-		return
-	}
+ if !homepageAdmin {http.Error(w,"Homepage administrator required",http.StatusForbidden);return}
 	current, e := s.loadServerSettings()
 	if e != nil {
 		http.Error(w, "Server settings unavailable", 500)
@@ -147,9 +136,6 @@ func (s *SyncStore) ServeAdminSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unexpected extra JSON", 400)
 		return
 	}
-	if candidate.Articles.MaxArticlesPerFeed == 0 { candidate.Articles = current.Articles }
- if !bytes.Contains(payload, []byte(`"classificationCacheMinutes"`)) {candidate.Articles.ClassificationCacheMinutes=current.Articles.ClassificationCacheMinutes}
- if candidate.Articles.FeedSearchTimeoutSeconds == 0 { candidate.Articles.FeedSearchTimeoutSeconds = current.Articles.FeedSearchTimeoutSeconds } // old admin clients
  if !validServerSettings(candidate) {
 		http.Error(w, "Out-of-range server settings", 400)
 		return

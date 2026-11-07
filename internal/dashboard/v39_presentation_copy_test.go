@@ -1,24 +1,11 @@
 package dashboard
 
-import (
-	"strings"
-	"testing"
-)
+import ("strings";"testing")
 
-func TestV40PresentationCopy(t *testing.T) {
-	if !strings.Contains(page.Tree.Root.String(), "NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V") {
-		t.Fatal("header must use requested tagline and version")
-	}
-	if strings.Contains(page.Tree.Root.String(), "NEWS DISCOVERY FOR SCRAPERGO") {
-		t.Fatal("outdated header tagline")
-	}
-	if !strings.Contains(page.Tree.Root.String(), `id="sync-token" autocomplete="off" placeholder="Enter the 64-character approved token distributed by Richard."`) {
-        t.Fatal("token input placeholder must contain the approved wording")
-    }
-    if strings.Contains(page.Tree.Root.String(), `placeholder="Paste your approved token"`) {
-        t.Fatal("outdated token placeholder")
-    }
-    if !strings.Contains(personalJS, "Enter the 64-character approved token distributed by Richard.") {
-		t.Fatal("server sync instructions must identify token distributor")
-	}
+func TestV40PresentationCopy(t *testing.T){
+ html:=page.Tree.Root.String()
+ if !strings.Contains(html,"NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V"){t.Fatal("header tagline/version missing")}
+ if strings.Contains(html,"NEWS DISCOVERY FOR SCRAPERGO"){t.Fatal("outdated tagline")}
+ if strings.Contains(html,`id="sync-token"`)||strings.Contains(html,`id="legacy-sync-details"`){t.Fatal("legacy token interface still present")}
+ if !strings.Contains(html,`id="manage-sync"`){t.Fatal("Homepage account sync navigation missing")}
 }
