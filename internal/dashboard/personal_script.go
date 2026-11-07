@@ -495,7 +495,7 @@ function renderFilteredArticles(){
   tabs.append(tab);panels.append(section);views.push({tab,panel:section});
   if(reason==='unprocessed'){for(const x of items){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';section.append(p)}return;}
   for(const a of items){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);
- if(syncConnected&&isAdmin&&a.url&&a.reason!=='too-old'&&a.reason!=='publisher exclusion'&&a.reason!=='article-domain exclusion'){
+ if(mayAdminister()&&a.url&&a.reason!=='too-old'&&a.reason!=='publisher exclusion'&&a.reason!=='article-domain exclusion'){
   const details=document.createElement('details');
   const summary=document.createElement('summary');summary.textContent='Admin diagnostics (run fresh classification)';
   const output=document.createElement('pre');output.textContent='Open to inspect a fresh classification request.';
@@ -504,7 +504,7 @@ function renderFilteredArticles(){
    if(!details.open)return;
    output.textContent='Checking…';
    try{
-    const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{Authorization:'Bearer '+syncToken,'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
+    const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{...adminAuthHeader(),'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
     const lines=['Classification: '+(result.classification||'unknown')];
@@ -742,6 +742,9 @@ function readSuiteHandoff(){
 }
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+function homepageAdminActive(){return !!(homepageIdentity&&homepageIdentity.role==='admin'&&suiteHandoff&&suiteExpiresAt>Date.now())}
+function mayAdminister(){return homepageAdminActive()||(syncConnected&&isAdmin)}
+function adminAuthHeader(){return {Authorization:'Bearer '+(homepageAdminActive()?suiteHandoff:syncToken)}}
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
 function showSuiteCountdown(){
@@ -768,6 +771,7 @@ function initSuiteAccountHeader(){
 function accountSessionState(){
  updateScraperTraceExportVisibility();
  const available=!!homepageIdentity;
+ syncAppearance();
  const nav=el('manage-sync');if(nav)nav.hidden=!available;
  if(!available&& !el('sync-panel').classList.contains('personal-hidden'))showView('news');
  const save=el('account-save-button'),load=el('account-load-button');
@@ -912,10 +916,10 @@ function syncAppearance(){
  el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
  el('sync-connect').hidden=syncConnected;
  el('sync-token').hidden=syncConnected;
- el('manage-admin').hidden=!(syncConnected&&isAdmin);
+ el('manage-admin').hidden=!mayAdminister();
  // Latest-reading diagnostics report browser-owned data, not admin settings.
  el('manage-diagnostics').hidden=false;
- if(!(syncConnected&&isAdmin)&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
+ if(!mayAdminister()&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
 }
 function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 async function syncRequest(method,body){
@@ -1081,11 +1085,11 @@ const adminStatus=message=>{el('admin-status').textContent=message};
 const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
 const adminDirty=()=>adminSavedValues!==null&&Object.keys(articleAdminFields).some(key=>adminValues()[key]!==adminSavedValues[key]);
 async function adminRequest(method,payload){
- const response=await fetch('/api/admin/settings',{method,headers:{Authorization:'Bearer '+syncToken,...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
+ const response=await fetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
  if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
 }
 async function loadAdmin(){
- if(!syncConnected||!isAdmin)return false;
+ if(!mayAdminister())return false;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
   retainedLegacyImageSettings=data.image;
   for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
@@ -1095,7 +1099,7 @@ async function loadAdmin(){
  }catch(e){adminStatus('Could not load settings: '+e.message);return false}
 }
 async function saveAdmin(){
- if(!syncConnected||!isAdmin||!retainedLegacyImageSettings)return false;
+ if(!mayAdminister()||!retainedLegacyImageSettings)return false;
  const form=el('admin-form');
  if(!form.reportValidity())return false;
  const articles=Object.fromEntries(Object.entries(adminValues()).map(([key,value])=>[key,Number(value)]));
@@ -1133,7 +1137,7 @@ el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-preferences').addEventListener('click',()=>showView('preferences'));
 el('close-preferences').addEventListener('click',()=>showView('news'));
-el('manage-admin').addEventListener('click',()=>{if(syncConnected&&isAdmin){showView('admin');loadAdmin()}});
+el('manage-admin').addEventListener('click',()=>{if(mayAdminister()){showView('admin');loadAdmin()}});
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
