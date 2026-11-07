@@ -713,10 +713,7 @@ el('article-exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){
 el('manage-exclusions').addEventListener('click',()=>{renderExclusionManager();showView('exclusions')});
 el('close-exclusions').addEventListener('click',()=>showView('news'));
 
-// Optional per-user server sync. The same token works on every device.
-// Remembered credentials are local to this browser origin; only use on a trusted device.
-// Stage-one Homepage integration is intentionally read-only. Do not replace
-// legacy Server Sync or import/export a profile before an explicit migration.
+// Homepage is the sole NewsGo identity and profile storage provider.
 const homepageOrigin='https://home.themauris.org';
 const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
@@ -743,8 +740,8 @@ function readSuiteHandoff(){
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 function homepageAdminActive(){return !!(homepageIdentity&&homepageIdentity.role==='admin'&&suiteHandoff&&suiteExpiresAt>Date.now())}
-function mayAdminister(){return homepageAdminActive()||(syncConnected&&isAdmin)}
-function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{Authorization:'Bearer '+syncToken}}
+function mayAdminister(){return homepageAdminActive()}
+function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{}}
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
 function showSuiteCountdown(){
@@ -819,7 +816,7 @@ async function homepageReaderRecord(){
 // load, and revision-checked saves after the user establishes an account copy.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
 const accountStatus=message=>{const e=el('account-sync-status');if(e)e.textContent=message};
-function accountSnapshot(){const p=syncSnapshot();return {subscriptions:p.subscriptions,excludedDomains:p.excludedDomains,excludedArticleDomains:p.excludedArticleDomains,maxArticleAgeDays:p.maxArticleAgeDays,maximumLeadStories:p.maximumLeadStories,leadOnlyAllSubscriptions:p.leadOnlyAllSubscriptions,useClassificationCache:p.useClassificationCache,lastReadingSelection:p.lastReadingSelection}}
+function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
 async function accountSave(){
  await checkHomepageSession();
@@ -854,19 +851,13 @@ async function accountLoad(){
  await checkHomepageSession();
  if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
  if(accountPending){accountStatus('An account save is in progress.');return}
- if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy Server Sync changes first.');return}
  try{
   const record=await homepageReaderRecord();
   if(!record){accountStatus('No saved account settings yet. Use Save to account to create them.');return}
   if(!validAccountData(record.data))throw Error('Saved account data invalid; browser unchanged.');
   if(!await confirmAccountChange('Replace this browser’s NewsGo subscriptions and preferences with your Homepage account settings?'))return;
   clearTimeout(accountTimer);
-  // Disconnect the old browser token before applying central settings, so
-  // legacy sync never receives changes loaded from Homepage.
-  clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
-  localStorage.removeItem(syncCredentialKey);
-   syncAppearance();
-  applyServerPreferences({...record.data,revision:record.revision});
+  applyAccountPreferences({...record.data,revision:record.revision});
   accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
   accountStatus('Loaded Homepage settings. Future changes save automatically.');
   const b=el('account-save-button');if(b)b.hidden=true;
@@ -875,14 +866,10 @@ async function accountLoad(){
 async function accountEstablish(){
  await checkHomepageSession();
  if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
- if(syncDirty||syncBusy||syncConflict){accountStatus('Resolve pending legacy sync changes before saving to Homepage.');return}
  try{
   const existing=await homepageReaderRecord();
   if(existing&&!validAccountData(existing.data))throw Error('Invalid account settings; cannot overwrite.');
   if(!await confirmAccountChange(existing?'Replace your saved Homepage settings with this browser’s preferences?':'Save current browser preferences to your Homepage account?'))return;
-  // Disconnect legacy writing before establishing the central revision.
-  clearTimeout(syncTimer);syncConnected=false;syncToken='';syncDirty=false;syncConflict=false;isAdmin=false;
-  localStorage.removeItem(syncCredentialKey);syncAppearance();
   const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
   if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
@@ -895,11 +882,6 @@ function mountAccountActions(){
  const panel=el('sync-panel');if(!panel)return;
  const heading=panel.querySelector('.panel-heading');
  if(heading){const title=heading.querySelector('h2');if(title)title.textContent='Account Sync'}
- // Legacy browser controls are removed from the normal view. Old server
- // records remain untouched; the old backend is retained for rollback.
- const legacy=document.createElement('div');legacy.hidden=true;legacy.setAttribute('aria-hidden','true');
- for(const node of [...panel.children])if(node!==heading)legacy.appendChild(node);
- panel.appendChild(legacy);
  const explanation=document.createElement('p');explanation.className='homepage-sync-note';
  explanation.textContent='Your subscriptions and preferences stay in this browser. Once saved to Homepage, changes sync automatically.';
  const wrap=document.createElement('div');wrap.className='homepage-actions';
@@ -908,28 +890,13 @@ function mountAccountActions(){
  const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  wrap.append(save,load);panel.append(explanation,wrap,status);
 }
-const syncCredentialKey='newsgo.sync.token.v1';
-let isAdmin=false,adminRevision=0;
-let syncToken='',syncRevision=0,syncConnected=false,syncPending=false,syncBusy=false,syncTimer=null,syncDirty=false,syncConflict=false,syncReading=false;
-const syncStatus=t=>{el('sync-status').textContent=t};
+let adminRevision=0;
 function syncAppearance(){
- el('sync-connection').textContent=syncConnected?'Connected':'Not connected';
- el('sync-connect').hidden=syncConnected;
- el('sync-token').hidden=syncConnected;
- el('manage-admin').hidden=!mayAdminister();
- el('admin-exit').hidden=homepageAdminActive();
- // Latest-reading diagnostics report browser-owned data, not admin settings.
+ el('manage-admin').hidden=!homepageAdminActive();
  el('manage-diagnostics').hidden=false;
- if(!mayAdminister()&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
+ if(!homepageAdminActive()&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
 }
-function syncSnapshot(){return {revision:syncRevision,subscriptions:registry,excludedDomains:excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
-async function syncRequest(method,body){
- const response=await fetch('/api/sync',{method,headers:{Authorization:'Bearer '+syncToken,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}) ,cache:'no-store'});
- if(response.status===404){const data=await response.json();return {...data,notFound:true}}
- if(!response.ok)throw Error('HTTP '+response.status+(response.status===409?' — newer server preferences are available. See Advanced to resolve the conflict.':' — '+(await response.text()).trim().slice(0,140)));
- return response.json();
-}
-function applyServerPreferences(data){
+function applyAccountPreferences(data){
  if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||!Array.isArray(data.excludedArticleDomains||[]))throw Error('Invalid server profile');
  if(data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Server profile contains invalid entries');
  const migrated=convertLegacy(data.subscriptions);
@@ -937,133 +904,16 @@ function applyServerPreferences(data){
  registry=migrated;syncDerived();excludedDomains=[...new Set(data.excludedDomains)];articleDomains=[...new Set(data.excludedArticleDomains||[])];maxArticleAgeDays=normalizedAge(data.maxArticleAgeDays||0);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);
   maximumLeadStories=normalizedLeadCount(data.maximumLeadStories||3);leadOnlyAllSubscriptions=data.leadOnlyAllSubscriptions===true;
   localStorage.setItem(leadCountKey,String(maximumLeadStories));localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
-  el('maximum-lead-stories').value=String(maximumLeadStories);syncRevision=data.revision;
+  el('maximum-lead-stories').value=String(maximumLeadStories);
    useClassificationCache=data.useClassificationCache!==false;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));el('use-classification-cache').checked=useClassificationCache;
  const restored=validReadingSelection(data.lastReadingSelection);if(restored===null)localStorage.removeItem(readingSelectionKey);else localStorage.setItem(readingSelectionKey,restored);
  restoreReadingSelection(restored);
- syncDirty=false;syncPending=false;syncConflict=false;
+
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
-// Require an explicit choice before replacing browser-only edits at connection.
-function samePreferences(data){
- const a=convertLegacy(data.subscriptions),b=convertLegacy(registry);
- const ids=x=>x.map(r=>JSON.stringify(r)).sort().join('\n');
- const domains=x=>[...new Set(x)].sort().join('\n');
- return ids(a)===ids(b)&&domains(data.excludedDomains)===domains(excludedDomains)&&domains(data.excludedArticleDomains||[])===domains(articleDomains)&&normalizedAge(data.maxArticleAgeDays||0)===maxArticleAgeDays&&normalizedLeadCount(data.maximumLeadStories||3)===maximumLeadStories&&(data.leadOnlyAllSubscriptions===true)===leadOnlyAllSubscriptions&&(data.useClassificationCache!==false)===useClassificationCache&&(activeReadingSelection===null||validReadingSelection(data.lastReadingSelection)===validReadingSelection(activeReadingSelection));
-}
-function resolveConnectDifference(){
- return new Promise(resolve=>{
-  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
-  shade.setAttribute('role','presentation');
-  const dialog=document.createElement('section');dialog.className='sync-choice-dialog';
-  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','sync-choice-title');
-  const h=document.createElement('h3');h.id='sync-choice-title';h.textContent='Choose your subscription preferences';
-  const p=document.createElement('p');p.textContent='This browser has different reading preferences, subscriptions, or exclusions than your saved server profile. Choose whether to load the server settings or merge saved subscriptions and exclusions while retaining the local article-age preference.';
-  const actions=document.createElement('div');actions.className='sync-choice-actions';
-  function add(label,value){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',()=>{shade.remove();resolve(value)});actions.append(b);return b}
-  const useServer=add('Use Server Preferences','server');
-  add('Merge Preferences','merge');add('Cancel','cancel');
-  dialog.append(h,p,actions);shade.append(dialog);document.body.append(shade);useServer.focus();
- });
-}
-async function connectSync(token=el('sync-token').value.trim(),remember=true){
- if(accountReady){syncStatus('Account sync is active; legacy Server Sync is unavailable.');return}
- if(!/^[a-f0-9]{64}$/i.test(token)){syncStatus('Enter the 64-character approved token distributed by Richard.');return}
- syncToken=token;syncConnected=false;isAdmin=false;syncReading=true;syncAppearance();syncStatus('Connecting…');
- let needsSave=false;
- try{
-  const data=await syncRequest('GET');
-  isAdmin=data.role==='admin';
-  if(data.notFound){syncRevision=0;syncConnected=true;syncDirty=true;needsSave=true;syncStatus('Connected · creating your server profile…')}
-  else {
-   if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||data.subscriptions.some(r=>!recordValid(r))||data.excludedDomains.some(d=>typeof d!=='string'||exclusionDomain(d)!==d)||!Array.isArray(data.excludedArticleDomains||[])||(data.excludedArticleDomains||[]).some(d=>typeof d!=='string'||articleDomain(d)!==d))throw Error('Invalid server profile');
-   if(!samePreferences(data)){
-    const decision=await resolveConnectDifference();
-    if(decision==='cancel'){
-     syncToken='';syncConnected=false;localStorage.removeItem(syncCredentialKey);syncStatus('Connection cancelled · browser preferences preserved.');syncAppearance();return;
-    }
-    if(decision==='merge'){
-     const combined=[...new Map([...convertLegacy(data.subscriptions),...registry].map(r=>[r.id,r])).values()];
-     const domains=[...new Set([...data.excludedDomains,...excludedDomains])];
-     const articles=[...new Set([...(data.excludedArticleDomains||[]),...articleDomains])];
-     // The local reading-age preference wins when merging profiles.
-     // Only replace local storage once both lists are validated.
-     localStorage.setItem(unifiedKey,JSON.stringify(combined));localStorage.setItem(exclusionKey,JSON.stringify(domains));localStorage.setItem(articleExclusionKey,JSON.stringify(articles));
-     registry=combined;syncDerived();excludedDomains=domains;articleDomains=articles;syncRevision=data.revision;
-     // Merge keeps an explicit local selection; otherwise adopts the server choice.
-     const mergedSelection=validReadingSelection(activeReadingSelection)||validReadingSelection(data.lastReadingSelection);
-     if(mergedSelection!==null)localStorage.setItem(readingSelectionKey,mergedSelection);
-     restoreReadingSelection(mergedSelection);
-     refreshExclusionViews();renderManager();refresh();
-     syncConnected=true;syncDirty=true;needsSave=true;
-     syncStatus('Connected · saving merged preferences…');
-    }else{applyServerPreferences(data);syncConnected=true;syncStatus('Connected · server preferences loaded (revision '+syncRevision+')')}
-   }else{syncRevision=data.revision;syncConnected=true;syncDirty=false;restoreReadingSelection(validReadingSelection(data.lastReadingSelection));syncStatus('Connected · up to date (revision '+syncRevision+')')}
-  }
-  if(remember){try{localStorage.setItem(syncCredentialKey,token)}catch(e){syncStatus('Connected, but browser cannot remember your token: '+e.message)}}
-  el('sync-token').value='';syncAppearance();
-  // Update counters and management list even when the server profile is already current.
-  if(syncConnected)renderManager();
- }catch(e){syncToken='';syncConnected=false;isAdmin=false;syncStatus('Could not connect: '+e.message);syncAppearance();if(remember)localStorage.removeItem(syncCredentialKey)}
- finally{syncReading=false;if(needsSave&&syncConnected)scheduleServerSave()}
-}
-async function loadSync(force=false){
- if(!syncConnected||syncBusy||syncReading)return;
- if((syncDirty||syncConflict)&&!force){syncStatus('Local changes need attention. Check Advanced before loading.');return}
- syncReading=true;
- try{
-  const data=await syncRequest('GET');
-  if(data.notFound){if(syncRevision>0)syncStatus('Server profile missing. Your local preferences were preserved.');return}
-  if(data.revision===syncRevision&&!force)return;
-  if(syncDirty&&!force)return;
-  applyServerPreferences(data);syncStatus('Connected · synchronized (revision '+syncRevision+')');
- }catch(e){syncStatus('Sync unavailable: '+e.message+' · local preferences kept')}
- finally{syncReading=false}
-}
-async function saveSync(){
- if(!syncConnected||syncConflict||syncReading)return;
- if(syncBusy){syncPending=true;return}
- syncBusy=true;syncPending=false;
- const snap=syncSnapshot();
- try{
-  const data=await syncRequest('PUT',snap);syncRevision=data.revision;
-  const changed=JSON.stringify(snap.subscriptions)!==JSON.stringify(registry)||JSON.stringify(snap.excludedDomains)!==JSON.stringify(excludedDomains)||JSON.stringify(snap.excludedArticleDomains)!==JSON.stringify(articleDomains)||snap.maxArticleAgeDays!==maxArticleAgeDays||snap.lastReadingSelection!==(validReadingSelection(activeReadingSelection)||'');
-  syncDirty=changed;if(changed)syncPending=true;
-  syncStatus(changed?'Connected · saving newer changes…':'Connected · all changes saved');
- }catch(e){
-  syncDirty=true;
-  if(/HTTP 409/.test(e.message))syncConflict=true;
-  syncStatus('Not synced: '+e.message+' · your local changes were preserved.');
-  syncBusy=false;
-  if(!syncConflict){clearTimeout(syncTimer);syncTimer=setTimeout(saveSync,30000)}
-  return;
- }
- syncBusy=false;if(syncPending){syncPending=false;scheduleServerSave()}
-}
-function scheduleServerSave(){
- if(accountReady){scheduleAccountSave();return}
- if(!syncConnected)return;
- syncDirty=true;
- syncStatus('Connected · saving changes…');
- clearTimeout(syncTimer);
- if(!syncConflict)syncTimer=setTimeout(saveSync,600);
-}
-async function checkSync(){
- if(!syncConnected||syncBusy||syncReading||syncDirty||syncConflict||document.hidden)return;
- await loadSync();
-}
+function scheduleServerSave(){scheduleAccountSave()}
 el('manage-sync').addEventListener('click',()=>showView('sync'));
 el('close-sync').addEventListener('click',()=>showView('news'));
-el('sync-connect').addEventListener('click',()=>connectSync());
-el('sync-load').addEventListener('click',()=>{
- if(syncDirty||syncConflict){if(!confirm('Replace this browser’s subscriptions and excluded sites with the server copy? Unsaved local changes will be lost.'))return}
- clearTimeout(syncTimer);loadSync(true);
-});
-el('sync-save').addEventListener('click',()=>{if(!syncConnected){syncStatus('Connect first.');return}if(syncConflict){syncStatus('Server changed. Use Load from Server to resolve before saving.');return}clearTimeout(syncTimer);syncDirty=true;saveSync()});
-el('sync-disconnect').addEventListener('click',()=>{
- clearTimeout(syncTimer);syncConnected=false;syncToken='';isAdmin=false;syncRevision=0;syncDirty=false;syncConflict=false;
- localStorage.removeItem(syncCredentialKey);el('sync-token').value='';syncAppearance();syncStatus('Disconnected · browser preferences remain available.');
-});
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
 // Admin control is created beside the existing feed-cache input so no server template migration is needed.
 const feedCacheInput=document.getElementById('admin-feed-cache');
@@ -1142,38 +992,16 @@ el('manage-admin').addEventListener('click',()=>{if(mayAdminister()){showView('a
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
-el('admin-exit').addEventListener('click',()=>confirmAdminLeave(async()=>{
- if(!syncConnected||!isAdmin)return;
- // Exiting admin mode removes the browser's saved credential, unlike Close.
- // Require explicit confirmation even if all settings are already saved.
- const dialog=el('admin-exit-dialog');
- if(typeof dialog.showModal!=='function')return; // Fail closed if safe confirmation is unavailable.
- const confirmed=await new Promise(resolve=>{
-  const done=()=>resolve(dialog.returnValue==='confirm');
-  dialog.addEventListener('close',done,{once:true});
-  dialog.showModal();
- });
- if(!confirmed)return;
- el('sync-disconnect').click();
- adminSavedValues=null;
- showView('news');
-}));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
 window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
 el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
 syncAppearance();
-const rememberedSyncToken=localStorage.getItem(syncCredentialKey);
-if(rememberedSyncToken)connectSync(rememberedSyncToken,false);
-else restoreReadingSelection(localStorage.getItem(readingSelectionKey));
+restoreReadingSelection(localStorage.getItem(readingSelectionKey));
 mountAccountActions();
 void checkHomepageSession();
 window.addEventListener('focus',()=>{void checkHomepageSession()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void checkHomepageSession()});
-setInterval(checkSync,30000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkSync()});
-window.addEventListener('online',()=>{if(syncDirty&&!syncConflict)scheduleServerSave();else checkSync()});
-
-message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';if(!rememberedSyncToken)renderPersonalArticles();
+message(storageError||exclusionError||'Search by topic or publisher to discover subscriptions.');renderExclusionManager();renderManager();showView('news');el('catalog-message').textContent='Enter a topic or publisher, then click Search or press Enter.';renderPersonalArticles();
 
 })();`
