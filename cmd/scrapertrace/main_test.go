@@ -4,9 +4,11 @@ import (
  "bytes"
  "context"
  "encoding/json"
+ "fmt"
  "net/http"
  "net/http/httptest"
  "strings"
+ "sync/atomic"
  "testing"
  "time"
 )
@@ -152,4 +154,41 @@ func TestLatencySummaryPercentiles(t *testing.T){
  for _,item:=range []string{"n=5","min=1ms","mean=3ms","p50=3ms","p95=5ms","max=5ms"}{
   if !strings.Contains(result,item){t.Errorf("missing %s in %s",item,result)}
  }
+}
+
+func TestOptInConcurrentReplayBoundedAndReportsEachURL(t *testing.T) {
+ var active,maxActive atomic.Int32
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  current:=active.Add(1)
+  for {old:=maxActive.Load();if current<=old||maxActive.CompareAndSwap(old,current){break}}
+  defer active.Add(-1)
+  time.Sleep(15*time.Millisecond)
+  w.Header().Set("Content-Type","application/json")
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`));return}
+  _,_=w.Write([]byte(`{"title":"ok"}`))
+ }))
+ defer server.Close()
+ urls:=[]string{"https://example.org/a","https://example.org/b","https://example.org/c","https://example.org/d","https://example.org/e"}
+ var out bytes.Buffer
+ good,bad:=replayConcurrent(context.Background(),urls,server.URL+"/api/read",server.Client(),0,2,&out)
+ if good!=len(urls)||bad!=0{t.Fatalf("unexpected result: good=%d bad=%d: %s",good,bad,out.String())}
+ if maxActive.Load()!=2{t.Fatalf("expected two workers, max simultaneous requests=%d",maxActive.Load())}
+ for i:=range urls{term:=fmt.Sprintf("Article %d/%d: classification=article classify_http=200 read_http=200",i+1,len(urls));if !strings.Contains(out.String(),term){t.Fatalf("missing %q",term)}}
+ if !strings.Contains(out.String(),"workers=2")||!strings.Contains(out.String(),"Classification/read disagreements (article classified, read failed): 0"){t.Fatal(out.String())}
+}
+
+func TestConcurrentReplayFallsBackToSequentialDefault(t *testing.T){
+ var active,maxActive atomic.Int32
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  n:=active.Add(1)
+  for {v:=maxActive.Load();if n<=v||maxActive.CompareAndSwap(v,n){break}}
+  defer active.Add(-1)
+  time.Sleep(3*time.Millisecond)
+  if r.URL.Path=="/api/classify"{_,_=w.Write([]byte(`{"classification":"article"}`));return}
+  _,_=w.Write([]byte(`{"title":"ok"}`))
+ }))
+ defer server.Close()
+ var out bytes.Buffer
+ good,bad:=replayConcurrent(context.Background(),[]string{"https://example.org/a","https://example.org/b"},server.URL+"/api/read",server.Client(),0,1,&out)
+ if good!=2||bad!=0||maxActive.Load()!=1{t.Fatalf("sequential fallback failed: good=%d bad=%d max=%d",good,bad,maxActive.Load())}
 }
