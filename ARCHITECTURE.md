@@ -13,7 +13,7 @@ See [AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md) for workflow, [R
 
 NewsGo fetches selected RSS/Atom/JSON subscriptions in batches of at most eight. Each eligible article is checked using ScraperGo `POST /api/classify`; only confirmed `article` URLs appear in either normal or RSS metadata-only reading. Homepages, unreadable/unavailable/unknown outcomes, age-filtered articles and entries beyond feed caps are reported in the filtered/unprocessed audit. RSS metadata-only changes the displayed metadata and thumbnail source, not the classifier gate.
 
-NewsGo's shared classification cache is process-local, bounded and controlled by the server TTL (0–1440 minutes). Its default is 1440 minutes, but saved explicit values, including zero, are preserved. Readers can opt out of cache use in Reading Preferences without clearing shared entries. The per-reader Diagnostics view reports cache hits, misses, bypasses, disabled requests, configured TTL, feed durations, classification durations and render durations. ScraperGo has separate upstream caching not included in these counters.
+NewsGo's shared classification cache is process-local, bounded and controlled by the server TTL (0–1440 minutes). Its default is 1440 minutes, while an administrator can explicitly configure zero to disable the cache. Readers can opt out of cache use in Reading Preferences without clearing shared entries. The per-reader Diagnostics view reports cache hits, misses, bypasses, disabled requests, configured TTL, feed durations, classification durations and render durations. ScraperGo has separate upstream caching not included in these counters.
 
 ## Homepage-only authentication and account persistence
 
@@ -21,11 +21,11 @@ Homepage provides **all live reader identity and account persistence**. The brow
 
 NewsGo administrator endpoints `GET/PUT /api/admin/settings` and `POST /api/admin/classification-diagnostic` require server-side verification of the supplied Homepage bearer against Homepage's **fixed** HTTPS session-profile endpoint on every privileged request. The browser sends it in the dedicated `X-NewsGo-Homepage-Authorization` header. The Go verifier requires a valid bearer, a current expiry and the server-asserted `admin` role, with three-second timeout, no redirects and no persistent secret logging. An ordinary Homepage reader cannot administer NewsGo, regardless of browser UI manipulation. Reading Diagnostics is not privileged and remains browser-local.
 
-The old Server Sync endpoint `/api/sync`, manually approved token authentication, legacy token CLI and token-backed browser flow have been **removed from the draft candidate**. Existing historical `data/approved-tokens.json` and `data/user-preferences.json` files are not deleted or migrated automatically, and are no longer accessed by the application.
+There is no Server Sync token authentication, `/api/sync` route, separate token CLI, or migration path for old browser subscription formats. Current subscriptions are stored in the single `newsgo.subscriptions.unified.v1` browser registry. Homepage stores the optional account copy. Historical token and profile files, if still present on disk, are unused.
 
 ## Operational server settings
 
-`internal/dashboard/settings_store.go` implements a dedicated, mutex-protected `SettingsStore` that reads and writes the existing revisioned `data/server-settings.json` atomically with restrictive file permissions. The CLI flag `-settings-dir` selects the directory (default `data`). Classification timeout/concurrency, per-feed cap, feed cache, classification-cache TTL and historical image settings are preserved across migration. Saving server settings updates active settings and clears NewsGo's in-memory classification cache. Existing saved TTL zero is intentional and is not overwritten without an admin change.
+`internal/dashboard/settings_store.go` implements a dedicated, mutex-protected `SettingsStore` that reads and writes the existing revisioned `data/server-settings.json` atomically with restrictive file permissions. The CLI flag `-settings-dir` selects the directory (default `data`). Classification timeout/concurrency, per-feed cap, feed cache, classification-cache TTL and image settings use the current settings schema. Saving server settings updates active settings and clears NewsGo's in-memory classification cache. An administrator-saved TTL of zero disables NewsGo classification caching.
 
 ## Other diagnostics and safety
 
