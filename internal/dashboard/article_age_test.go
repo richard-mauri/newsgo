@@ -16,7 +16,7 @@ func TestArticleAgeCutoff(t *testing.T) {
  if articleTooOld(now.Add(-6*24*time.Hour),7,now){t.Fatal("recent entry excluded")}
  if !articleTooOld(now.Add(-8*24*time.Hour),7,now){t.Fatal("old entry kept")}
 }
-func TestAgePreferenceSyncValidation(t *testing.T) {
- for _, v := range []int{0,1,3,7,14,30,60} {if !validPrefs(storedPrefs{MaxArticleAgeDays:v}) {t.Errorf("valid sync preference %d rejected",v)}}
- if validPrefs(storedPrefs{MaxArticleAgeDays:999}) {t.Fatal("invalid age accepted")}
+func TestAgePreferenceHomepageAccountValidation(t *testing.T) {
+ for _,v:=range []int{0,1,3,7,14,30,60}{if !validArticleAgeDays(v){t.Errorf("Homepage age preference %d rejected",v)}}
+ if validArticleAgeDays(999){t.Fatal("invalid Homepage age accepted")}
 }
