@@ -116,11 +116,7 @@ func (s *SyncStore) serveAdminSettingsAuthorized(w http.ResponseWriter, r *http.
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
- if !homepageAdmin {
-  token,status:=s.authenticate(r)
-  if status!=200 {http.Error(w,"Approved token required",status);return}
-  if token.Role!="admin"{http.Error(w,"Administrator required",403);return}
- }
+ if !homepageAdmin {http.Error(w,"Homepage administrator required",http.StatusForbidden);return}
 	current, e := s.loadServerSettings()
 	if e != nil {
 		http.Error(w, "Server settings unavailable", 500)
