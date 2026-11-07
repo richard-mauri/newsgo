@@ -19,11 +19,12 @@ func TestArticleDomainExclusionPipelineV42(t *testing.T) {
 			t.Errorf("missing article-domain logic %q", want)
 		}
 	}
-	for _, want := range []string{`id="article-exclude-domain"`, `id="article-exclude-add"`, `Excluded Domains`} {
+	for _, want := range []string{`id="exclude-domain"`, `id="exclude-add"`, `Excluded Domains`} {
 		if !strings.Contains(page.Tree.Root.String(), want) {
 			t.Errorf("missing control %q", want)
 		}
 	}
+ for _,legacy:=range []string{`id="article-exclude-domain"`,`id="article-exclude-add"`} {if strings.Contains(page.Tree.Root.String(),legacy){t.Errorf("dead hidden exclusion control remains: %q",legacy)}}
 }
 
 func TestArticleDomainExclusionsPersistWithHomepage(t *testing.T){
