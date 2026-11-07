@@ -29,9 +29,9 @@ type ArticleSettings struct {
  FeedSearchTimeoutSeconds int `json:"feedSearchTimeoutSeconds"`
  ClassificationCacheMinutes int `json:"classificationCacheMinutes"`
 }
-func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 30} }
+func defaultArticleSettings() ArticleSettings { return ArticleSettings{60, 7, 8, 10, 7, 1440} }
 func validArticleSettings(a ArticleSettings) bool {
- return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30 && a.ClassificationCacheMinutes >= 0 && a.ClassificationCacheMinutes <= 30
+ return a.MaxArticlesPerFeed >= 1 && a.MaxArticlesPerFeed <= 250 && a.ClassificationTimeoutSeconds >= 2 && a.ClassificationTimeoutSeconds <= 30 && a.ClassificationConcurrency >= 1 && a.ClassificationConcurrency <= 16 && a.FeedCacheMinutes >= 1 && a.FeedCacheMinutes <= 60 && a.FeedSearchTimeoutSeconds >= 2 && a.FeedSearchTimeoutSeconds <= 30 && a.ClassificationCacheMinutes >= 0 && a.ClassificationCacheMinutes <= 1440
 }
 var activeArticleSettings atomic.Value
 func currentArticleSettings() ArticleSettings { if v := activeArticleSettings.Load(); v != nil { return v.(ArticleSettings) }; return defaultArticleSettings() }
@@ -82,7 +82,7 @@ func (s *SyncStore) loadServerSettings() (serverSettings, error) {
 	}
 	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() }
  if v.Articles.FeedSearchTimeoutSeconds == 0 { v.Articles.FeedSearchTimeoutSeconds = defaultArticleSettings().FeedSearchTimeoutSeconds } // migrate historical saved settings
- if !bytes.Contains(b, []byte(`"classificationCacheMinutes"`)) { v.Articles.ClassificationCacheMinutes = 30 } // migrate pre-setting files without overwriting explicit zero
+ if !bytes.Contains(b, []byte(`"classificationCacheMinutes"`)) { v.Articles.ClassificationCacheMinutes = defaultArticleSettings().ClassificationCacheMinutes } // migrate pre-setting files without overwriting explicit zero
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
