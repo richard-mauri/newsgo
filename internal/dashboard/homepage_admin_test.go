@@ -65,3 +65,28 @@ func TestHomepageRoleEnforcedForAdminSettingsWithoutLegacyToken(t *testing.T){
  role="admin"
  if got:=request("GET",nil).Code;got!=http.StatusOK{t.Fatalf("Homepage admin GET status %d",got)}
 }
+
+func TestLegacyBearerCannotAuthorizeAnyAdministratorEndpoint(t *testing.T){
+ store,err:=NewSettingsStore(t.TempDir())
+ if err!=nil{t.Fatal(err)}
+ var calls atomic.Int32
+ homepage:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  calls.Add(1)
+  http.Error(w,"denied",http.StatusUnauthorized)
+ }))
+ defer homepage.Close()
+ state:=&State{settingsStore:store,homepageProfileURL:homepage.URL}
+ for _,item:=range []struct{path,method,body string}{
+  {"/api/admin/settings",http.MethodGet,""},
+  {"/api/admin/settings",http.MethodPut,`{}`},
+  {"/api/admin/classification-diagnostic",http.MethodPost,`{"url":"https://example.org/article"}`},
+ }{
+  req:=httptest.NewRequest(item.method,"https://newsgo.themauris.org"+item.path,strings.NewReader(item.body))
+  req.Header.Set("Authorization","Bearer "+strings.Repeat("a",64))
+  if item.method==http.MethodPut{req.Header.Set("Origin","https://newsgo.themauris.org")}
+  rec:=httptest.NewRecorder()
+  state.ServeHTTP(rec,req)
+  if rec.Code!=http.StatusForbidden {t.Errorf("%s %s: old bearer status %d, want 403",item.method,item.path,rec.Code)}
+ }
+ if calls.Load()!=0{t.Fatal("former Server Sync bearer forwarded to Homepage")}
+}
