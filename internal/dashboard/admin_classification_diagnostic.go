@@ -64,7 +64,7 @@ func(s *State) serveAdminClassificationDiagnostic(w http.ResponseWriter,r *http.
  w.Header().Set("X-Content-Type-Options","nosniff")
  if r.Method!=http.MethodPost {w.Header().Set("Allow","POST");http.Error(w,"POST required",http.StatusMethodNotAllowed);return}
  if !s.homepageAdminVerified(r) {
-  if s.syncStore==nil {http.Error(w,"administrator required",http.StatusUnauthorized);return}
+  if s.syncStore==nil {http.Error(w,"sync unavailable",http.StatusServiceUnavailable);return}
   s.syncStore.mu.Lock()
   token,status:=s.syncStore.authenticate(r)
   s.syncStore.mu.Unlock()
