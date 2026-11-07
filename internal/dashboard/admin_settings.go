@@ -80,9 +80,6 @@ func (s *SettingsStore) loadServerSettings() (serverSettings, error) {
 	if e = json.Unmarshal(b, &v); e != nil {
 		return v, e
 	}
-	if v.Articles.MaxArticlesPerFeed == 0 { v.Articles = defaultArticleSettings() }
- if v.Articles.FeedSearchTimeoutSeconds == 0 { v.Articles.FeedSearchTimeoutSeconds = defaultArticleSettings().FeedSearchTimeoutSeconds } // migrate historical saved settings
- if !bytes.Contains(b, []byte(`"classificationCacheMinutes"`)) { v.Articles.ClassificationCacheMinutes = defaultArticleSettings().ClassificationCacheMinutes } // migrate pre-setting files without overwriting explicit zero
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
@@ -139,9 +136,6 @@ func (s *SettingsStore) ServeAdminSettings(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Unexpected extra JSON", 400)
 		return
 	}
-	if candidate.Articles.MaxArticlesPerFeed == 0 { candidate.Articles = current.Articles }
- if !bytes.Contains(payload, []byte(`"classificationCacheMinutes"`)) {candidate.Articles.ClassificationCacheMinutes=current.Articles.ClassificationCacheMinutes}
- if candidate.Articles.FeedSearchTimeoutSeconds == 0 { candidate.Articles.FeedSearchTimeoutSeconds = current.Articles.FeedSearchTimeoutSeconds } // old admin clients
  if !validServerSettings(candidate) {
 		http.Error(w, "Out-of-range server settings", 400)
 		return
