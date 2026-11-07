@@ -32,7 +32,7 @@ func TestScraperTraceURLExportWiredToCompletedReadAll(t *testing.T) {
  if strings.Count(personalJS,listener)!=1 {t.Fatal("download listener must be registered exactly once")}
  setup:=strings.Index(personalJS,"window.addEventListener('beforeunload'")
  listenerAt:=strings.Index(personalJS,listener)
- startup:=strings.Index(personalJS,"const rememberedSyncToken=localStorage.getItem(syncCredentialKey)")
+ startup:=strings.Index(personalJS,"restoreReadingSelection(localStorage.getItem(readingSelectionKey))")
  if setup<0||listenerAt<setup||startup<listenerAt {t.Fatal("download listener must be in startup initialization")}
  if !strings.Contains(personalJS,"JSON.stringify(batch,null,2)+'\\n'") {
   t.Fatal("downloaded JSON needs a real newline escape, not a literal backslash-n suffix")
