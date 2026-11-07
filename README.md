@@ -7,9 +7,9 @@ Open `http://127.0.0.1:8084/` on the Mac running NewsGo, or use the separately c
 
 NewsGo shows only articles classified `article` by ScraperGo. The collapsed **Filtered / unprocessed articles** section lists rejected or out-of-range entries and entries beyond the per-feed processing cap. Selecting an article opens the ScraperGo reader; original links open the publisher.
 
-Subscriptions and preferences are stored in the browser. For personal account settings, sign in through Homepage and launch NewsGo from its card; Homepage's single 12-hour session authorizes per-user save/load, with no app-specific countdown or Renew button. **Server Sync** can also be used in its existing administrative/token workflows. On a difference, choose whether to use server preferences or merge carefully; don't overwrite a desired profile. An authenticated administrator can manage server-wide article settings, inspect fresh per-article diagnostics under filtered entries, and **Exit Admin Mode** to disconnect the current browser. Disconnecting preserves locally held reading preferences and does not revoke the token. Reconnect through Server Sync to regain access.
+Subscriptions and reading preferences remain available locally in the browser. For secure per-user synchronization, sign in through Homepage and launch NewsGo from its card. Use Account Sync to explicitly save or load your Homepage profile; once established, changes save automatically with revision conflict protection. NewsGo honors Homepage's twelve-hour session without a separate login. Homepage administrators can open Admin Settings and request fresh filtered-article diagnostics; the NewsGo server independently verifies their Homepage administrator role. There is no Server Sync token login or legacy synchronization endpoint.
 
-## Build and run on the owner's Intel Mac
+## Build and run on the owner's Mac
 
 From the project folder:
 
@@ -20,7 +20,7 @@ go test -count=1 ./...
 ./newsgo.sh
 ```
 
-`devbuild.sh` builds `dist/newsgo-darwin-amd64` and `dist/newsgo-darwin-arm64`; `newsgo.sh` launches the Intel binary on `127.0.0.1:8084` with NewsGo's dedicated Cloudflare tunnel. The launcher expects its established local `.cloudflared/token` and cloudflared executable; do not store tokens in Git. The ScraperGo reader defaults to `https://scrapergo.themauris.org` (override with `-scrapergo` when intentionally developing).
+`devbuild.sh` builds `dist/newsgo-darwin-amd64` and `dist/newsgo-darwin-arm64`; `newsgo.sh` launches the binary for the Mac's architecture on `127.0.0.1:8084` with NewsGo's dedicated Cloudflare tunnel. The launcher expects its established local `.cloudflared/token` and cloudflared executable; do not store tokens in Git. The ScraperGo reader defaults to `https://scrapergo.themauris.org` (override with `-scrapergo` when intentionally developing).
 
 ```bash
 ./dist/newsgo-darwin-amd64 -version
@@ -32,23 +32,22 @@ The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NN
 
 ## Configuration and care
 - `feeds.json` supplies the discovery catalog, not the user's saved subscriptions.
-- `data/` holds local tokens and synchronized profiles; treat as private persistent state.
+- `data/server-settings.json` contains the server's operational settings. The unused historical `data/approved-tokens.json` and `data/user-preferences.json` are left untouched on disk for recovery but are no longer read by NewsGo's active code. Treat all files in `data/` as private.
 - `newsgo.log`, `dist/` binaries, and `.cloudflared/token` are machine-local runtime artifacts. Never publish secrets or overwrite data during updates.
 - Feed and article availability, thumbnails, and publisher blocking can vary. Live Safari checks are required even when Go CI passes.
 
 ## Documentation map
 [AGENTS.md](AGENTS.md) specifies development rules. [ARCHITECTURE.md](ARCHITECTURE.md) describes implemented internals. [CURRENT_WORK.md](CURRENT_WORK.md) records the active candidate and acceptance status. Historical development is available through Git history rather than standalone version-note files.
 
-## Admin diagnostics (candidate)
+## Reading diagnostics
 
-Authenticated administrators can open **Diagnostics** after reading one feed or All Subscriptions. The panel shows the latest completed browser read: fetched feed entries, accepted articles, filtered entries, entries beyond the processing cap, feed errors and actual thumbnail load outcomes (loaded, failed, pending or not requested). Thumbnail counts update as image events occur. These browser-local observations do not persist to Server Sync and do not run extra publisher requests. The existing **Filtered / unprocessed articles** section groups rejected items by classification or exclusion reason; entries beyond the cap remain separately labeled as unprocessed.
+All readers can open **Diagnostics** after reading one feed or All Subscriptions. The panel shows the latest completed browser read: fetched feed entries, accepted articles, filtered entries, entries beyond the processing cap, feed errors and actual thumbnail load outcomes (loaded, failed, pending or not requested). Thumbnail counts update as image events occur. These browser-local observations do not require additional publisher requests. The existing **Filtered / unprocessed articles** section groups rejected items by classification or exclusion reason; entries beyond the cap remain separately labeled as unprocessed.
 
-Timing diagnostics show browser-observed refresh and batch durations, browser render duration, sum of per-feed fetch/wait and classification durations, and mean thumbnail completion-event latency. Summed server per-feed durations are not additive wall-clock stages. These timings do not yet report cache hits or specific thumbnail failure stages.
+Timing diagnostics show browser-observed refresh and batch durations, browser render duration, sum of per-feed fetch/wait and classification durations, and mean thumbnail completion-event latency. Summed server per-feed durations are not additive wall-clock stages. The panel additionally reports NewsGo classification-cache hits, misses, bypasses, requests disabled by the server, configured TTL and cache hit rate for each refresh. It does not report ScraperGo's separate internal cache statistics.
 
 ### Optional RSS metadata-only mode
 
-In **Reading Preferences**, enable **Use RSS metadata only** to bypass ScraperGo article classification and thumbnail extraction while constructing the headline briefing. NewsGo uses RSS/Atom/JSON feed titles, dates, links and HTTPS image metadata when provided; article-age and feed processing limits continue to apply. RSS-only results can include homepages or other non-articles, and some publisher images may be missing or blocked by hotlink protection. Opening a headline still uses ScraperGo. This new mode defaults off and is saved in this browser only, not in Server Sync.
-
+In **Reading Preferences**, enable **Use RSS metadata only** to display RSS/Atom/JSON feed titles, dates and safe images while still requiring ScraperGo's `article` classification for every eligible link. This mode changes presentation, not article eligibility; it does not bypass classification. The preference is browser-local. Opening a headline uses ScraperGo.
 
 Reading Preferences also offer browser-local Maximum Lead Stories (1–20, default 3) and Lead Stories only in All Subscriptions (default off). The latter skips Latest Articles rendering, not feed fetching or classification. These coexist with RSS metadata only and admin Diagnostics.
 
@@ -56,7 +55,7 @@ Reading Preferences also offer browser-local Maximum Lead Stories (1–20, defau
 
 Both normal reading and **Use RSS metadata only** classify eligible feed links with ScraperGo before presenting headlines; only confirmed `article` classifications are displayed. Non-article classifications, including `homepage`, `unreadable`, `unavailable`, and `unknown`, are shown in the filtered-articles audit. RSS metadata-only mode still uses feed-provided headlines, publication dates, and safe RSS images rather than ScraperGo thumbnails.
 
-Reading Preferences includes **Use classification cache**, enabled by default (including legacy accounts). Cache entries are shared server-side across reading modes and readers. Disabling this preference bypasses both lookup and insertion for that reader's requests without clearing the shared cache; ScraperGo itself may implement separate internal caching. Confirmed stable classifications `article`, `homepage`, and `unreadable` are eligible for caching, while `unavailable` and `unknown` are not. New server settings default classification TTL to 1440 minutes (24 hours), configurable by administrators from 0–1440 minutes. Existing saved explicit TTL settings are preserved; they are not silently overwritten.
+Reading Preferences includes **Use classification cache**, enabled by default (including previously saved accounts). Cache entries are shared server-side across reading modes and readers. Disabling this preference bypasses both lookup and insertion for that reader's requests without clearing the shared cache; ScraperGo itself may implement separate internal caching. Confirmed stable classifications `article`, `homepage`, and `unreadable` are eligible for caching, while `unavailable` and `unknown` are not. New server settings default classification TTL to 1440 minutes (24 hours), configurable by administrators from 0–1440 minutes. Existing saved explicit TTL settings are preserved; they are not silently overwritten.
 
 ## Administrator article URL export (diagnostic)
 
@@ -64,8 +63,8 @@ After a completed **Read All Articles** refresh, the **Download Article URLs** b
 
 Click to save `newsgo-scrapergo-urls.json` (which may contain publisher URL query strings; keep it private). With ScraperGo running, use the bundled sequential diagnostic from `~/projects/newsgo`: `go run ./cmd/scrapertrace -input ~/Downloads/newsgo-scrapergo-urls.json -limit 10` for a small initial sample; to replay the complete filtered export, specify its actual URL count with `-limit N` (maximum 500), and retain the default `-delay 1s` pacing. The tool calls `/api/classify` and `/api/read` separately for each selected URL and reports classification, both HTTP statuses, bounded failure kind, request wall times, and aggregate latency. It defaults to 10 URLs, one sequential worker, and a 1-second inter-URL delay for system safety. On a sufficiently capable machine, optionally use `-workers 4 -delay 0s` for a bounded four-way batch; classification and read remain sequential within each worker. Concurrent output arrives in completion order. Avoid running this on underpowered machines or when ScraperGo is already busy. The export contains only NewsGo-accepted headlines, not rejected entries. From `~/projects/scrapergo`, run `go run ./cmd/recoveryreport` for cumulative results. Exporting does not automatically submit article requests.
 
-## Homepage-first account migration (draft)
+## Homepage-only identity and account storage (draft PR #68)
 
-Issue #67 / draft PR #68 makes Homepage login the preferred identity for NewsGo administration. Homepage administrators can manage server settings without a second legacy Server Sync token once NewsGo verifies their Homepage bearer server-side. The ordinary Diagnostics screen displays per-refresh classification-cache hits, misses, bypasses, disabled-cache requests, and configured cache TTL for any reader; these are NewsGo cache results, not ScraperGo's own internal cache metrics. Legacy Server Sync is retained as a temporary compatibility path so historical profile files and approved tokens are not discarded. A new NewsGo process starts with an empty in-memory classification cache.
+Issue #67 / draft PR #68 removes NewsGo's former Server Sync browser flow, approved-token authentication, `/api/sync` endpoint, and token-issuing command. Homepage provides the sole active account identity and profile storage; NewsGo verifies Homepage administrator credentials server-side on every privileged request. Legacy token and preference files are not deleted from existing installations, but no runtime code reads or writes them. Operational settings stay in the existing `data/server-settings.json` file via an independent settings store. The `-settings-dir` CLI option selects that directory (default `data`).
 
-A zero-minute saved server classification TTL disables NewsGo's classification cache and is now reported as disabled, not as a miss. NewsGo's in-memory classification cache is lost on server restart. To compare warm and cold reads, perform consecutive reads against the same running NewsGo process with a nonzero TTL; opening a new Safari tab does not by itself clear this server cache.
+A zero-minute saved classification TTL disables NewsGo's classification cache, and the Diagnostics panel identifies disabled requests separately from misses. The classification cache is in memory and is cleared when the NewsGo process restarts; restarting just a Safari tab does not clear it.
