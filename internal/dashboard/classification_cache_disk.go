@@ -10,7 +10,7 @@ import (
 
 const classificationCacheCapacity = 2048
 const classificationCacheFile = "classification-cache.json"
-const classificationCacheMaxBytes = 1024 * 1024
+const classificationCacheMaxBytes = 16 * 1024 * 1024
 
 // Disk entries contain only normalized public URL keys, classification and absolute expiry.
 // Never cache errors, unknown results, or unavailable upstream responses.
