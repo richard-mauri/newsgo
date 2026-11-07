@@ -673,8 +673,6 @@ el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0
    renderManager();refresh();message('Subscriptions imported'+(importedExclusions!==null?' with exclusions':' (existing exclusions preserved)')+'.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
 el('exclude-add').addEventListener('click',()=>{excludeDomain(el('exclude-domain').value);el('exclude-domain').value=''});
 el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('exclude-add').click()}});
-el('article-exclude-add').addEventListener('click',()=>{toggleArticleDomain(el('article-exclude-domain').value);el('article-exclude-domain').value=''});
-el('article-exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('article-exclude-add').click()}});
 el('manage-exclusions').addEventListener('click',()=>{renderExclusionManager();showView('exclusions')});
 el('close-exclusions').addEventListener('click',()=>showView('news'));
 
