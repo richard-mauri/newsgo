@@ -17,7 +17,7 @@ Regression tests added for cold population, simulated process restart/new activa
 
 ## Validation and remaining owner acceptance
 
-- GitHub CI for the new cache implementation was green at commit `3c94db8a92d357bfa86d67f03673f6429ad519d7`, [Actions run 42400832112](https://github.com/richard-mauri/newsgo/actions/runs/42400832112). **The later documentation/capacity commits require another exact-head CI verification**.
+- GitHub CI passed at cache implementation/test head `ae4ac752c8de918d4b62117138cacca92141a9ba`, [Actions run 42401138957](https://github.com/richard-mauri/newsgo/actions/runs/42401138957) (Go tests and build). This documentation update will create a later head; verify the check on the new exact head before handoff.
 - This session cannot run the owner Mac or Safari, and GitHub CI cannot validate the live Homepage account/session, real feeds, local rebuild, cloud tunnel or practical performance.
 - Owner still needs to validate Homepage Save/Load, administrator settings GET/PUT, ordinary user refusal, session expiry, subscriptions/exclusions persistence, and `/api/sync` returning 404.
 - **Restart acceptance:** Read an identical subscription batch, stop and restart the actual NewsGo **server process** within 60 minutes, read again, verify substantial cache hits and lower classification latency. Restarting only Safari does not prove process-level persistence. Check the effective displayed TTL is 60, even if an older server setting was saved as 1440.
