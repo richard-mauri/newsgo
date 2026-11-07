@@ -51,3 +51,7 @@ The shared suite navigation style is a quiet 12px text link below each page's pr
 
 ## Twelve-hour Homepage sign-in handoff
 NewsGo receives a one-time transfer bearer from Homepage for its current twelve-hour login session. The bearer is valid only while that Homepage parent session remains active and is rejected by Homepage after sign-out or session expiry. NewsGo does not offer independent token renewal. A Homepage `#suite_mode=local` launch explicitly discards any older cached bearer, preserving browser-only reading preferences. A launch with `#suite_token=...` replaces the cached bearer, and ordinary reloads may reuse it until server validation rejects it. Account save/load continues to require live server validation. This implementation is merged alongside Homepage PR #12 and MauriStocks PR #9; the owner accepted the integrated Safari behavior.
+
+## Bundled acceptance diagnostic
+
+`cmd/scrapertrace` is the sequential-only, numeric-loopback-restricted diagnostic used to validate exported accepted article URLs against ScraperGo `/api/classify` followed by `/api/read`. It defaults to 10 entries and 1-second pacing; an explicit `-limit N` is needed to process more, up to 500. It reports separate request wall-clock latencies, classification and read HTTP codes, bounded read failure kinds, and mismatch totals without disclosing source URLs. The runner lives in the unified verified-reading feature branch; no separate diagnostic branch is necessary.
