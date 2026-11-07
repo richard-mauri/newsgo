@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+ "sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,9 @@ type personalResult struct {
  FeedEntries int `json:"feedEntries,omitempty"`
  FeedDurationMs int64 `json:"feedDurationMs"`
  ClassificationDurationMs int64 `json:"classificationDurationMs"`
+ ClassificationCacheHits int64 `json:"classificationCacheHits"`
+ ClassificationCacheMisses int64 `json:"classificationCacheMisses"`
+ ClassificationCacheBypasses int64 `json:"classificationCacheBypasses"`
 }
 type filteredArticle struct {
  Title string `json:"title"`
@@ -205,7 +209,11 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    decisions := make([]string,len(articles))
    // RSS metadata-only controls presentation, not article eligibility.
    // Both reading modes require ScraperGo-confirmed articles.
-   decisions = classifyFeedArticlesWithAgeCache(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache)
+   var cacheStats classificationCacheStats
+   decisions = classifyFeedArticlesWithAgeStats(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache, &cacheStats)
+   res.ClassificationCacheHits=cacheStats.hits.Load()
+   res.ClassificationCacheMisses=cacheStats.misses.Load()
+   res.ClassificationCacheBypasses=cacheStats.bypasses.Load()
    res.ClassificationDurationMs=time.Since(classifyStarted).Milliseconds()
 			for i, a := range articles {
 				if i >= cfg.MaxArticlesPerFeed {
@@ -286,6 +294,10 @@ func classifyFeedArticlesWithAge(ctx context.Context, reader string, articles []
  return classifyFeedArticlesWithAgeCache(ctx,reader,articles,days,true)
 }
 func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool) []string {
+ return classifyFeedArticlesWithAgeStats(ctx,reader,articles,days,useCache,nil)
+}
+type classificationCacheStats struct {hits,misses,bypasses atomic.Int64}
+func classifyFeedArticlesWithAgeStats(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool, stats *classificationCacheStats) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
@@ -298,7 +310,7 @@ func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articl
 			continue
 		}
 		wg.Add(1)
-		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCache(ctx, reader, article, useCache) }(i, a.URL)
+		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCacheStats(ctx, reader, article, useCache, stats) }(i, a.URL)
 	}
 	wg.Wait()
 	return out
@@ -307,6 +319,9 @@ func newsClassify(ctx context.Context, reader, article string) string {
  return newsClassifyWithCache(ctx,reader,article,true)
 }
 func newsClassifyWithCache(ctx context.Context, reader, article string, useCache bool) string {
+ return newsClassifyWithCacheStats(ctx,reader,article,useCache,nil)
+}
+func newsClassifyWithCacheStats(ctx context.Context, reader, article string, useCache bool, stats *classificationCacheStats) string {
  article = normalizeClassificationURL(article)
 	if !safeURL(article) {
 		return "unknown"
@@ -316,8 +331,10 @@ func newsClassifyWithCache(ctx context.Context, reader, article string, useCache
 	entry, ok := newsClassificationCache.entries[key]
 	newsClassificationCache.Unlock()
 	if useCache && currentArticleSettings().ClassificationCacheMinutes>0 && ok && time.Now().Before(entry.expiry) {
+  if stats!=nil {stats.hits.Add(1)}
 		return entry.value
 	}
+ if stats!=nil {if useCache {stats.misses.Add(1)}else{stats.bypasses.Add(1)}}
 	select {
 	case newsClassificationSlots <- struct{}{}:
 		defer func() { <-newsClassificationSlots }()
