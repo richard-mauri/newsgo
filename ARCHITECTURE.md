@@ -29,7 +29,7 @@ There is no Server Sync token authentication, `/api/sync` route, separate token 
 
 ## Other diagnostics and safety
 
-The administrator's fresh classification diagnostic is deliberately uncached. The localhost-limited feed-trace endpoint remains available. The client-side Download Article URLs export is restricted by the browser to a live Homepage administrator session; it exports already displayed URLs and does not create a server-side privileged download API.
+The administrator's fresh classification diagnostic is deliberately uncached. The localhost-limited feed-trace endpoint remains available. The client-side Download Article URLs export is placed in the Admin Settings panel, separate from the server settings form, and remains restricted by the browser to a live Homepage administrator session and completed all-subscriptions reading batch. It exports already displayed eligible URLs and does not create a server-side privileged download API.
 
 Publisher URLs and responses are untrusted and subject to existing validation, request limits, timeouts and network safety rules. A browser role label alone is never an authorization decision. `cmd/scrapertrace` independently replays exported URLs through ScraperGo with sequential default operation, optional bounded four-worker concurrency, separate classification/read HTTP status and latency reporting.
 
