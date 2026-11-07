@@ -18,5 +18,6 @@ func TestReadingDiagnosticsAvailableWithoutLegacySession(t *testing.T) {
  if !strings.Contains(page.Tree.Root.String(),`aria-label="Reading diagnostics"`){t.Fatal("reader diagnostics label missing")}
  // Admin endpoints and UI must remain privileged until server-verified
  // Homepage authorization replaces the independent legacy guard.
- if !strings.Contains(personalJS,"el('manage-admin').hidden=!(syncConnected&&isAdmin)"){t.Fatal("server administrator controls inadvertently ungated")}
+ if !strings.Contains(personalJS,"el('manage-admin').hidden=!mayAdminister()"){t.Fatal("administrator UI role gate missing")}
+ if !strings.Contains(personalJS,"function homepageAdminActive()"){t.Fatal("Homepage admin handoff gate missing")}
 }
