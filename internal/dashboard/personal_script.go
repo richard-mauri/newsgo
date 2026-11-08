@@ -748,7 +748,6 @@ async function renewSuiteSession(){
  // The countdown is the only success indicator. Keep the caption stable and
  // remove any previous error before another attempt.
  sessionRenewFeedback('');
- if(suiteRenewLink)suiteRenewLink.setAttribute('aria-busy','true')
  const previousToken=suiteHandoff;
  try{
   const response=await fetch(homepageOrigin+'/api/handoff/extend-session',{
@@ -786,7 +785,6 @@ async function renewSuiteSession(){
   sessionRenewFeedback('Renewal failed: '+e.message+'. Existing session unchanged.',true);
  }finally{
   suiteRenewPending=false;
-  if(suiteRenewLink)suiteRenewLink.removeAttribute('aria-busy')
  }
 }
 function initSuiteAccountHeader(){
