@@ -725,7 +725,51 @@ function showSuiteCountdown(){
   suiteAccountLine.textContent=suiteExpiresAt>0&&remaining===0?'Current session expired':'Not signed in';
  }
  if(suiteRenewLink){
-  suiteRenewLink.hidden=!(homepageIdentity||suiteExpiresAt>0);
+  suiteRenewLink.hidden=!(homepageIdentity&&suiteExpiresAt>Date.now());
+ }
+}
+// The parent Homepage login is extended on the server only after validation
+// of this still-live, parent-bound NewsGo handoff. Never retain personal tokens.
+let suiteRenewPending=false;
+async function renewSuiteSession(){
+ if(suiteRenewPending||!suiteHandoff||!homepageIdentity||suiteExpiresAt<=Date.now()){
+  message('Session expired. Sign in through Homepage and relaunch NewsGo.');
+  return;
+ }
+ suiteRenewPending=true;
+ if(suiteRenewLink)suiteRenewLink.disabled=true;
+ const previousToken=suiteHandoff;
+ try{
+  const response=await fetch(homepageOrigin+'/api/handoff/extend-session',{
+   method:'POST',credentials:'omit',cache:'no-store',
+   headers:{Authorization:'Bearer '+previousToken}
+  });
+  if(response.status===401){
+   suiteExpiresAt=0;
+   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   homepageIdentity=null;accountSessionState();showSuiteCountdown();
+   message('Session expired or revoked. Sign in through Homepage and relaunch NewsGo.');
+   return;
+  }
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const data=await response.json();
+  const expiry=Date.parse(data.expiresAt);
+  if(!/^[a-f0-9]{64}$/.test(data.token)||!Number.isFinite(expiry)||expiry<=Date.now()||
+     !homepageIdentity||data.user!==homepageIdentity.user||data.role!==homepageIdentity.role){
+   throw Error('Invalid renewal response');
+  }
+  // Do not let a concurrent session check continue using a rotated bearer.
+  if(suiteHandoff!==previousToken)throw Error('Session changed during renewal');
+  sessionStorage.setItem(suiteHandoffKey,data.token);
+  suiteHandoff=data.token;
+  suiteExpiresAt=expiry;
+  showSuiteCountdown();
+  message('Homepage session renewed for 12 hours.');
+ }catch(e){
+  message('Could not renew session ('+e.message+'). Current session was not extended.');
+ }finally{
+  suiteRenewPending=false;
+  if(suiteRenewLink)suiteRenewLink.disabled=false;
  }
 }
 function initSuiteAccountHeader(){
@@ -734,12 +778,13 @@ function initSuiteAccountHeader(){
  container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
  suiteAccountLine=document.createElement('span');
  suiteAccountLine.setAttribute('aria-live','off');
- suiteRenewLink=document.createElement('a');
- suiteRenewLink.href=homepageOrigin+'/';
+ suiteRenewLink=document.createElement('button');
+ suiteRenewLink.type='button';
  suiteRenewLink.textContent='Renew';
- suiteRenewLink.title='Return to Homepage to sign in again for a new 12-hour session';
- suiteRenewLink.setAttribute('aria-label','Renew session through Homepage');
- suiteRenewLink.style.cssText='color:var(--accent);text-decoration:underline;text-underline-offset:3px';
+ suiteRenewLink.title='Extend this active Homepage session for 12 hours without signing in again';
+ suiteRenewLink.setAttribute('aria-label','Renew current session');
+ suiteRenewLink.style.cssText='color:var(--accent);background:none;border:1px solid var(--accent);border-radius:7px;padding:4px 10px;font:inherit;cursor:pointer';
+ suiteRenewLink.addEventListener('click',renewSuiteSession);
  container.append(suiteAccountLine,suiteRenewLink);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
