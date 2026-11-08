@@ -184,7 +184,7 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, r
 	}
 	personalCache.entries[source.URL] = cacheEntry{articles:a,raw:raw,err:msg,at:time.Now()}
 	personalCache.Unlock()
-	return a, msg
+	return a, raw, msg
 }
 func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
