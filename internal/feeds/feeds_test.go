@@ -1,6 +1,7 @@
 package feeds
 
 import (
+ "bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -41,4 +42,43 @@ func TestInvalid(t *testing.T) {
 	if !strings.Contains(err.Error(), "unsupported") {
 		t.Fatal(err)
 	}
+}
+
+func TestNBCMonthNamePublicationDate(t *testing.T) {
+	raw := "Fri, Nov 06 2026 03:05:45 PM"
+	want := time.Date(2026, time.November, 6, 15, 5, 45, 0, time.UTC)
+	got := parseDate(raw)
+	if !got.Equal(want) {
+		t.Fatalf("parseDate(%q) = %s; want %s", raw, got, want)
+	}
+	xmlFeed := `<rss><channel><item><title>NBC sample</title><link>https://example.org/story</link><pubDate>` + raw + `</pubDate></item></channel></rss>`
+	_, items, err := Parse([]byte(xmlFeed))
+	if err != nil || len(items) != 1 {
+		t.Fatalf("RSS parsing: items=%d err=%v", len(items), err)
+	}
+	if !items[0].date.Equal(want) || items[0].rawDate != raw {
+		t.Fatalf("RSS date = %s, raw = %q; want %s, %q", items[0].date, items[0].rawDate, want, raw)
+	}
+}
+
+func TestUnknownDatePreservesRawFallback(t *testing.T) {
+	raw := "not a supported publication date"
+	xmlFeed := `<rss><channel><item><title>Unknown date</title><link>https://example.org/story</link><pubDate>` + raw + `</pubDate></item></channel></rss>`
+	_, items, err := Parse([]byte(xmlFeed))
+	if err != nil || len(items) != 1 {
+		t.Fatalf("RSS parsing: items=%d err=%v", len(items), err)
+	}
+	if !items[0].date.IsZero() || items[0].rawDate != raw {
+		t.Fatalf("expected unparsed timestamp and preserved raw date, got %s and %q", items[0].date, items[0].rawDate)
+	}
+}
+
+func TestFetchArticlesWithRawPreservesFeedResponse(t *testing.T) {
+ original:=[]byte("<?xml version=\"1.0\"?>\r\n<rss><channel><item><title>A</title><link>https://example.org/a</link><pubDate>Fri, Nov 06 2026 03:05:45 PM</pubDate></item></channel></rss>\r\n")
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","application/rss+xml; charset=utf-8");w.Write(original)}))
+ defer server.Close()
+ articles,raw,contentType,status,err:=FetchArticlesWithRaw(context.Background(),server.Client(),Source{Name:"Example",URL:server.URL})
+ if err!=nil||len(articles)!=1||!bytes.Equal(raw,original)||status!=200||contentType!="application/rss+xml; charset=utf-8" {
+  t.Fatalf("articles=%d bytes=%d contentType=%s status=%d err=%v",len(articles),len(raw),contentType,status,err)
+ }
 }

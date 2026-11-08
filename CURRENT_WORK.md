@@ -1,5 +1,14 @@
 # Current work — NewsGo
 
+## Parallel draft — NBC date format and direct raw feed view (November 8, 2026)
+
+- **Issue:** [#71](https://github.com/richard-mauri/newsgo/issues/71), branch `fix/71-nbc-feed-dates`, draft [PR #72](https://github.com/richard-mauri/newsgo/pull/72) targeting `main`.
+- **Scope:** Recognize NBC Bay Area date strings such as `Fri, Nov 06 2026 03:05:45 PM` in the existing RSS parser. Retain the raw date string when parsing genuinely fails. The NBC feed itself publishes identical `pubDate` and `description` values across many entries; no invented per-article data.
+- **Diagnostics UX:** Preserve the original raw feed response viewer, including source feed URL as a link, content type/status, plain scrollable original XML/JSON, and Copy Raw Feed / Download Raw Feed controls. **Remove only the unnecessary outer collapsible Raw Feed Inspector wrapper.** The raw feed section appears directly under regular Diagnostics counts/timing; the per-subscription expanders remain useful for multiple feeds. Do not retain the superseded Article Date Diagnostics panel or duplicate Original feed URLs section.
+- **Tests and checks:** Preserve NBC parser and unrecognized-date fallback tests and raw feed bytes/transport tests. Exact-head GitHub Go CI to be confirmed; Mac/Safari still needs to verify the view, clipboard/download, links, dates and age filters.
+- **Mac acceptance commands:** `cd ~/projects/newsgo`, `git fetch origin`, `git checkout fix/71-nbc-feed-dates`, `git pull --ff-only origin fix/71-nbc-feed-dates`, `go test -count=1 ./...`, `./devbuild.sh`, `./newsgo.sh`.
+- **Merge boundary:** Keep PR #72 draft. Do not merge, tag, release or modify `main` without explicit owner approval; session-renewal draft PR #69 remains separate.
+
 ## Verified state (November 8, 2026)
 
 - **Merged baseline:** GitHub `main` at `3c054600a3200fab059fda4fef721295735b7d54`, after owner-merged PR #68 for Issue #67.
