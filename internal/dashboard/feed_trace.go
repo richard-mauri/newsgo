@@ -68,7 +68,7 @@ func(s *State) serveFeedTrace(w http.ResponseWriter,r *http.Request) {
  for _,src:=range req.Feeds {
   result:=feedTraceResult{Feed:src.Name,FeedURL:src.URL,MatchIndex:-1,Status:"invalid-feed"}
   if len(src.Name)==0||len(src.Name)>70||len(src.Category)>40||len(src.URL)>2048||!safeURL(src.URL) {results=append(results,result);continue}
-  articles,msg:=personalFetch(r.Context(),src)
+  articles,_,msg:=personalFetch(r.Context(),src)
   cap:=currentArticleSettings().MaxArticlesPerFeed
   result=traceArticleInFeed(articles,req.ArticleURL,cap,req.MaxArticleAgeDays,time.Now())
   result.Feed=src.Name;result.FeedURL=src.URL;result.Error=msg
