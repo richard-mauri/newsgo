@@ -1,9 +1,13 @@
 package dashboard
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
+	"github.com/richard-mauri/newsgo/internal/feeds"
 )
 
 // AssertVersionedScript checks that the actual header and cache-busting script
@@ -15,9 +19,21 @@ func assertVersionedScript(t *testing.T, html string) {
 	if len(match) != 2 {
 		t.Fatal("dashboard header missing semantic version")
 	}
-	if !strings.Contains(html, `/personal.js?v=`+match[1]+`"`) {
+	if !strings.Contains(html, `/personal.js?v=`+match[1]+`-`) {
 		t.Fatalf("script version does not match header version %q", match[1])
 	}
 }
 
 func TestDashboardVersionConsistent(t *testing.T) { assertVersionedScript(t, page.Tree.Root.String()) }
+
+func TestPersonalScriptURLTracksContent(t *testing.T) {
+	s, err := New([]feeds.Source{{Name:"Test",URL:"https://example.org/rss"}}, "https://scrapergo.themauris.org", nil)
+	if err != nil { t.Fatal(err) }
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	digest := sha256.Sum256([]byte(personalJS))
+	expected := "/personal.js?v=" + Version() + "-" + fmt.Sprintf("%x", digest[:6])
+	if !strings.Contains(w.Body.String(), expected) {
+		t.Fatalf("rendered script URL must contain its content fingerprint %q", expected)
+	}
+}

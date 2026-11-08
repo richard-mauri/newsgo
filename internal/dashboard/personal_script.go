@@ -707,6 +707,18 @@ function mayAdminister(){return homepageAdminActive()}
 function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{}}
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
+let suiteRenewLink=null;
+let suiteRenewStatus=null;
+function sessionRenewFeedback(text,failed=false){
+ if(!suiteRenewStatus)return;
+ suiteRenewStatus.textContent=text;
+ suiteRenewStatus.hidden=!text;
+ suiteRenewStatus.style.color=failed?'var(--text)':'var(--accent)';
+}
+function sessionTimeRemaining(seconds){
+ const hours=Math.floor(seconds/3600),minutes=Math.floor((seconds%3600)/60),secs=seconds%60;
+ return String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0');
+}
 function showSuiteCountdown(){
  if(!suiteAccountLine)return;
  const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
@@ -714,15 +726,86 @@ function showSuiteCountdown(){
   homepageIdentity=null;accountSessionState();
   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
  }
- const label=homepageIdentity?'Signed in as '+homepageIdentity.user:'Not signed in';
- suiteAccountLine.textContent=label;
+ if(homepageIdentity){
+  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' · Current session: '+sessionTimeRemaining(remaining)+' remaining';
+ }else{
+  suiteAccountLine.textContent=suiteExpiresAt>0&&remaining===0?'Current session expired':'Not signed in';
+ }
+ if(suiteRenewLink){
+  suiteRenewLink.hidden=!(homepageIdentity&&suiteExpiresAt>Date.now());
+ }
+}
+// The parent Homepage login is extended on the server only after validation
+// of this still-live, parent-bound NewsGo handoff. Never retain personal tokens.
+let suiteRenewPending=false;
+async function renewSuiteSession(){
+ if(suiteRenewPending)return;
+ if(!suiteHandoff||!homepageIdentity||suiteExpiresAt<=Date.now()){
+  sessionRenewFeedback('Session expired. Sign in through Homepage and relaunch NewsGo.',true);
+  return;
+ }
+ suiteRenewPending=true;
+ // The countdown is the only success indicator. Keep the caption stable and
+ // remove any previous error before another attempt.
+ sessionRenewFeedback('');
+ const previousToken=suiteHandoff;
+ try{
+  const response=await fetch(homepageOrigin+'/api/handoff/extend-session',{
+   method:'POST',credentials:'omit',cache:'no-store',
+   headers:{Authorization:'Bearer '+previousToken}
+  });
+  if(response.status===401){
+   suiteExpiresAt=0;
+   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   homepageIdentity=null;accountSessionState();showSuiteCountdown();
+   sessionRenewFeedback('Session expired or revoked. Sign in through Homepage and relaunch NewsGo.',true);
+   return;
+  }
+  if(response.status===404){
+   sessionRenewFeedback('Homepage renewal endpoint unavailable (HTTP 404). Update and restart Homepage from PR #21.',true);
+   return;
+  }
+  if(!response.ok)throw Error('Homepage returned HTTP '+response.status);
+  const data=await response.json();
+  const expiry=Date.parse(data.expiresAt);
+  if(!/^[a-f0-9]{64}$/.test(data.token)||!Number.isFinite(expiry)||expiry<=Date.now()||
+     !homepageIdentity||data.user!==homepageIdentity.user||
+     (data.role!=='admin'&&data.role!=='user')){
+   throw Error('Invalid renewal response');
+  }
+  if(suiteHandoff!==previousToken)throw Error('Session changed during renewal');
+  sessionStorage.setItem(suiteHandoffKey,data.token);
+  suiteHandoff=data.token;
+  suiteExpiresAt=expiry;
+  homepageIdentity.role=data.role;
+  accountSessionState();
+  showSuiteCountdown();
+  sessionRenewFeedback('');
+ }catch(e){
+  sessionRenewFeedback('Renewal failed: '+e.message+'. Existing session unchanged.',true);
+ }finally{
+  suiteRenewPending=false;
+ }
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
  const container=document.createElement('div');
  container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
  suiteAccountLine=document.createElement('span');
- container.append(suiteAccountLine);
+ suiteAccountLine.setAttribute('aria-live','off');
+ suiteRenewLink=document.createElement('button');
+ suiteRenewLink.type='button';
+ suiteRenewLink.textContent='Renew';
+ suiteRenewLink.title='Extend this active Homepage session for 12 hours without signing in again';
+ suiteRenewLink.setAttribute('aria-label','Renew current session');
+ suiteRenewLink.className='suite-renew-button';
+ suiteRenewLink.addEventListener('click',renewSuiteSession);
+ suiteRenewStatus=document.createElement('span');
+ suiteRenewStatus.id='suite-renew-status';
+ suiteRenewStatus.setAttribute('role','status');
+ suiteRenewStatus.setAttribute('aria-live','polite');
+ suiteRenewStatus.hidden=true;
+ container.append(suiteAccountLine,suiteRenewLink,suiteRenewStatus);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
  showSuiteCountdown();
@@ -752,14 +835,19 @@ async function checkHomepageSession(){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
  }
  try{
-  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+  const verifiedToken=suiteHandoff;
+  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:{Authorization:'Bearer '+verifiedToken}});
+  // Ignore stale verification completing after a successful bearer rotation.
+  if(verifiedToken!==suiteHandoff)return;
   if(response.status===401){
+   suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');return;
   }
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
   suiteExpiresAt=Date.parse(profile.expiresAt)||0;
+  if(!Number.isFinite(suiteExpiresAt)||suiteExpiresAt<=Date.now())throw Error('Expired profile');
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};

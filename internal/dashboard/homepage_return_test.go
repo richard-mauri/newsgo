@@ -31,15 +31,15 @@ func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
  }
 }
 
-func TestHomepageAccountHeaderOmitsMinuteCountdown(t *testing.T) {
- script:=personalJS
- if !strings.Contains(script,"const label=homepageIdentity?'Signed in as '+homepageIdentity.user:'Not signed in';") {
-  t.Fatal("account header must show identity only, with no remaining-minute display")
- }
- if !strings.Contains(script,"if(remaining===0 && homepageIdentity)") {
-  t.Fatal("the hidden session expiration enforcement must remain")
- }
- if strings.Contains(script,"remaining':'Not signed in'") {
-  t.Fatal("old signed-in session countdown still shown")
- }
+func TestHomepageAccountHeaderShowsRemainingSession(t *testing.T) {
+	script := personalJS
+	if !strings.Contains(script, "'Signed in as '+homepageIdentity.user+' · Current session: '+sessionTimeRemaining(remaining)+' remaining") {
+		t.Fatal("account header must show the signed-in identity and live time remaining")
+	}
+	if !strings.Contains(script, "if(remaining===0 && homepageIdentity)") {
+		t.Fatal("session expiration enforcement must remain")
+	}
+	if !strings.Contains(script, "suiteRenewLink.addEventListener('click',renewSuiteSession)") {
+		t.Fatal("renewal must call the authenticated Homepage endpoint")
+	}
 }

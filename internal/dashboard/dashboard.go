@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"embed"
+	"crypto/sha256"
 	"fmt"
 	"html/template"
 	"io"
@@ -38,6 +39,7 @@ func (s *State) SetSettingsStore(store *SettingsStore) { s.settingsStore = store
 type view struct {
 	Catalog []feeds.Source
  BuildLabel string
+ ScriptRevision string
 }
 
 func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +101,8 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel()}
+	scriptDigest := sha256.Sum256([]byte(personalJS))
+	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel(), ScriptRevision: fmt.Sprintf("%x", scriptDigest[:6])}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self' https://home.themauris.org; img-src 'self' https:")
@@ -115,6 +118,12 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit}main{max-width:1200px;margin:0 auto;padding:0 24px 72px}
 .topbar{border-bottom:1px solid var(--line);background:var(--panel)}.topbar-inner{max-width:1200px;margin:auto;padding:19px 24px;display:flex;justify-content:space-between;align-items:center;gap:14px}.brand{font-weight:850;font-size:1.75rem;letter-spacing:-.075rem}.brand span{color:var(--accent)}.tagline{font-size:.82rem;color:var(--muted);letter-spacing:.03em}
 #homepage-session-status{display:inline-block;margin-top:5px;font-size:.9rem;color:var(--muted);font-weight:650;letter-spacing:normal}#homepage-session-status.signed-in{color:var(--accent)}#homepage-session-status[hidden]{display:none!important}
+.suite-renew-button{color:var(--accent);background:transparent;border:1px solid var(--accent);border-radius:7px;padding:4px 10px;font:inherit;cursor:pointer;transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s}
+.suite-renew-button:hover{background:var(--soft);border-color:var(--text);box-shadow:0 0 0 1px var(--accent)}
+.suite-renew-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;background:var(--soft)}
+.suite-renew-button[hidden],#suite-renew-status[hidden]{display:none!important}
+#suite-renew-status{font-weight:500;font-size:.82rem;max-width:340px}
+
 .header-right{display:flex;align-items:center;gap:22px}.tanner{display:flex;flex-direction:column;align-items:center;gap:5px;flex:none;color:var(--accent);font-size:.85rem;font-weight:700;text-align:center}.tanner img{width:64px;height:64px;object-fit:cover;object-position:center 35%;border-radius:12px;border:1px solid var(--line)}@media(max-width:540px){.header-right{gap:6px}.tanner img{width:49px;height:49px}}
 .eyebrow{font-size:.73rem;font-weight:780;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}.intro{padding:38px 0 25px;display:flex;justify-content:space-between;align-items:end;gap:18px}.intro h1{font-family:Georgia,serif;font-size:clamp(2.6rem,5vw,4.6rem);line-height:1;margin:9px 0 8px;font-weight:700;letter-spacing:-.035em}.intro p{margin:0;color:var(--muted);font-size:.93rem}.time{color:var(--muted);font-size:.85rem;text-align:right}
 .filters{padding:17px 19px;background:var(--panel);border:1px solid var(--line);border-radius:15px;display:flex;align-items:end;gap:15px;flex-wrap:wrap;margin-bottom:31px}.filters label{display:flex;flex-direction:column;gap:6px;font-size:.74rem;font-weight:720;color:var(--muted);text-transform:uppercase;letter-spacing:.065em}.filters select{min-width:175px;max-width:100%;font:inherit;font-size:.92rem;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px}.filter-btn{background:var(--accent);color:light-dark(#fff,#082028);padding:11px 20px;border-radius:9px;border:0;font-size:.89rem;font-weight:700;cursor:pointer}.clear{font-size:.88rem;color:var(--muted);padding-bottom:10px;text-decoration:underline;text-underline-offset:3px}
@@ -145,7 +154,7 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 .homepage-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:18px 0 12px}.homepage-actions button{font:inherit;font-weight:650;padding:10px 14px;min-height:42px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--text);cursor:pointer}.homepage-actions button:hover:not(:disabled){border-color:var(--accent)}.homepage-actions button:disabled{opacity:.55;cursor:wait}.homepage-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.homepage-sync-note{color:var(--muted);line-height:1.5;margin:6px 0}.homepage-confirm-dialog{width:min(520px,calc(100% - 30px));max-width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:23px;box-shadow:0 14px 48px rgba(0,0,0,.48)}.homepage-confirm-dialog::backdrop{background:rgba(0,0,0,.65)}.homepage-confirm-dialog h3{margin:0 0 10px;font-size:1.17rem}.homepage-confirm-dialog p{line-height:1.5}.homepage-confirm-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}.homepage-confirm-actions button{font:inherit;padding:10px 16px;border-radius:9px;border:1px solid var(--line);background:var(--soft);color:var(--text);cursor:pointer}.homepage-confirm-actions button[value="confirm"]{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 .suite-home-link{display:inline-block;margin:4px 0 10px;padding:3px 5px;border-radius:5px;color:var(--accent,#69c6d3);font:500 12px/1.4 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;opacity:.78;transition:background-color .15s,color .15s,opacity .15s}.suite-home-link:hover{background:rgba(96,151,172,.16);color:var(--accent,#69c6d3);text-decoration:underline;opacity:1}.suite-home-link:focus-visible{outline:2px solid var(--accent,#69c6d3);outline-offset:2px;opacity:1}
 .article-url-export-actions{display:flex;justify-content:flex-end;align-items:center;margin:4px 0 16px}.article-url-export-button{font:inherit;font-size:.87rem;font-weight:650;line-height:1.35;padding:9px 14px;cursor:pointer;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background-color .15s}.article-url-export-button:hover{border-color:var(--accent);background:var(--soft)}.article-url-export-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.article-url-export-button[hidden]{display:none!important}
-</style><script defer src="/personal.js?v=0.2.58"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
+</style><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
 <nav class="news-nav" aria-label="NewsGo sections"><button type="button" id="manage-personal" aria-pressed="false">Find Subscriptions</button><button type="button" id="view-subscriptions" aria-pressed="false">My Subscriptions <span id="personal-count">(0)</span></button><button type="button" id="manage-preferences">Reading Preferences</button><button type="button" id="manage-exclusions" aria-pressed="false">Excluded Domains <span id="excluded-count">(0)</span></button><button type="button" id="manage-sync" hidden>Account Sync</button><button type="button" id="manage-admin" hidden>Admin Settings</button><button type="button" id="manage-diagnostics" hidden>Diagnostics</button></nav>
