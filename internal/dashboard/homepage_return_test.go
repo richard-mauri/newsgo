@@ -39,7 +39,7 @@ func TestHomepageAccountHeaderShowsRemainingSession(t *testing.T) {
 	if !strings.Contains(script, "if(remaining===0 && homepageIdentity)") {
 		t.Fatal("session expiration enforcement must remain")
 	}
-	if !strings.Contains(script, "suiteRenewLink.href=homepageOrigin+'/'") {
-		t.Fatal("renewal must route through Homepage")
+	if !strings.Contains(script, "suiteRenewLink.addEventListener('click',renewSuiteSession)") {
+		t.Fatal("renewal must call the authenticated Homepage endpoint")
 	}
 }
