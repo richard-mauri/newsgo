@@ -654,6 +654,21 @@ async function refresh(){
  }
 }
 
+// Only show safe, identifying feed URL components in diagnostics. Directory
+// URLs are untrusted and may include access tokens or other private query data.
+function safeSubscriptionFeedURL(raw){
+ try{
+  const u=new URL(raw);
+  if(u.protocol!=='https:'&&u.protocol!=='http:')return '(invalid feed URL)';
+  u.username='';u.password='';u.hash='';
+  for(const [key,value] of u.searchParams){
+   if(!/^(rss|embedThumb|summary|format|type|output)$/i.test(key)||!/^(y|n|yes|no|true|false|0|1|rss|atom|xml|json)$/i.test(value)){
+    u.searchParams.set(key,'[redacted]');
+   }
+  }
+  return u.toString();
+ }catch(e){return '(invalid feed URL)'}
+}
 function showSubscriptionFailure(trigger,f){
  const previous=document.activeElement;
  const shade=document.createElement('div');shade.className='sync-choice-backdrop';
@@ -661,13 +676,16 @@ function showSubscriptionFailure(trigger,f){
  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');
  dialog.setAttribute('aria-labelledby','subscription-failure-title');
  const heading=document.createElement('h3');heading.id='subscription-failure-title';heading.textContent='Subscription failed: '+f.name;
- const detail=document.createElement('p');detail.textContent=trigger.dataset.subscribeError||'The feed could not be added.';
+ const endpoint=document.createElement('p');endpoint.textContent='Attempted RSS/Atom/JSON feed URL: '+safeSubscriptionFeedURL(f.url);
+ endpoint.style.overflowWrap='anywhere';
+ const detail=document.createElement('p');detail.textContent='Validation failure: '+(trigger.dataset.subscribeError||'The feed could not be added.');
+ const note=document.createElement('p');note.textContent='Sensitive URL query values are redacted. The address above is the attempted feed endpoint, not the publisher homepage.';note.className='personal-status';
  const actions=document.createElement('div');actions.className='sync-choice-actions';
  function finish(){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus()}
  function onKey(e){if(e.key==='Escape'){e.preventDefault();finish()}}
  const close=button('Close',finish);
  const retry=button('Retry',()=>{finish();delete trigger.dataset.subscribeError;add(f,trigger)});
- actions.append(close,retry);dialog.append(heading,detail,actions);shade.append(dialog);document.body.append(shade);
+ actions.append(close,retry);dialog.append(heading,endpoint,detail,note,actions);shade.append(dialog);document.body.append(shade);
  document.addEventListener('keydown',onKey);close.focus();
 }
 function subscribeClick(f,trigger){
@@ -675,7 +693,7 @@ function subscribeClick(f,trigger){
  add(f,trigger);
 }
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
- if(trigger){trigger.disabled=true;trigger.textContent='Checking…'}
+ if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
