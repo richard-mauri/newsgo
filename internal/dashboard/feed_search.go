@@ -1,7 +1,11 @@
 package dashboard
 
 import (
-	"encoding/json"
+	"context"
+ "encoding/json"
+ "fmt"
+ "strconv"
+ "github.com/richard-mauri/newsgo/internal/feeds"
 	"errors"
 	"io"
 	"net"
@@ -17,6 +21,8 @@ type feedSearchItem struct {
 	Name    string `json:"name"`
 	URL     string `json:"url"`
 	Website string `json:"website,omitempty"`
+ Status string `json:"status,omitempty"`
+ Reason string `json:"reason,omitempty"`
 }
 type feedSearchResponse struct {
 	Feeds []feedSearchItem `json:"feeds"`
@@ -139,6 +145,64 @@ func feedlySearch(query string) ([]feedSearchItem, error) {
 	}
 	return items, nil
 }
+// Discovery candidates are NOT trusted until an actual RSS/Atom/JSON body parses.
+// Reuse the hardened personal feed client, including public-IP DNS/redirect checks.
+// A publisher outage does not prove that an endpoint is obsolete.
+func verifyDirectoryFeed(ctx context.Context, client *http.Client, candidate feedSearchItem) feedSearchItem {
+ candidate.Status="unverified"
+ candidate.Reason="Could not verify this feed right now"
+ if !safeURL(candidate.URL)||!publicCandidate(candidate.URL) {
+  candidate.Status="unavailable"
+  candidate.Reason="Invalid feed URL"
+  return candidate
+ }
+ articles,_,_,_,err:=feeds.FetchArticlesWithRaw(ctx,client,feeds.Source{Name:candidate.Name,URL:candidate.URL})
+ if err==nil {
+  if len(articles)==0 { candidate.Status="unavailable";candidate.Reason="No readable articles in this feed" } else { candidate.Status="available";candidate.Reason="" }
+  return candidate
+ }
+ if strings.HasPrefix(err.Error(),"HTTP ") {
+  status,_:=strconv.Atoi(strings.TrimPrefix(err.Error(),"HTTP "))
+  candidate.Reason=fmt.Sprintf("HTTP %d",status)
+  switch status {
+  case 400,404,410,422:
+   candidate.Status="unavailable"
+  default:
+   candidate.Status="unverified" // 403, 429, 5xx and redirects may be transient.
+  }
+  return candidate
+ }
+ if ctx.Err()!=nil {candidate.Reason="Feed verification timed out";return candidate}
+ if strings.Contains(err.Error(),"invalid feed")||strings.Contains(err.Error(),"unsupported XML")||strings.Contains(err.Error(),"feed exceeds 4 MiB") {
+  candidate.Status="unavailable"
+  candidate.Reason="Invalid or oversized feed response"
+  return candidate
+ }
+ candidate.Reason="Feed could not be reached or verified"
+ return candidate
+}
+
+// The maximum work is 12 candidates, with four simultaneous bounded network
+// calls and a shared 9-second budget. No article classification is performed.
+func verifyDirectoryCandidates(ctx context.Context, results []feedSearchItem, verify func(context.Context,feedSearchItem) feedSearchItem) []feedSearchItem {
+ if len(results)==0{return results}
+ ctx,cancel:=context.WithTimeout(ctx,9*time.Second)
+ defer cancel()
+ out:=append([]feedSearchItem(nil),results...)
+ slots:=make(chan struct{},4)
+ var wg sync.WaitGroup
+ for i:=range out {
+  i:=i
+  wg.Add(1)
+  go func(){
+   defer wg.Done()
+   select {case slots<-struct{}{}:defer func(){<-slots}();case <-ctx.Done():out[i].Status="unverified";out[i].Reason="Feed verification timed out";return}
+   out[i]=verify(ctx,out[i])
+  }()
+ }
+ wg.Wait()
+ return out
+}
 func (s *State) serveFeedSearch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -155,7 +219,7 @@ func (s *State) serveFeedSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	normalized := strings.ToLower(q)
 	feedSearchState.Lock()
-	if entry, ok := feedSearchState.cache[normalized]; ok && time.Since(entry.at) < 10*time.Minute {
+	if entry, ok := feedSearchState.cache[normalized]; ok && time.Since(entry.at) < 2*time.Minute {
 		feedSearchState.Unlock()
 		_ = json.NewEncoder(w).Encode(feedSearchResponse{Feeds: entry.feeds})
 		return
@@ -214,6 +278,9 @@ func (s *State) serveFeedSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		results = filtered
 	}
+	client:=safeFeedClient()
+ client.Timeout=4*time.Second
+ results=verifyDirectoryCandidates(r.Context(),results,func(ctx context.Context,item feedSearchItem)feedSearchItem{return verifyDirectoryFeed(ctx,client,item)})
 	feedSearchState.Lock()
 	if len(feedSearchState.cache) > 100 {
 		feedSearchState.cache = map[string]struct {
