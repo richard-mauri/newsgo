@@ -707,6 +707,11 @@ function mayAdminister(){return homepageAdminActive()}
 function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{}}
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
+let suiteRenewLink=null;
+function sessionTimeRemaining(seconds){
+ const hours=Math.floor(seconds/3600),minutes=Math.floor((seconds%3600)/60),secs=seconds%60;
+ return String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0');
+}
 function showSuiteCountdown(){
  if(!suiteAccountLine)return;
  const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
@@ -714,15 +719,28 @@ function showSuiteCountdown(){
   homepageIdentity=null;accountSessionState();
   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
  }
- const label=homepageIdentity?'Signed in as '+homepageIdentity.user:'Not signed in';
- suiteAccountLine.textContent=label;
+ if(homepageIdentity){
+  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' · Current session: '+sessionTimeRemaining(remaining)+' remaining';
+ }else{
+  suiteAccountLine.textContent=suiteExpiresAt>0&&remaining===0?'Current session expired':'Not signed in';
+ }
+ if(suiteRenewLink){
+  suiteRenewLink.hidden=!(homepageIdentity||suiteExpiresAt>0);
+ }
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
  const container=document.createElement('div');
  container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
  suiteAccountLine=document.createElement('span');
- container.append(suiteAccountLine);
+ suiteAccountLine.setAttribute('aria-live','off');
+ suiteRenewLink=document.createElement('a');
+ suiteRenewLink.href=homepageOrigin+'/';
+ suiteRenewLink.textContent='Renew';
+ suiteRenewLink.title='Return to Homepage to sign in again for a new 12-hour session';
+ suiteRenewLink.setAttribute('aria-label','Renew session through Homepage');
+ suiteRenewLink.style.cssText='color:var(--accent);text-decoration:underline;text-underline-offset:3px';
+ container.append(suiteAccountLine,suiteRenewLink);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
  showSuiteCountdown();
@@ -754,12 +772,14 @@ async function checkHomepageSession(){
  try{
   const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
   if(response.status===401){
+   suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');return;
   }
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
   suiteExpiresAt=Date.parse(profile.expiresAt)||0;
+  if(!Number.isFinite(suiteExpiresAt)||suiteExpiresAt<=Date.now())throw Error('Expired profile');
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
