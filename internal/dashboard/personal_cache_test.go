@@ -24,7 +24,7 @@ func TestCancelledPersonalRequestNeverCaches(t *testing.T) {
 	personalCache.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _, msg := personalFetch(ctx, feeds.Source{Name: "Test", URL: url})
+	_, msg := personalFetch(ctx, feeds.Source{Name: "Test", URL: url})
 	if msg != "Request canceled" {
 		t.Fatalf("error = %q", msg)
 	}
@@ -44,7 +44,7 @@ func TestCanceledContextDoesNotReturnCachedData(t *testing.T) {
 	defer func() { personalCache.Lock(); delete(personalCache.entries, url); personalCache.Unlock() }()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, _, msg := personalFetch(ctx, feeds.Source{Name: "Test", URL: url})
+	_, msg := personalFetch(ctx, feeds.Source{Name: "Test", URL: url})
 	if msg != "Request canceled" {
 		t.Fatalf("error = %q", msg)
 	}
