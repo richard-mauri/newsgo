@@ -19,7 +19,7 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 		"suiteRenewStatus.setAttribute('aria-live','polite')",
 		"sessionRenewFeedback('Contacting Homepage…')",
 		"Homepage renewal endpoint unavailable (HTTP 404)",
-		"sessionRenewFeedback('Renewed · 12 hours from now.')",
+		"sessionRenewFeedback('')",
 		"suiteRenewLink.textContent='Renewing…'",
 		"async function renewSuiteSession()",
 		"'/api/handoff/extend-session'",
@@ -40,6 +40,7 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 }
 
 func TestSessionRenewButtonStates(t *testing.T) {
+	if strings.Contains(personalJS, "Renewed · 12 hours from now.") { t.Error("renewal success must use countdown alone") }
 	markup := page.Tree.Root.String()
 	for _, snippet := range []string{
 		".suite-renew-button:hover:not(:disabled)",
