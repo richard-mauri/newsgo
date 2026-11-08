@@ -239,17 +239,26 @@ async function searchCatalog(){
   // Only replace the previous results after the new response was successful.
   root.replaceChildren();
   if(!data.feeds||!data.feeds.length){status.textContent='No matching sources found. Try another search or Add a website below.';return}
+  let availableCount=0,unavailableCount=0,unverifiedCount=0;
   data.feeds.forEach(f=>{
    const row=document.createElement('div');row.className='catalog-card';
    const info=document.createElement('div'),name=document.createElement('strong'),detail=document.createElement('small');
    name.textContent=f.name;detail.textContent=f.website||new URL(f.url).hostname;
    info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);
+   const state=f.status==='available'?'available':f.status==='unavailable'?'unavailable':'unverified';
+   if(state==='available')availableCount++;else if(state==='unavailable')unavailableCount++;else unverifiedCount++;
+   const health=document.createElement('small');
+   health.style.display='block';health.textContent=state==='available'?'Feed checked: available':state==='unavailable'?'Feed unavailable: '+(f.reason||'failed validation'):'Feed not verified: '+(f.reason||'temporary problem');
+   info.append(health);
    const followed=feeds.some(x=>x.url===f.url);
-   const b=button(followed?'Subscribed':'Subscribe',()=>subscribeClick({name:f.name,category:'Other',url:f.url},b));b.dataset.feedUrl=f.url;b.dataset.publisherDomain=domain;b.disabled=followed||excludedURL(domain);
+   const label=followed?'Subscribed':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
+   const b=button(label,()=>subscribeClick({name:f.name,category:'Other',url:f.url},b));
+   b.dataset.feedUrl=f.url;b.dataset.publisherDomain=domain;b.dataset.directoryStatus=state;
+   b.disabled=followed||excludedURL(domain)||state==='unavailable';
    const exclude=excludeButton(domain);row.append(info,b);if(exclude)row.append(exclude);root.append(row);
   });
   syncFollowButtons();
-  status.textContent=data.feeds.length+' candidate sources. Each feed is validated when you select Subscribe.';
+  status.textContent=availableCount+' available · '+unavailableCount+' unavailable · '+unverifiedCount+' not verified. Only confirmed feeds are shown as available; temporary failures may be retried with Try Subscribe.';
  }catch(err){if(seq===searchSeq)status.textContent='Search failed: '+err.message+' Previous results remain visible; try again shortly.'}
  finally{searchInFlight=false;el('catalog-submit').disabled=false}
 }
@@ -260,7 +269,14 @@ function queryEdited(){
 }
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
-function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{const following=feeds.some(f=>f.url===b.dataset.feedUrl);const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe';b.disabled=following||excludedURL(domain);if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title')})}
+function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{
+ const following=feeds.some(f=>f.url===b.dataset.feedUrl);
+ const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);
+ const state=b.dataset.directoryStatus;
+ b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
+ b.disabled=following||excludedURL(domain)||(state==='unavailable'&&!b.dataset.subscribeError);
+ if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title');
+})}
 // Only the last successful, explicit Read All Articles refresh may be exported.
 let scraperTraceBatch=[];
 function eligibleScraperTraceURLs(articles) {
