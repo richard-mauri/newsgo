@@ -815,7 +815,10 @@ async function checkHomepageSession(){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
  }
  try{
-  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
+  const verifiedToken=suiteHandoff;
+  const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:{Authorization:'Bearer '+verifiedToken}});
+  // Ignore stale verification completing after a successful bearer rotation.
+  if(verifiedToken!==suiteHandoff)return;
   if(response.status===401){
    suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
