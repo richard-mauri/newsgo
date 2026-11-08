@@ -17,8 +17,6 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 		"suiteRenewLink.addEventListener('click',renewSuiteSession)",
 		"suiteRenewLink.className='suite-renew-button'",
 		"suiteRenewStatus.setAttribute('aria-live','polite')",
-		"suiteRenewLink.setAttribute('aria-busy','true')",
-		"suiteRenewLink.removeAttribute('aria-busy')",
 		"Homepage renewal endpoint unavailable (HTTP 404)",
 		"sessionRenewFeedback('')",
 		"async function renewSuiteSession()",
@@ -40,7 +38,7 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 }
 
 func TestSessionRenewButtonStates(t *testing.T) {
-	for _, obsolete := range []string{"Renewed · 12 hours from now.", "Contacting Homepage…", "Renewing…", "suiteRenewLink.disabled=", ".suite-renew-button:disabled"} {
+	for _, obsolete := range []string{"Renewed · 12 hours from now.", "Contacting Homepage…", "Renewing…", "suiteRenewLink.disabled=", ".suite-renew-button:disabled", "suiteRenewLink.setAttribute('aria-busy'", "suiteRenewLink.removeAttribute('aria-busy'"} {
 		if strings.Contains(personalJS, obsolete) || strings.Contains(page.Tree.Root.String(), obsolete) { t.Errorf("renewal must not flash a label, disable the button or show a wait cursor: %s", obsolete) }
 	}
 	markup := page.Tree.Root.String()
