@@ -29,7 +29,6 @@ type personalResult struct {
  Filtered []filteredArticle `json:"filtered,omitempty"`
  NotProcessed int `json:"notProcessed,omitempty"`
  FeedEntries int `json:"feedEntries,omitempty"`
- RawFeed *rawFeedDiagnostic `json:"rawFeed,omitempty"`
  FeedDurationMs int64 `json:"feedDurationMs"`
  ClassificationDurationMs int64 `json:"classificationDurationMs"`
  ClassificationCacheHits int64 `json:"classificationCacheHits"`
@@ -45,14 +44,6 @@ type filteredArticle struct {
  Reason string `json:"reason"`
  Published string `json:"published,omitempty"`
 }
-type rawFeedDiagnostic struct {
- URL string `json:"url"`
- Body []byte `json:"body,omitempty"`
- ContentType string `json:"contentType,omitempty"`
- HTTPStatus int `json:"httpStatus,omitempty"`
- Cached bool `json:"cached"`
-}
-
 type personalArticle struct {
 	Title     string `json:"title"`
 	URL       string `json:"url"`
@@ -126,7 +117,6 @@ var personalCache = struct {
 }{entries: map[string]cacheEntry{}}
 
 type cacheEntry struct {
- raw rawFeedDiagnostic
 	articles []feeds.Article
 	err      string
 	at       time.Time
@@ -141,31 +131,30 @@ func personalCacheTTL(entry cacheEntry) time.Duration {
 	return time.Duration(currentArticleSettings().FeedCacheMinutes) * time.Minute
 }
 
-func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, rawFeedDiagnostic, string) {
+func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, string) {
 	if err := ctx.Err(); err != nil {
-		return nil, rawFeedDiagnostic{}, "Request canceled"
+		return nil, "Request canceled"
 	}
 	personalCache.Lock()
 	cached, ok := personalCache.entries[source.URL]
 	personalCache.Unlock()
 	if ok && time.Since(cached.at) < personalCacheTTL(cached) {
-		return cached.articles, rawFeedDiagnostic{URL:source.URL,Body:cached.raw.Body,ContentType:cached.raw.ContentType,HTTPStatus:cached.raw.HTTPStatus,Cached:true}, cached.err
+		return cached.articles, cached.err
 	}
 	select {
 	case personalSlots <- struct{}{}:
 		defer func() { <-personalSlots }()
 	case <-ctx.Done():
-		return nil, rawFeedDiagnostic{}, "Request canceled"
+		return nil, "Request canceled"
 	}
 	// Recheck after waiting for a slot.
 	personalCache.Lock()
 	cached, ok = personalCache.entries[source.URL]
 	personalCache.Unlock()
 	if ok && time.Since(cached.at) < personalCacheTTL(cached) {
-		return cached.articles, rawFeedDiagnostic{URL:source.URL,Body:cached.raw.Body,ContentType:cached.raw.ContentType,HTTPStatus:cached.raw.HTTPStatus,Cached:true}, cached.err
+		return cached.articles, cached.err
 	}
-	a, body, contentType, status, err := feeds.FetchArticlesWithRaw(ctx, safeFeedClient(), source)
- raw := rawFeedDiagnostic{URL:source.URL,Body:body,ContentType:contentType,HTTPStatus:status}
+	a, err := feeds.FetchArticles(ctx, safeFeedClient(), source)
 	msg := ""
 	if err != nil {
 		msg = err.Error()
@@ -173,7 +162,7 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, r
 	// Do not poison the shared cache with a canceled browser request. A
 	// timed-out feed request may be retried, but cannot mask later success.
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-		return a, raw, msg
+		return a, msg
 	}
 	personalCache.Lock()
 	if len(personalCache.entries) >= 64 {
@@ -182,9 +171,9 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, r
 			break
 		}
 	}
-	personalCache.entries[source.URL] = cacheEntry{articles:a,raw:raw,err:msg,at:time.Now()}
+	personalCache.entries[source.URL] = cacheEntry{a, msg, time.Now()}
 	personalCache.Unlock()
-	return a, raw, msg
+	return a, msg
 }
 func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -212,8 +201,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 		} else {
 			seen[src.URL] = true
 			feedStarted:=time.Now()
-            articles, raw, msg := personalFetch(r.Context(), src)
-   res.RawFeed=&raw
+            articles, msg := personalFetch(r.Context(), src)
             res.FeedDurationMs=time.Since(feedStarted).Milliseconds()
 			res.Error = msg
 			cfg := currentArticleSettings()
