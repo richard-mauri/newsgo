@@ -755,7 +755,8 @@ async function renewSuiteSession(){
   const data=await response.json();
   const expiry=Date.parse(data.expiresAt);
   if(!/^[a-f0-9]{64}$/.test(data.token)||!Number.isFinite(expiry)||expiry<=Date.now()||
-     !homepageIdentity||data.user!==homepageIdentity.user||data.role!==homepageIdentity.role){
+     !homepageIdentity||data.user!==homepageIdentity.user||
+     (data.role!=='admin'&&data.role!=='user')){
    throw Error('Invalid renewal response');
   }
   // Do not let a concurrent session check continue using a rotated bearer.
@@ -763,6 +764,8 @@ async function renewSuiteSession(){
   sessionStorage.setItem(suiteHandoffKey,data.token);
   suiteHandoff=data.token;
   suiteExpiresAt=expiry;
+  homepageIdentity.role=data.role;
+  accountSessionState();
   showSuiteCountdown();
   message('Homepage session renewed for 12 hours.');
  }catch(e){
