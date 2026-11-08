@@ -119,9 +119,8 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 .topbar{border-bottom:1px solid var(--line);background:var(--panel)}.topbar-inner{max-width:1200px;margin:auto;padding:19px 24px;display:flex;justify-content:space-between;align-items:center;gap:14px}.brand{font-weight:850;font-size:1.75rem;letter-spacing:-.075rem}.brand span{color:var(--accent)}.tagline{font-size:.82rem;color:var(--muted);letter-spacing:.03em}
 #homepage-session-status{display:inline-block;margin-top:5px;font-size:.9rem;color:var(--muted);font-weight:650;letter-spacing:normal}#homepage-session-status.signed-in{color:var(--accent)}#homepage-session-status[hidden]{display:none!important}
 .suite-renew-button{color:var(--accent);background:transparent;border:1px solid var(--accent);border-radius:7px;padding:4px 10px;font:inherit;cursor:pointer;transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s}
-.suite-renew-button:hover:not(:disabled){background:var(--soft);border-color:var(--text);box-shadow:0 0 0 1px var(--accent)}
+.suite-renew-button:hover{background:var(--soft);border-color:var(--text);box-shadow:0 0 0 1px var(--accent)}
 .suite-renew-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;background:var(--soft)}
-.suite-renew-button:disabled{opacity:.65;cursor:wait}
 .suite-renew-button[hidden],#suite-renew-status[hidden]{display:none!important}
 #suite-renew-status{font-weight:500;font-size:.82rem;max-width:340px}
 
