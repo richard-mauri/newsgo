@@ -346,26 +346,45 @@ function renderReading(){
 }
 let allPersonalArticles=[], personalErrors=[], filteredEntries=[], notProcessedEntries=[];
 let latestReadStats=null;
-let latestDateDiagnostics=[];
+let latestRawFeeds=[];
 let latestTiming=null;
 const thumbnailTiming=new Map();
 const thumbnailResults=new Map();
-function renderDateDiagnostics(){
- const list=el('date-diagnostics-list'),count=el('date-diagnostics-count');
+function rawFeedBytes(feed){
+ const encoded=feed.body||'';
+ const binary=atob(encoded),bytes=new Uint8Array(binary.length);
+ for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+ return bytes;
+}
+function renderRawFeeds(){
+ const list=el('raw-feed-list'),count=el('raw-feed-count');
  if(!list||!count)return;
- list.replaceChildren();
- count.textContent='('+latestDateDiagnostics.length+' entries)';
- if(!latestDateDiagnostics.length){list.textContent='No article dates captured in the most recent read.';return;}
- const counts=new Map();
- for(const item of latestDateDiagnostics){if(item.rawDate)counts.set(item.rawDate,(counts.get(item.rawDate)||0)+1);}
- for(const [raw,n] of counts){if(n>1){const notice=document.createElement('p');notice.className='personal-status';notice.textContent=n+' entries share the raw publication date: '+raw;list.append(notice);}}
- for(const item of latestDateDiagnostics){
-  const row=document.createElement('div');row.className='date-diagnostic-row';
-  const title=document.createElement('strong');title.textContent=item.title||'(untitled)';
-  const details=document.createElement('dl');
-  const fields=[['Source',item.source],['Raw publication date',item.rawDate||'(missing)'],['Parsed timestamp',item.parsedTimestamp||'(none)'],['Displayed date',item.displayedDate],['Parse status',item.parseStatus],['Timezone',item.timezone],['Article URL',item.url]];
-  for(const [label,value] of fields){const dt=document.createElement('dt');dt.textContent=label;const dd=document.createElement('dd');if(label==='Article URL'&&typeof value==='string'&&value.startsWith('https://')){const a=document.createElement('a');a.href=value;a.target='_blank';a.rel='noopener noreferrer';a.textContent=value;dd.append(a);}else dd.textContent=value||'';details.append(dt,dd);}
-  row.append(title,details);list.append(row);
+ list.replaceChildren();count.textContent='('+latestRawFeeds.length+' feeds)';
+ if(!latestRawFeeds.length){list.textContent='No feed bodies captured in the most recent read.';return;}
+ for(const feed of latestRawFeeds){
+  const details=document.createElement('details');details.className='raw-feed-entry';
+  const summary=document.createElement('summary');summary.textContent=feed.name+' — HTTP '+(feed.httpStatus||'unavailable')+(feed.cached?' (cached)':'');
+  details.append(summary);
+  const link=document.createElement('a');link.className='raw-feed-source';link.href=feed.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=feed.url;details.append(link);
+  const note=document.createElement('p');note.className='personal-status';note.textContent='Content-Type: '+(feed.contentType||'not supplied')+' · '+(feed.body?Math.floor(feed.body.length*3/4):0)+' bytes (approximate)';details.append(note);
+  const controls=document.createElement('div');controls.className='raw-feed-controls';
+  const pre=document.createElement('pre');pre.className='raw-feed-body';
+  // Decode only to display: downloads retain the unmodified original response bytes.
+  const bytes=rawFeedBytes(feed);
+  const decoded=new TextDecoder('utf-8',{fatal:false}).decode(bytes);
+  pre.textContent=decoded;
+  const copy=button('Copy Raw Feed',async()=>{
+   try{await navigator.clipboard.writeText(decoded);el('raw-feed-status').textContent='Copied feed from '+feed.name+'.';}
+   catch(e){el('raw-feed-status').textContent='Clipboard unavailable. Select text in the feed panel to copy it.';}
+  });
+  const download=button('Download Raw Feed',()=>{
+   const type=(feed.contentType||'').toLowerCase();
+   const ext=type.includes('json')?'.json':type.includes('xml')||type.includes('rss')||type.includes('atom')?'.xml':'.txt';
+   const name=feed.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,45)||'feed';
+   const url=URL.createObjectURL(new Blob([bytes],{type:feed.contentType||'application/octet-stream'}));
+   const a=document.createElement('a');a.href=url;a.download=name+'-raw-feed'+ext;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+  copy.disabled=!bytes.length;download.disabled=!bytes.length;controls.append(copy,download);details.append(controls,pre);list.append(details);
  }
 }
 function updateDiagnostics(){
@@ -378,7 +397,7 @@ function updateDiagnostics(){
  const values=[['Feed entries fetched',latestReadStats.fetched],['Accepted articles',latestReadStats.accepted],['Thumbnails loaded',loaded],['Thumbnail failures',failed],['Thumbnails pending',pending],['Images not requested',notRequested],['Classification cache hits',latestReadStats.cacheHits||0],['Classification cache misses',latestReadStats.cacheMisses||0],['Classification cache bypasses',latestReadStats.cacheBypasses||0],['Caching disabled by server',latestReadStats.cacheDisabled||0],['Server cache TTL',latestReadStats.cacheTTLMinutes===0?'Disabled (0 minutes)':latestReadStats.cacheTTLMinutes+' minutes'],['Cache hit rate',((latestReadStats.cacheHits||0)+(latestReadStats.cacheMisses||0))?Math.round(100*(latestReadStats.cacheHits||0)/((latestReadStats.cacheHits||0)+(latestReadStats.cacheMisses||0)))+'%':'N/A'],['Filtered by classification or age',latestReadStats.filtered],['Unprocessed (feed cap)',latestReadStats.unprocessed]];
  for(const [name,value] of values){const item=document.createElement('div');const label=document.createElement('strong');label.textContent=name;const number=document.createElement('div');number.textContent=String(value);number.style.fontSize='1.5rem';item.append(label,number);panel.append(item)}
  const timingPanel=el('diagnostics-timing');if(timingPanel){timingPanel.replaceChildren();if(latestTiming){const rows=[['Total refresh',latestTiming.totalMs],['Feed batch requests',latestTiming.batchMs],['Sum of per-feed fetch/wait durations',latestTiming.feedMs],['Sum of per-feed classification durations',latestTiming.classifyMs],['Browser render',latestTiming.renderMs]];for(const [label,value] of rows){const p=document.createElement('p');p.textContent=label+': '+Math.round(value)+' ms';timingPanel.append(p)}const completed=[...thumbnailTiming.values()].filter(x=>Number.isFinite(x.duration));if(completed.length){const average=completed.reduce((n,x)=>n+x.duration,0)/completed.length;const p=document.createElement('p');p.textContent='Thumbnail load/error event time: average '+Math.round(average)+' ms across '+completed.length+' completed images';timingPanel.append(p)}}else timingPanel.textContent='Timing available after the next completed read.';}
- renderDateDiagnostics();
+ renderRawFeeds();
  el('diagnostics-note').textContent='Source: '+latestReadStats.selection+' · '+latestReadStats.feeds+' feeds · '+latestReadStats.failedFeeds+' feed errors · '+latestReadStats.mode+'. Thumbnail outcomes can change after the read completes.';
 }
 
@@ -617,7 +636,7 @@ async function refresh(){
   }
   if(sequence!==refreshSequence)return;
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();
-  latestDateDiagnostics=data.flatMap(g=>g.dateDiagnostics||[]);
+  latestRawFeeds=data.filter(g=>g.rawFeed).map(g=>({name:g.source.name,...g.rawFeed}));
   latestReadStats={mode:rssMetadataOnly?'RSS metadata + ScraperGo verified':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,cacheHits:data.reduce((n,g)=>n+(g.classificationCacheHits||0),0),cacheMisses:data.reduce((n,g)=>n+(g.classificationCacheMisses||0),0),cacheBypasses:data.reduce((n,g)=>n+(g.classificationCacheBypasses||0),0),cacheDisabled:data.reduce((n,g)=>n+(g.classificationCacheDisabled||0),0),cacheTTLMinutes:data.find(g=>Number.isInteger(g.classificationCacheTTLMinutes))?.classificationCacheTTLMinutes??0,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
   data.forEach(group=>{if(group.error)personalErrors.push(group.source.name+': '+group.error);else allPersonalArticles.push(...(group.articles||[]))});
@@ -1062,13 +1081,6 @@ el('close-preferences').addEventListener('click',()=>showView('news'));
 el('manage-admin').addEventListener('click',()=>{if(mayAdminister()){showView('admin');loadAdmin()}});
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
-el('copy-date-diagnostics').addEventListener('click',async()=>{
- const status=el('date-diagnostics-status');
- if(!latestReadStats){status.textContent='Read a subscription first.';return;}
- const payload=JSON.stringify({selection:latestReadStats.selection,articleCount:latestDateDiagnostics.length,articles:latestDateDiagnostics},null,2);
- try{await navigator.clipboard.writeText(payload);status.textContent='Copied '+latestDateDiagnostics.length+' date records as JSON.';}
- catch(e){status.textContent='Clipboard permission denied; select and copy using your browser.';}
-});
 el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
