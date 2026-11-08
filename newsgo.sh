@@ -1,11 +1,11 @@
 #!/bin/bash
-# Start NewsGo (Intel/amd64) and its own Cloudflare Tunnel.
+# Start NewsGo (Intel/arm64) and its own Cloudflare Tunnel.
 # ScraperGo and all other services/tunnels remain untouched.
 # Requires newsgo/.cloudflared/token (do not commit this file).
 
 HOME=/Users/richardmauri
 APP_DIR="$HOME/projects/newsgo"
-APP="$APP_DIR/dist/newsgo-darwin-amd64"
+APP="$APP_DIR/dist/newsgo-darwin-arm64"
 TOKEN="$APP_DIR/.cloudflared/token"
 CLOUDFLARED="$HOME/Applications/cloudflared"
 
