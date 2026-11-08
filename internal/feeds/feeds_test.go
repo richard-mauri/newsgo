@@ -42,3 +42,32 @@ func TestInvalid(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNBCMonthNamePublicationDate(t *testing.T) {
+	raw := "Fri, Nov 06 2026 03:05:45 PM"
+	want := time.Date(2026, time.November, 6, 15, 5, 45, 0, time.UTC)
+	got := parseDate(raw)
+	if !got.Equal(want) {
+		t.Fatalf("parseDate(%q) = %s; want %s", raw, got, want)
+	}
+	xmlFeed := `<rss><channel><item><title>NBC sample</title><link>https://example.org/story</link><pubDate>` + raw + `</pubDate></item></channel></rss>`
+	_, items, err := Parse([]byte(xmlFeed))
+	if err != nil || len(items) != 1 {
+		t.Fatalf("RSS parsing: items=%d err=%v", len(items), err)
+	}
+	if !items[0].date.Equal(want) || items[0].rawDate != raw {
+		t.Fatalf("RSS date = %s, raw = %q; want %s, %q", items[0].date, items[0].rawDate, want, raw)
+	}
+}
+
+func TestUnknownDatePreservesRawFallback(t *testing.T) {
+	raw := "not a supported publication date"
+	xmlFeed := `<rss><channel><item><title>Unknown date</title><link>https://example.org/story</link><pubDate>` + raw + `</pubDate></item></channel></rss>`
+	_, items, err := Parse([]byte(xmlFeed))
+	if err != nil || len(items) != 1 {
+		t.Fatalf("RSS parsing: items=%d err=%v", len(items), err)
+	}
+	if !items[0].date.IsZero() || items[0].rawDate != raw {
+		t.Fatalf("expected unparsed timestamp and preserved raw date, got %s and %q", items[0].date, items[0].rawDate)
+	}
+}
