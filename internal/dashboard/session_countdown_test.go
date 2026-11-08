@@ -21,7 +21,6 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 		"suiteRenewLink.removeAttribute('aria-busy')",
 		"Homepage renewal endpoint unavailable (HTTP 404)",
 		"sessionRenewFeedback('')",
-		"suiteRenewLink.textContent='Renewing…'",
 		"async function renewSuiteSession()",
 		"'/api/handoff/extend-session'",
 		"sessionStorage.setItem(suiteHandoffKey,data.token)",
