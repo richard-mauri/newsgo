@@ -708,6 +708,13 @@ function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Auth
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
 let suiteRenewLink=null;
+let suiteRenewStatus=null;
+function sessionRenewFeedback(text,failed=false){
+ if(!suiteRenewStatus)return;
+ suiteRenewStatus.textContent=text;
+ suiteRenewStatus.hidden=!text;
+ suiteRenewStatus.style.color=failed?'var(--text)':'var(--accent)';
+}
 function sessionTimeRemaining(seconds){
  const hours=Math.floor(seconds/3600),minutes=Math.floor((seconds%3600)/60),secs=seconds%60;
  return String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0');
@@ -732,12 +739,14 @@ function showSuiteCountdown(){
 // of this still-live, parent-bound NewsGo handoff. Never retain personal tokens.
 let suiteRenewPending=false;
 async function renewSuiteSession(){
- if(suiteRenewPending||!suiteHandoff||!homepageIdentity||suiteExpiresAt<=Date.now()){
-  message('Session expired. Sign in through Homepage and relaunch NewsGo.');
+ if(suiteRenewPending)return;
+ if(!suiteHandoff||!homepageIdentity||suiteExpiresAt<=Date.now()){
+  sessionRenewFeedback('Session expired. Sign in through Homepage and relaunch NewsGo.',true);
   return;
  }
  suiteRenewPending=true;
- if(suiteRenewLink)suiteRenewLink.disabled=true;
+ if(suiteRenewLink){suiteRenewLink.disabled=true;suiteRenewLink.textContent='Renewing…'}
+ sessionRenewFeedback('Contacting Homepage…');
  const previousToken=suiteHandoff;
  try{
   const response=await fetch(homepageOrigin+'/api/handoff/extend-session',{
@@ -748,10 +757,14 @@ async function renewSuiteSession(){
    suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    homepageIdentity=null;accountSessionState();showSuiteCountdown();
-   message('Session expired or revoked. Sign in through Homepage and relaunch NewsGo.');
+   sessionRenewFeedback('Session expired or revoked. Sign in through Homepage and relaunch NewsGo.',true);
    return;
   }
-  if(!response.ok)throw Error('HTTP '+response.status);
+  if(response.status===404){
+   sessionRenewFeedback('Homepage renewal endpoint unavailable (HTTP 404). Update and restart Homepage from PR #21.',true);
+   return;
+  }
+  if(!response.ok)throw Error('Homepage returned HTTP '+response.status);
   const data=await response.json();
   const expiry=Date.parse(data.expiresAt);
   if(!/^[a-f0-9]{64}$/.test(data.token)||!Number.isFinite(expiry)||expiry<=Date.now()||
@@ -759,7 +772,6 @@ async function renewSuiteSession(){
      (data.role!=='admin'&&data.role!=='user')){
    throw Error('Invalid renewal response');
   }
-  // Do not let a concurrent session check continue using a rotated bearer.
   if(suiteHandoff!==previousToken)throw Error('Session changed during renewal');
   sessionStorage.setItem(suiteHandoffKey,data.token);
   suiteHandoff=data.token;
@@ -767,12 +779,12 @@ async function renewSuiteSession(){
   homepageIdentity.role=data.role;
   accountSessionState();
   showSuiteCountdown();
-  message('Homepage session renewed for 12 hours.');
+  sessionRenewFeedback('Renewed · 12 hours from now.');
  }catch(e){
-  message('Could not renew session ('+e.message+'). Current session was not extended.');
+  sessionRenewFeedback('Renewal failed: '+e.message+'. Existing session unchanged.',true);
  }finally{
   suiteRenewPending=false;
-  if(suiteRenewLink)suiteRenewLink.disabled=false;
+  if(suiteRenewLink){suiteRenewLink.disabled=false;suiteRenewLink.textContent='Renew'}
  }
 }
 function initSuiteAccountHeader(){
@@ -786,9 +798,14 @@ function initSuiteAccountHeader(){
  suiteRenewLink.textContent='Renew';
  suiteRenewLink.title='Extend this active Homepage session for 12 hours without signing in again';
  suiteRenewLink.setAttribute('aria-label','Renew current session');
- suiteRenewLink.style.cssText='color:var(--accent);background:none;border:1px solid var(--accent);border-radius:7px;padding:4px 10px;font:inherit;cursor:pointer';
+ suiteRenewLink.className='suite-renew-button';
  suiteRenewLink.addEventListener('click',renewSuiteSession);
- container.append(suiteAccountLine,suiteRenewLink);
+ suiteRenewStatus=document.createElement('span');
+ suiteRenewStatus.id='suite-renew-status';
+ suiteRenewStatus.setAttribute('role','status');
+ suiteRenewStatus.setAttribute('aria-live','polite');
+ suiteRenewStatus.hidden=true;
+ container.append(suiteAccountLine,suiteRenewLink,suiteRenewStatus);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
  showSuiteCountdown();
