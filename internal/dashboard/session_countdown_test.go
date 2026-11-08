@@ -15,6 +15,12 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 		"Current session expired",
 		"setInterval(showSuiteCountdown,1000)",
 		"suiteRenewLink.addEventListener('click',renewSuiteSession)",
+		"suiteRenewLink.className='suite-renew-button'",
+		"suiteRenewStatus.setAttribute('aria-live','polite')",
+		"sessionRenewFeedback('Contacting Homepage…')",
+		"Homepage renewal endpoint unavailable (HTTP 404)",
+		"sessionRenewFeedback('Renewed · 12 hours from now.')",
+		"suiteRenewLink.textContent='Renewing…'",
 		"async function renewSuiteSession()",
 		"'/api/handoff/extend-session'",
 		"sessionStorage.setItem(suiteHandoffKey,data.token)",
@@ -30,5 +36,17 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 		if strings.Contains(personalJS, forbidden) {
 			t.Errorf("NewsGo must not attempt to extend the fixed Homepage login: %s", forbidden)
 		}
+	}
+}
+
+func TestSessionRenewButtonStates(t *testing.T) {
+	markup := page.Tree.Root.String()
+	for _, snippet := range []string{
+		".suite-renew-button:hover:not(:disabled)",
+		".suite-renew-button:focus-visible",
+		".suite-renew-button:disabled",
+		"#suite-renew-status[hidden]",
+	} {
+		if !strings.Contains(markup, snippet) { t.Errorf("missing Renew styling: %s",snippet) }
 	}
 }
