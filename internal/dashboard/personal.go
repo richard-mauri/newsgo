@@ -29,7 +29,7 @@ type personalResult struct {
  Filtered []filteredArticle `json:"filtered,omitempty"`
  NotProcessed int `json:"notProcessed,omitempty"`
  FeedEntries int `json:"feedEntries,omitempty"`
- DateDiagnostics []articleDateDiagnostic `json:"dateDiagnostics,omitempty"`
+ RawFeed *rawFeedDiagnostic `json:"rawFeed,omitempty"`
  FeedDurationMs int64 `json:"feedDurationMs"`
  ClassificationDurationMs int64 `json:"classificationDurationMs"`
  ClassificationCacheHits int64 `json:"classificationCacheHits"`
@@ -45,33 +45,12 @@ type filteredArticle struct {
  Reason string `json:"reason"`
  Published string `json:"published,omitempty"`
 }
-type articleDateDiagnostic struct {
- Title string `json:"title"`
- Source string `json:"source"`
+type rawFeedDiagnostic struct {
  URL string `json:"url"`
- RawDate string `json:"rawDate"`
- ParsedTimestamp string `json:"parsedTimestamp,omitempty"`
- DisplayedDate string `json:"displayedDate"`
- ParseStatus string `json:"parseStatus"`
- Timezone string `json:"timezone"`
-}
-
-func dateDiagnostic(a feeds.Article) articleDateDiagnostic {
- d := articleDateDiagnostic{Title:a.Title, Source:a.Source, URL:a.URL, RawDate:a.RawDate, DisplayedDate:"Date unavailable", ParseStatus:"missing", Timezone:"Not supplied"}
- if !a.Published.IsZero() {
-  d.ParsedTimestamp=a.Published.Format(time.RFC3339)
-  d.DisplayedDate=a.Published.Local().Format("Jan 2, 3:04 PM")
-  d.ParseStatus="recognized"
-  d.Timezone="Parsed timezone: "+a.Published.Location().String()
-  if strings.HasSuffix(strings.TrimSpace(a.RawDate), " AM") || strings.HasSuffix(strings.TrimSpace(a.RawDate), " PM") {
-   d.Timezone="Not specified in raw date (Go parsed as UTC)"
-  }
- } else if strings.TrimSpace(a.RawDate)!="" {
-  d.DisplayedDate=a.RawDate
-  d.ParseStatus="unrecognized"
-  d.Timezone="Unknown (unparsed)"
- }
- return d
+ Body []byte `json:"body,omitempty"`
+ ContentType string `json:"contentType,omitempty"`
+ HTTPStatus int `json:"httpStatus,omitempty"`
+ Cached bool `json:"cached"`
 }
 
 type personalArticle struct {
@@ -147,6 +126,7 @@ var personalCache = struct {
 }{entries: map[string]cacheEntry{}}
 
 type cacheEntry struct {
+ raw rawFeedDiagnostic
 	articles []feeds.Article
 	err      string
 	at       time.Time
@@ -161,30 +141,31 @@ func personalCacheTTL(entry cacheEntry) time.Duration {
 	return time.Duration(currentArticleSettings().FeedCacheMinutes) * time.Minute
 }
 
-func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, string) {
+func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, rawFeedDiagnostic, string) {
 	if err := ctx.Err(); err != nil {
-		return nil, "Request canceled"
+		return nil, rawFeedDiagnostic{}, "Request canceled"
 	}
 	personalCache.Lock()
 	cached, ok := personalCache.entries[source.URL]
 	personalCache.Unlock()
 	if ok && time.Since(cached.at) < personalCacheTTL(cached) {
-		return cached.articles, cached.err
+		return cached.articles, rawFeedDiagnostic{URL:source.URL,Body:cached.raw.Body,ContentType:cached.raw.ContentType,HTTPStatus:cached.raw.HTTPStatus,Cached:true}, cached.err
 	}
 	select {
 	case personalSlots <- struct{}{}:
 		defer func() { <-personalSlots }()
 	case <-ctx.Done():
-		return nil, "Request canceled"
+		return nil, rawFeedDiagnostic{}, "Request canceled"
 	}
 	// Recheck after waiting for a slot.
 	personalCache.Lock()
 	cached, ok = personalCache.entries[source.URL]
 	personalCache.Unlock()
 	if ok && time.Since(cached.at) < personalCacheTTL(cached) {
-		return cached.articles, cached.err
+		return cached.articles, rawFeedDiagnostic{URL:source.URL,Body:cached.raw.Body,ContentType:cached.raw.ContentType,HTTPStatus:cached.raw.HTTPStatus,Cached:true}, cached.err
 	}
-	a, err := feeds.FetchArticles(ctx, safeFeedClient(), source)
+	a, body, contentType, status, err := feeds.FetchArticlesWithRaw(ctx, safeFeedClient(), source)
+ raw := rawFeedDiagnostic{URL:source.URL,Body:body,ContentType:contentType,HTTPStatus:status}
 	msg := ""
 	if err != nil {
 		msg = err.Error()
@@ -192,7 +173,7 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, s
 	// Do not poison the shared cache with a canceled browser request. A
 	// timed-out feed request may be retried, but cannot mask later success.
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
-		return a, msg
+		return a, raw, msg
 	}
 	personalCache.Lock()
 	if len(personalCache.entries) >= 64 {
@@ -201,7 +182,7 @@ func personalFetch(ctx context.Context, source feeds.Source) ([]feeds.Article, s
 			break
 		}
 	}
-	personalCache.entries[source.URL] = cacheEntry{a, msg, time.Now()}
+	personalCache.entries[source.URL] = cacheEntry{articles:a,raw:raw,err:msg,at:time.Now()}
 	personalCache.Unlock()
 	return a, msg
 }
@@ -231,12 +212,12 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 		} else {
 			seen[src.URL] = true
 			feedStarted:=time.Now()
-            articles, msg := personalFetch(r.Context(), src)
+            articles, raw, msg := personalFetch(r.Context(), src)
+   res.RawFeed=&raw
             res.FeedDurationMs=time.Since(feedStarted).Milliseconds()
 			res.Error = msg
 			cfg := currentArticleSettings()
    res.FeedEntries = len(articles)
-   for _, article := range articles { res.DateDiagnostics=append(res.DateDiagnostics,dateDiagnostic(article)) }
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
    classifyStarted:=time.Now()
    decisions := make([]string,len(articles))
