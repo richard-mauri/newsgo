@@ -3,7 +3,7 @@
 ## Verified state (November 8, 2026)
 
 - **Merged baseline:** GitHub `main` at `3c054600a3200fab059fda4fef721295735b7d54`, after owner-merged PR #68 for Issue #67.
-- **Active task:** [Issue #57](https://github.com/richard-mauri/newsgo/issues/57), branch `fix/57-session-countdown-renewal`, draft PR (link recorded in the PR itself).
+- **Active task:** [Issue #57](https://github.com/richard-mauri/newsgo/issues/57), branch `fix/57-session-countdown-renewal`, draft [PR #69](https://github.com/richard-mauri/newsgo/pull/69) targeting `main`.
 - **Scope:** The header displays the authenticated Homepage reader and a per-second HH:MM:SS remaining counter based on server-asserted `expiresAt`. It shows expiration, clears the local handoff on expiry, and offers a Renew link returning to Homepage for a fresh sign-in and relaunch. A fixed twelve-hour Homepage parent login cannot be extended by bearer rotation. No Homepage or other app changes.
 - **Security/data:** Homepage remains the sole identity and storage authority. No new token issuance, no server-side entitlement changes, no credentials logged or persisted beyond the existing tab handoff. Existing per-user account data, local preferences, cache, server settings, launchers, Cloudflare and build labels remain untouched.
 - **Validation:** Added `session_countdown_test.go`; exact-head CI must be inspected before review. This environment cannot verify Safari, live Homepage login, countdown over real elapsed time or successful reauthentication.
