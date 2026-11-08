@@ -17,7 +17,8 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 		"suiteRenewLink.addEventListener('click',renewSuiteSession)",
 		"suiteRenewLink.className='suite-renew-button'",
 		"suiteRenewStatus.setAttribute('aria-live','polite')",
-		"sessionRenewFeedback('Contacting Homepage…')",
+		"suiteRenewLink.setAttribute('aria-busy','true')",
+		"suiteRenewLink.removeAttribute('aria-busy')",
 		"Homepage renewal endpoint unavailable (HTTP 404)",
 		"sessionRenewFeedback('')",
 		"suiteRenewLink.textContent='Renewing…'",
@@ -40,7 +41,9 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 }
 
 func TestSessionRenewButtonStates(t *testing.T) {
-	if strings.Contains(personalJS, "Renewed · 12 hours from now.") { t.Error("renewal success must use countdown alone") }
+	for _, obsolete := range []string{"Renewed · 12 hours from now.", "Contacting Homepage…", "Renewing…"} {
+		if strings.Contains(personalJS, obsolete) { t.Errorf("renewal must not flash success or progress label: %s", obsolete) }
+	}
 	markup := page.Tree.Root.String()
 	for _, snippet := range []string{
 		".suite-renew-button:hover:not(:disabled)",
