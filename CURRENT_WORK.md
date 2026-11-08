@@ -1,5 +1,14 @@
 # Current work — NewsGo
 
+## Parallel draft — NBC date format (November 8, 2026)
+
+- **Issue:** [#71](https://github.com/richard-mauri/newsgo/issues/71), branch `fix/71-nbc-feed-dates`, draft [PR #72](https://github.com/richard-mauri/newsgo/pull/72) targeting `main`.
+- **Scope:** Recognize NBC Bay Area feed dates such as `Fri, Nov 06 2026 03:05:45 PM` in the existing Go RSS parser; retain the raw date fallback for formats that still cannot be parsed, and add regression tests. No publisher dates are rewritten.
+- **Evidence and outstanding checks:** Unit tests added for the matching timestamp and unrecognized raw-date preservation. Exact-head CI and Mac/Safari feed verification are pending; repeated identical per-article dates may originate upstream and are not corrected by guessing new values.
+- **Acceptance:** From `~/projects/newsgo`, fetch and check out `fix/71-nbc-feed-dates`, run `go test -count=1 ./...`, `./devbuild.sh`, and `./newsgo.sh`. In Safari, confirm NBC articles no longer show a date-format warning, verify maximum-age filtering, and inspect whether article timestamps remain identical.
+- **Merge boundary:** PR #72 remains draft. Never merge, tag, release, or modify `main` without explicit owner approval; this work does not supersede the separate session-renewal PR #69.
+
+
 ## Verified state (November 8, 2026)
 
 - **Merged baseline:** GitHub `main` at `3c054600a3200fab059fda4fef721295735b7d54`, after owner-merged PR #68 for Issue #67.
