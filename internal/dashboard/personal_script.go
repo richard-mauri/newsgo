@@ -745,8 +745,10 @@ async function renewSuiteSession(){
   return;
  }
  suiteRenewPending=true;
- if(suiteRenewLink){suiteRenewLink.disabled=true;suiteRenewLink.textContent='Renewing…'}
- sessionRenewFeedback('Contacting Homepage…');
+ // The countdown is the only success indicator. Keep the caption stable and
+ // remove any previous error before another attempt.
+ sessionRenewFeedback('');
+ if(suiteRenewLink){suiteRenewLink.disabled=true;suiteRenewLink.setAttribute('aria-busy','true')}
  const previousToken=suiteHandoff;
  try{
   const response=await fetch(homepageOrigin+'/api/handoff/extend-session',{
@@ -784,7 +786,7 @@ async function renewSuiteSession(){
   sessionRenewFeedback('Renewal failed: '+e.message+'. Existing session unchanged.',true);
  }finally{
   suiteRenewPending=false;
-  if(suiteRenewLink){suiteRenewLink.disabled=false;suiteRenewLink.textContent='Renew'}
+  if(suiteRenewLink){suiteRenewLink.disabled=false;suiteRenewLink.removeAttribute('aria-busy')}
  }
 }
 function initSuiteAccountHeader(){
