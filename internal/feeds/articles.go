@@ -40,23 +40,23 @@ func FetchArticlesWithRaw(ctx context.Context, client *http.Client, src Source) 
 	req.Header.Set("Accept", "application/rss+xml, application/atom+xml, application/feed+json, application/xml, text/xml, application/json;q=0.8")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, "", 0, err
 	}
 	defer resp.Body.Close()
 	contentType, status := resp.Header.Get("Content-Type"), resp.StatusCode
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil, "", 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, nil, contentType, status, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 	if err != nil {
-		return nil, err
+		return nil, nil, contentType, status, err
 	}
 	if len(b) > 4<<20 {
 		return nil, nil, contentType, status, fmt.Errorf("feed exceeds 4 MiB")
 	}
 	_, entries, err := Parse(b)
 	if err != nil {
-		return nil, err
+		return nil, b, contentType, status, err
 	}
 	out := make([]Article, 0, len(entries))
 	for _, e := range entries {
