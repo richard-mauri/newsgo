@@ -29,6 +29,7 @@ type personalResult struct {
  Filtered []filteredArticle `json:"filtered,omitempty"`
  NotProcessed int `json:"notProcessed,omitempty"`
  FeedEntries int `json:"feedEntries,omitempty"`
+ DateDiagnostics []articleDateDiagnostic `json:"dateDiagnostics,omitempty"`
  FeedDurationMs int64 `json:"feedDurationMs"`
  ClassificationDurationMs int64 `json:"classificationDurationMs"`
  ClassificationCacheHits int64 `json:"classificationCacheHits"`
@@ -44,6 +45,35 @@ type filteredArticle struct {
  Reason string `json:"reason"`
  Published string `json:"published,omitempty"`
 }
+type articleDateDiagnostic struct {
+ Title string `json:"title"`
+ Source string `json:"source"`
+ URL string `json:"url"`
+ RawDate string `json:"rawDate"`
+ ParsedTimestamp string `json:"parsedTimestamp,omitempty"`
+ DisplayedDate string `json:"displayedDate"`
+ ParseStatus string `json:"parseStatus"`
+ Timezone string `json:"timezone"`
+}
+
+func dateDiagnostic(a feeds.Article) articleDateDiagnostic {
+ d := articleDateDiagnostic{Title:a.Title, Source:a.Source, URL:a.URL, RawDate:a.RawDate, DisplayedDate:"Date unavailable", ParseStatus:"missing", Timezone:"Not supplied"}
+ if !a.Published.IsZero() {
+  d.ParsedTimestamp=a.Published.Format(time.RFC3339)
+  d.DisplayedDate=a.Published.Local().Format("Jan 2, 3:04 PM")
+  d.ParseStatus="recognized"
+  d.Timezone="Parsed timezone: "+a.Published.Location().String()
+  if strings.HasSuffix(strings.TrimSpace(a.RawDate), " AM") || strings.HasSuffix(strings.TrimSpace(a.RawDate), " PM") {
+   d.Timezone="Not specified in raw date (Go parsed as UTC)"
+  }
+ } else if strings.TrimSpace(a.RawDate)!="" {
+  d.DisplayedDate=a.RawDate
+  d.ParseStatus="unrecognized"
+  d.Timezone="Unknown (unparsed)"
+ }
+ return d
+}
+
 type personalArticle struct {
 	Title     string `json:"title"`
 	URL       string `json:"url"`
@@ -206,6 +236,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 			res.Error = msg
 			cfg := currentArticleSettings()
    res.FeedEntries = len(articles)
+   for _, article := range articles { res.DateDiagnostics=append(res.DateDiagnostics,dateDiagnostic(article)) }
    if len(articles) > cfg.MaxArticlesPerFeed { res.NotProcessed = len(articles) - cfg.MaxArticlesPerFeed }
    classifyStarted:=time.Now()
    decisions := make([]string,len(articles))
