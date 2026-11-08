@@ -1,6 +1,7 @@
 package feeds
 
 import (
+ "bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -72,3 +73,12 @@ func TestUnknownDatePreservesRawFallback(t *testing.T) {
 	}
 }
 
+func TestFetchArticlesWithRawPreservesFeedResponse(t *testing.T) {
+ original:=[]byte("<?xml version=\"1.0\"?>\r\n<rss><channel><item><title>A</title><link>https://example.org/a</link><pubDate>Fri, Nov 06 2026 03:05:45 PM</pubDate></item></channel></rss>\r\n")
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","application/rss+xml; charset=utf-8");w.Write(original)}))
+ defer server.Close()
+ articles,raw,contentType,status,err:=FetchArticlesWithRaw(context.Background(),server.Client(),Source{Name:"Example",URL:server.URL})
+ if err!=nil||len(articles)!=1||!bytes.Equal(raw,original)||status!=200||contentType!="application/rss+xml; charset=utf-8" {
+  t.Fatalf("articles=%d bytes=%d contentType=%s status=%d err=%v",len(articles),len(raw),contentType,status,err)
+ }
+}
