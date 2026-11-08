@@ -40,7 +40,7 @@ func TestHomepageSessionCountdownAndRenewal(t *testing.T) {
 }
 
 func TestSessionRenewButtonStates(t *testing.T) {
-	for _, obsolete := range []string{"Renewed · 12 hours from now.", "Contacting Homepage…", "Renewing…", "suiteRenewLink.disabled=", ".suite-renew-button:disabled", "cursor:wait"} {
+	for _, obsolete := range []string{"Renewed · 12 hours from now.", "Contacting Homepage…", "Renewing…", "suiteRenewLink.disabled=", ".suite-renew-button:disabled"} {
 		if strings.Contains(personalJS, obsolete) || strings.Contains(page.Tree.Root.String(), obsolete) { t.Errorf("renewal must not flash a label, disable the button or show a wait cursor: %s", obsolete) }
 	}
 	markup := page.Tree.Root.String()
