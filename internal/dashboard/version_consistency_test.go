@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"github.com/richard-mauri/newsgo/internal/feeds"
 )
 
 // AssertVersionedScript checks that the actual header and cache-busting script
@@ -26,7 +27,7 @@ func assertVersionedScript(t *testing.T, html string) {
 func TestDashboardVersionConsistent(t *testing.T) { assertVersionedScript(t, page.Tree.Root.String()) }
 
 func TestPersonalScriptURLTracksContent(t *testing.T) {
-	s, err := New(nil, "https://scrapergo.themauris.org", nil)
+	s, err := New([]feeds.Source{{Name:"Test",URL:"https://example.org/rss"}}, "https://scrapergo.themauris.org", nil)
 	if err != nil { t.Fatal(err) }
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
