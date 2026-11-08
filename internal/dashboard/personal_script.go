@@ -779,7 +779,7 @@ async function renewSuiteSession(){
   homepageIdentity.role=data.role;
   accountSessionState();
   showSuiteCountdown();
-  sessionRenewFeedback('Renewed · 12 hours from now.');
+  sessionRenewFeedback('');
  }catch(e){
   sessionRenewFeedback('Renewal failed: '+e.message+'. Existing session unchanged.',true);
  }finally{
