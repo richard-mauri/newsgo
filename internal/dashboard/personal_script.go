@@ -621,7 +621,7 @@ function showView(view){
  el('news-content').classList.toggle('personal-hidden',view!=='news');
  el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
  el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
- el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics');
+ el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics'&&view!=='exclusions');
  el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
  [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
@@ -772,7 +772,7 @@ el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0
 el('exclude-add').addEventListener('click',()=>{excludeDomain(el('exclude-domain').value);el('exclude-domain').value=''});
 el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('exclude-add').click()}});
 el('manage-exclusions').addEventListener('click',()=>{renderExclusionManager();showView('exclusions')});
-el('close-exclusions').addEventListener('click',()=>showView('news'));
+el('close-exclusions').addEventListener('click',()=>showView('diagnostics'));
 
 // Homepage is the sole NewsGo identity and profile storage provider.
 const homepageOrigin='https://home.themauris.org';
