@@ -12,7 +12,7 @@ func TestRemoteSearchAndSubscriptionPreservation(t *testing.T) {
 			t.Fatalf("missing HTML %s", s)
 		}
 	}
-	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "subscribeClick({name:f.name", "localStorage.getItem(unifiedKey)", "submitCatalogSearch"} {
+	for _, s := range []string{"/api/search-feeds?q=", "searchCatalog", "catalogSubscriptionClick(f,b)", "localStorage.getItem(unifiedKey)", "submitCatalogSearch"} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing JS %s", s)
 		}
@@ -28,7 +28,7 @@ func TestUXNavigationAndSubscriptionManagement(t *testing.T) {
 			t.Fatalf("missing navigation element %s", s)
 		}
 	}
-	for _, s := range []string{`showView('news')`, `showView('subscriptions')`, `syncFollowButtons()`, `textContent='Checking…'`, `following?'Subscribed':b.dataset.subscribeError?'Failure':'Subscribe'`, `textContent='('+total+')'`} {
+	for _, s := range []string{`showView('news')`, `showView('subscriptions')`, `syncFollowButtons()`, `textContent='Checking…'`, `following?(catalog?'Unsubscribe':'Subscribed'):b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe'`, `textContent='('+total+')'`} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing subscription interaction %s", s)
 		}
@@ -46,4 +46,24 @@ func TestPersonalArticleSourceSelection(t *testing.T) {
 			t.Fatalf("missing personal source selection logic %s", s)
 		}
 	}
+}
+
+func TestCatalogHidesBrokenFeedsAndTogglesSubscriptions(t *testing.T) {
+ required := []string{
+  "if(state==='unavailable'&&!followed){hiddenCount++;return}",
+  "if(followed)subscribedCount++",
+  "catalogSubscriptionClick(f,b)",
+  "button(followed?'Unsubscribe'",
+  "const catalog=b.closest('#catalog-list')!==null;",
+  "following?(catalog?'Unsubscribe':'Subscribed')",
+  "if(!await confirmSubscriptionRemoval(record.name))return;",
+  "if(!unsubscribeRecord(record.id))return;",
+  "localStorage.removeItem(readingSelectionKey);scheduleAccountSave();",
+  "renderManager();renderReading();",
+  "unavailable feeds hidden",
+  "No usable feeds found",
+ }
+ for _,fragment := range required {
+  if !strings.Contains(personalJS,fragment) {t.Errorf("missing filtered search/unsubscribe contract: %q",fragment)}
+ }
 }
