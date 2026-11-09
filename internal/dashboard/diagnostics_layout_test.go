@@ -40,7 +40,7 @@ func TestDiagnosticsOwnsFilteredAuditAndExcludedDomains(t *testing.T) {
 func TestDiagnosticsExclusionNavigationAndFilteringRetained(t *testing.T) {
 	for _, marker := range []string{
 		"el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics')",
-						"el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()})",
+		"el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()})",
 		"function renderFilteredSubscriptionOffer()",
 		"function renderFilteredArticles()",
 		"renderFilteredArticles();",
