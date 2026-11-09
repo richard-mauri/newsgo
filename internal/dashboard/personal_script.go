@@ -777,7 +777,8 @@ const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
-const suiteLocalKey='newsgo.homepage.local.v1';
+// The local-mode fragment suppresses recovery for this visit only. A later
+// direct visit must recheck Homepage, which may have gained a valid login.
 let explicitBrowserOnly=false;
 function readSuiteHandoff(){
  const fragment=new URLSearchParams(location.hash.slice(1));
@@ -786,21 +787,17 @@ function readSuiteHandoff(){
  if(delivered!==null || browserOnly){
   history.replaceState(null,'',location.pathname+location.search);
   if(browserOnly){
-   // Homepage explicitly said there is no live account. Keep browser-only
-   // mode sticky in this tab to avoid a redirect loop on refresh.
+   // Homepage explicitly said there is no live account. Suppress redirect
+   // during this page visit, preserving browser-local subscriptions.
    explicitBrowserOnly=true;
-   try{sessionStorage.removeItem(suiteHandoffKey);sessionStorage.setItem(suiteLocalKey,'1')}catch(_){}
+   try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
   }else if(/^[a-f0-9]{64}$/.test(delivered)){
-   // A fresh Homepage-issued handoff supersedes a previous local-only state.
-   try{sessionStorage.setItem(suiteHandoffKey,delivered);sessionStorage.removeItem(suiteLocalKey)}catch(_){}
+   try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
   }else {
    try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
   }
  }
- try{
-  suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||'';
-  explicitBrowserOnly=explicitBrowserOnly||sessionStorage.getItem(suiteLocalKey)==='1';
- }catch(_){suiteHandoff=''}
+ try{suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||''}catch(_){suiteHandoff=''}
  if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
 }
 readSuiteHandoff();
