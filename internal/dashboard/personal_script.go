@@ -239,26 +239,28 @@ async function searchCatalog(){
   // Only replace the previous results after the new response was successful.
   root.replaceChildren();
   if(!data.feeds||!data.feeds.length){status.textContent='No matching sources found. Try another search or Add a website below.';return}
-  let availableCount=0,unavailableCount=0,unverifiedCount=0;
+  let availableCount=0,hiddenCount=0,unverifiedCount=0,subscribedCount=0;
   data.feeds.forEach(f=>{
+   const followed=feeds.some(x=>x.url===f.url);
+   const state=f.status==='available'?'available':f.status==='unavailable'?'unavailable':'unverified';
+   // Keep subscribed feeds visible even if today's directory check failed.
+   if(state==='unavailable'&&!followed){hiddenCount++;return}
+   if(followed)subscribedCount++;else if(state==='available')availableCount++;else unverifiedCount++;
    const row=document.createElement('div');row.className='catalog-card';
    const info=document.createElement('div'),name=document.createElement('strong'),detail=document.createElement('small');
    name.textContent=f.name;detail.textContent=f.website||new URL(f.url).hostname;
    info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);
-   const state=f.status==='available'?'available':f.status==='unavailable'?'unavailable':'unverified';
-   if(state==='available')availableCount++;else if(state==='unavailable')unavailableCount++;else unverifiedCount++;
-   const health=document.createElement('small');
-   health.style.display='block';health.textContent=state==='available'?'Feed checked: available':state==='unavailable'?'Feed unavailable: '+(f.reason||'failed validation'):'Feed not verified: '+(f.reason||'temporary problem');
+   const health=document.createElement('small');health.style.display='block';
+   health.textContent=state==='available'?'Feed checked: available':state==='unavailable'?'Current feed check: '+(f.reason||'unavailable'):'Feed not verified: '+(f.reason||'temporary problem');
    info.append(health);
-   const followed=feeds.some(x=>x.url===f.url);
-   const label=followed?'Subscribed':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
-   const b=button(label,()=>subscribeClick({name:f.name,category:'Other',url:f.url},b));
+   const b=button(followed?'Unsubscribe':state==='unverified'?'Try Subscribe':'Subscribe',()=>catalogSubscriptionClick(f,b));
    b.dataset.feedUrl=f.url;b.dataset.publisherDomain=domain;b.dataset.directoryStatus=state;
-   b.disabled=followed||excludedURL(domain)||state==='unavailable';
+   b.disabled=!followed&&excludedURL(domain);
    const exclude=excludeButton(domain);row.append(info,b);if(exclude)row.append(exclude);root.append(row);
   });
   syncFollowButtons();
-  status.textContent=availableCount+' available · '+unavailableCount+' unavailable · '+unverifiedCount+' not verified. Only confirmed feeds are shown as available; temporary failures may be retried with Try Subscribe.';
+  if(!root.childElementCount){status.textContent='No usable feeds found for “'+q+'”. '+hiddenCount+' unavailable directory entries hidden. Try another search or Add a website below.';return}
+  status.textContent=(availableCount+unverifiedCount+subscribedCount)+' feeds displayed · '+hiddenCount+' unavailable feeds hidden. '+subscribedCount+' subscribed · '+availableCount+' available · '+unverifiedCount+' not verified.';
  }catch(err){if(seq===searchSeq)status.textContent='Search failed: '+err.message+' Previous results remain visible; try again shortly.'}
  finally{searchInFlight=false;el('catalog-submit').disabled=false}
 }
@@ -273,8 +275,9 @@ function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEac
  const following=feeds.some(f=>f.url===b.dataset.feedUrl);
  const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);
  const state=b.dataset.directoryStatus;
- b.textContent=following?'Subscribed':b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
- b.disabled=following||excludedURL(domain)||(state==='unavailable'&&!b.dataset.subscribeError);
+ const catalog=b.closest('#catalog-list')!==null;
+ b.textContent=following?(catalog?'Unsubscribe':'Subscribed'):b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
+ b.disabled=following?!catalog:excludedURL(domain)||state==='unavailable';
  if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title');
 })}
 // Only the last successful, explicit Read All Articles refresh may be exported.
@@ -703,6 +706,25 @@ function showSubscriptionFailure(trigger,f){
  const retry=button('Retry',()=>{finish();delete trigger.dataset.subscribeError;add(f,trigger)});
  actions.append(close,retry);dialog.append(heading,endpoint,detail,note,actions);shade.append(dialog);document.body.append(shade);
  document.addEventListener('keydown',onKey);close.focus();
+}
+// Search buttons use the same persisted feed records as My Subscriptions.
+async function catalogSubscriptionClick(candidate,trigger){
+ const record=registry.find(r=>r.kind==='feed'&&r.url===candidate.url);
+ if(!record){subscribeClick({name:candidate.name,category:'Other',url:candidate.url},trigger);return}
+ if(!await confirmSubscriptionRemoval(record.name))return;
+ if(!unsubscribeRecord(record.id))return;
+ delete trigger.dataset.subscribeError;
+ if(selectedSource===candidate.url||activeReadingSelection===candidate.url){
+  ++refreshSequence;
+  activeReadingSelection=null;selectedSource='';
+  localStorage.removeItem(readingSelectionKey);scheduleAccountSave();
+  el('read-source').value='';
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
+  el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
+ }
+ renderManager();renderReading();
+ if(activeReadingSelection!==null)refresh();
+ message('Unsubscribed from '+record.name+'.');
 }
 function subscribeClick(f,trigger){
  if(trigger&&trigger.dataset.subscribeError){showSubscriptionFailure(trigger,f);return}
