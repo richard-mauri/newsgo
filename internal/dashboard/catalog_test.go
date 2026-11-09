@@ -28,7 +28,7 @@ func TestUXNavigationAndSubscriptionManagement(t *testing.T) {
 			t.Fatalf("missing navigation element %s", s)
 		}
 	}
-	for _, s := range []string{`showView('news')`, `showView('subscriptions')`, `syncFollowButtons()`, `textContent='Checking…'`, `following?'Subscribed':b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe'`, `textContent='('+total+')'`} {
+	for _, s := range []string{`showView('news')`, `showView('subscriptions')`, `syncFollowButtons()`, `textContent='Checking…'`, `following?(catalog?'Unsubscribe':'Subscribed'):b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe'`, `textContent='('+total+')'`} {
 		if !strings.Contains(personalJS, s) {
 			t.Fatalf("missing subscription interaction %s", s)
 		}
