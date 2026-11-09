@@ -21,6 +21,10 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   "Homepage session expired",
   "deadlineCheckPending=true",
   "checkHomepageSession().finally",
+  "location.replace(homepageOrigin+'/launch/newsgo')",
+  "sessionStorage.setItem(suiteLocalKey,'1')",
+  "sessionStorage.removeItem(suiteLocalKey)",
+  "if(!suiteHandoff && !explicitBrowserOnly)",
  } {
   if !strings.Contains(personalJS,snippet){t.Errorf("missing Homepage handoff/expiry behavior: %s",snippet)}
  }
