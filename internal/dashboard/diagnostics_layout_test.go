@@ -19,6 +19,10 @@ func TestDiagnosticsOwnsFilteredAuditAndExcludedDomains(t *testing.T) {
 	}
 	panel := html[diagnostics:diagnosticsEnd]
 	for _, id := range []string{
+		`<details id="latest-read-panel" class="personal-panel"><summary><strong>Latest read</strong></summary>`,
+		`id="diagnostics-summary"`,
+		`id="diagnostics-timing"`,
+		`id="diagnostics-note"`,
 		`<details id="exclusions-panel"`,
 		`<summary><strong>Excluded Domains</strong> <span id="excluded-count">(0)</span></summary>`,
 		`id="filtered-articles-card"`,
@@ -31,6 +35,14 @@ func TestDiagnosticsOwnsFilteredAuditAndExcludedDomains(t *testing.T) {
 		if !strings.Contains(panel, id) {
 			t.Errorf("Diagnostics missing %s", id)
 		}
+	}
+	latestStart := strings.Index(panel, `<details id="latest-read-panel"`)
+	exclusionsStart := strings.Index(panel, `<details id="exclusions-panel"`)
+	if latestStart < 0 || exclusionsStart <= latestStart || !strings.Contains(panel[latestStart:exclusionsStart], `id="diagnostics-note"`) || !strings.Contains(panel[latestStart:exclusionsStart], `</details>`) {
+		t.Fatal("latest-read metrics and timing must be inside their own disclosure before other panels")
+	}
+	if strings.Contains(panel[:latestStart], `id="diagnostics-summary"`) {
+		t.Fatal("latest-read metrics rendered outside the disclosure")
 	}
 	if strings.Contains(panel, `id="manage-exclusions"`) || strings.Contains(panel, `id="close-exclusions"`) {
 		t.Fatal("obsolete Excluded Domains navigation controls remain")
