@@ -17,7 +17,7 @@ func TestSearchCandidateExclusionFeedback(t *testing.T) {
   "card.dataset.excluded=excluded?'true':'false'",
   "badge.textContent=statusLabel(domain)",
   "b.dataset.publisherDomain=domain;b.dataset.directoryStatus=state;",
-  "b.disabled=following||excludedURL(domain)||(state==='unavailable'&&!b.dataset.subscribeError)",
+  "b.disabled=following?!catalog:excludedURL(domain)||state==='unavailable'",
   "Allow this site before subscribing",
   "syncFollowButtons();",
   "function publisherScope(value){",
