@@ -31,15 +31,18 @@ func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
  }
 }
 
-func TestHomepageAccountHeaderShowsRemainingSession(t *testing.T) {
-	script := personalJS
-	if !strings.Contains(script, "'Signed in as '+homepageIdentity.user+' · Current session: '+sessionTimeRemaining(remaining)+' remaining") {
-		t.Fatal("account header must show the signed-in identity and live time remaining")
-	}
-	if !strings.Contains(script, "if(remaining===0 && homepageIdentity)") {
-		t.Fatal("session expiration enforcement must remain")
-	}
-	if !strings.Contains(script, "suiteRenewLink.addEventListener('click',renewSuiteSession)") {
-		t.Fatal("renewal must call the authenticated Homepage endpoint")
-	}
+func TestHomepageAccountHeaderDefersSessionManagement(t *testing.T) {
+ script := personalJS
+ if !strings.Contains(script,"'Signed in as '+homepageIdentity.user+' (Homepage)'") {
+  t.Fatal("NewsGo must show server-verified Homepage identity")
+ }
+ if !strings.Contains(script,"suiteExpiresAt>Date.now()") ||
+    !strings.Contains(script,"checkHomepageSession().finally") {
+  t.Fatal("NewsGo must revalidate expired cached handoffs against Homepage")
+ }
+ if strings.Contains(script,"sessionTimeRemaining(") ||
+    strings.Contains(script,"renewSuiteSession") ||
+    strings.Contains(script,"suiteRenewLink") {
+  t.Fatal("NewsGo must not provide its own countdown or Renew control")
+ }
 }
