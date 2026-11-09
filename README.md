@@ -3,7 +3,7 @@
 NewsGo is a Go web service with a Safari-friendly dashboard for following RSS/Atom/JSON news feeds. It shows selected subscriptions and links articles to ScraperGo for clean reading. NewsGo does not replace ScraperGo's article extraction.
 
 ## Using the dashboard
-Open `http://127.0.0.1:8084/` on the Mac running NewsGo, or use the separately configured NewsGo public hostname. Use **Find Subscriptions** to discover or add feeds, **My Subscriptions** to select a source or all sources, **Reading Preferences** to choose maximum article age, and **Diagnostics → Excluded Domains** to manage publisher and article-destination exclusions. A selection starts fetching headlines; initial landing does not fetch every subscription automatically.
+Open `http://127.0.0.1:8084/` on the Mac running NewsGo, or use the separately configured NewsGo public hostname. Use **Find Subscriptions** to discover or add feeds, **My Subscriptions** to select a source or all sources, **Reading Preferences** to choose maximum article age, and **Diagnostics → Excluded Domains** (expandable panel) to manage publisher and article-destination exclusions. A selection starts fetching headlines; initial landing does not fetch every subscription automatically.
 
 NewsGo shows only articles classified `article` by ScraperGo. Within **Diagnostics**, the collapsed **Filtered / unprocessed articles** section lists rejected or out-of-range entries and entries beyond the per-feed processing cap. The main briefing shows only lead stories and latest headlines, without filtering controls. Selecting an article opens the ScraperGo reader; original links open the publisher.
 
