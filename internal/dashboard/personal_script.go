@@ -617,13 +617,12 @@ function renderManager(){
 function showView(view){
  el('personal-panel').classList.toggle('personal-hidden',view!=='discover');
  el('subscriptions-panel').classList.toggle('personal-hidden',view!=='subscriptions');
- el('exclusions-panel').classList.toggle('personal-hidden',view!=='exclusions');
  el('news-content').classList.toggle('personal-hidden',view!=='news');
  el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
  el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
  el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics');
  el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -771,8 +770,6 @@ el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0
    renderManager();refresh();message('Subscriptions imported'+(importedExclusions!==null?' with exclusions':' (existing exclusions preserved)')+'.')}catch(err){message('Import failed: '+err.message)}e.target.value=''});
 el('exclude-add').addEventListener('click',()=>{excludeDomain(el('exclude-domain').value);el('exclude-domain').value=''});
 el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();el('exclude-add').click()}});
-el('manage-exclusions').addEventListener('click',()=>{renderExclusionManager();showView('exclusions')});
-el('close-exclusions').addEventListener('click',()=>showView('news'));
 
 // Homepage is the sole NewsGo identity and profile storage provider.
 const homepageOrigin='https://home.themauris.org';

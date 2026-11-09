@@ -14,7 +14,7 @@ func TestExcludedManagerNamesSitesAndPreservesDomainCountV36(t *testing.T) {
         "const domains=effectiveExcludedDomains().sort()", 
         "row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)))", 
         "el('excluded-count').textContent='('+domains.length+')'", 
-        "()=>{renderExclusionManager();showView('exclusions')}",
+        "function renderExclusionManager()",
     } {
         if !strings.Contains(personalJS, token) { t.Errorf("missing exclusion manager contract %q", token) }
     }
