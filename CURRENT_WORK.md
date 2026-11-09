@@ -1,14 +1,24 @@
 # Current work — NewsGo
 
-## Active draft — remove headline exclusion buttons (Issue #74, November 9, 2026)
+## Active draft — declutter the main briefing (Issue #76, November 9, 2026)
 
-- **Issue:** [#74](https://github.com/richard-mauri/newsgo/issues/74); branch `fix/74-remove-headline-exclusion-buttons`; draft [PR #75](https://github.com/richard-mauri/newsgo/pull/75) against authoritative merged `main` (base `6fff6daa8b555118a74db61a0c85db8eb66943e5`).
-- **Change:** Remove both `Exclude This Domain` and `Exclude articles from <domain>` action buttons from all article headline cards (Lead Stories and Latest Headlines). Article links, original publisher links, dates and thumbnails remain. Existing exclusion controls in My Subscriptions, Find Subscriptions and Excluded Domains remain available, with the same confirmation, saved exclusions and profile sync.
-- **Regression:** `internal/dashboard/headline_exclusion_controls_test.go` protects against reintroduction of the two headline controls and checks the subscription exclusion handlers remain. GitHub Actions Go test/build run 42631892006 passed on code head `27057c0678308280eab03697af11b58e7629346e`. Final documentation commit CI and owner Mac/Safari runtime acceptance are pending.
-- **Owner Mac acceptance:** `cd ~/projects/newsgo`, `git fetch origin`, `git checkout fix/74-remove-headline-exclusion-buttons`, `git pull --ff-only origin fix/74-remove-headline-exclusion-buttons`, `go test -count=1 ./...`, `./devbuild.sh`, `./newsgo.sh`. In Safari open All Subscriptions, read Lead Stories and Latest Headlines, verify neither contains an Exclude button, then use My Subscriptions to exclude a domain and verify confirmation and that the Excluded Domains panel still permits allowing it. Verify subscription selections and preferences survive a refresh.
-- **Merge boundary:** Draft PR #75. Do not merge, tag, release or modify `main` without explicit owner approval.
+- **Issue:** [#76](https://github.com/richard-mauri/newsgo/issues/76); branch `fix/76-diagnostics-declutter`; draft [PR #77](https://github.com/richard-mauri/newsgo/pull/77) targets merged `main` baseline `776677d1c184ea7f2fd26626f69e7163a83c5c06`.
+- **Scope:** Move the existing `Filtered / unprocessed articles` details audit from the reading page to Diagnostics, and move the `Excluded Domains` button out of the main navigation into Diagnostics. The existing exclusion manager is nested within Diagnostics; Close returns to Diagnostics. The filtered tabs, per-feed filtering advice and unsubscribe confirmation, saved exclusions, confirmation dialogs, Homepage profile sync, reading selection, and raw feed diagnostics remain.
+- **Tests:** Added `internal/dashboard/diagnostics_layout_test.go` to verify layout and navigation contracts. GitHub Actions Go test/build on final PR head and owner Mac/Safari UI acceptance are pending.
+- **Owner Mac/Safari acceptance:** Run the commands below, then load an All Subscriptions briefing and a selected subscription in Safari. Confirm the main page shows no filtered audit panel and the top navigation has no Excluded Domains button. In Diagnostics confirm filtered groups/counts/selection-specific recommendation remain functional. Open Excluded Domains, exclude/allow a domain (including affected-subscription confirmation), and verify Close returns to Diagnostics. Verify raw feed viewer, diagnostics counters, preferences and Homepage account persistence remain intact.
+- **Merge boundary:** Do not merge, release, tag or alter `main` without owner approval.
+
+```bash
+cd ~/projects/newsgo
+git fetch origin
+git checkout fix/76-diagnostics-declutter
+git pull --ff-only origin fix/76-diagnostics-declutter
+go test -count=1 ./...
+./devbuild.sh
+./newsgo.sh
+```
 
 ## Other work (independent)
 
-- Issue #55 / PR #73 for subscription failure details was merged into `main` on November 9, 2026 (merge `6fff6daa8b555118a74db61a0c85db8eb66943e5`). It is no longer the active draft.
-- Issue #57 / [PR #69](https://github.com/richard-mauri/newsgo/pull/69) addresses Homepage session renewal and requires separately coordinated Homepage changes and acceptance.
+- Issue #74 / PR #75 was merged into `main` on November 9, 2026 (merge `776677d1c184ea7f2fd26626f69e7163a83c5c06`).
+- Issue #57 / [PR #69](https://github.com/richard-mauri/newsgo/pull/69) remains a separate Homepage session renewal effort.
