@@ -47,3 +47,23 @@ func TestPersonalArticleSourceSelection(t *testing.T) {
 		}
 	}
 }
+
+func TestCatalogHidesBrokenFeedsAndTogglesSubscriptions(t *testing.T) {
+ required := []string{
+  "if(state==='unavailable'&&!followed){hiddenCount++;return}",
+  "if(followed)subscribedCount++",
+  "catalogSubscriptionClick(f,b)",
+  "button(followed?'Unsubscribe'",
+  "const catalog=b.closest('#catalog-list')!==null;",
+  "following?(catalog?'Unsubscribe':'Subscribed')",
+  "if(!await confirmSubscriptionRemoval(record.name))return;",
+  "if(!unsubscribeRecord(record.id))return;",
+  "localStorage.removeItem(readingSelectionKey);scheduleAccountSave();",
+  "renderManager();renderReading();",
+  "unavailable feeds hidden",
+  "No usable feeds found",
+ }
+ for _,fragment := range required {
+  if !strings.Contains(personalJS,fragment) {t.Errorf("missing filtered search/unsubscribe contract: %q",fragment)}
+ }
+}
