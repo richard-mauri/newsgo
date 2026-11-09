@@ -777,6 +777,8 @@ const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
+const suiteLocalKey='newsgo.homepage.local.v1';
+let explicitBrowserOnly=false;
 function readSuiteHandoff(){
  const fragment=new URLSearchParams(location.hash.slice(1));
  const delivered=fragment.get('suite_token');
@@ -784,15 +786,21 @@ function readSuiteHandoff(){
  if(delivered!==null || browserOnly){
   history.replaceState(null,'',location.pathname+location.search);
   if(browserOnly){
-   // Explicit signed-out launch: do not reuse an older Safari tab bearer.
-   try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   // Homepage explicitly said there is no live account. Keep browser-only
+   // mode sticky in this tab to avoid a redirect loop on refresh.
+   explicitBrowserOnly=true;
+   try{sessionStorage.removeItem(suiteHandoffKey);sessionStorage.setItem(suiteLocalKey,'1')}catch(_){}
   }else if(/^[a-f0-9]{64}$/.test(delivered)){
-   try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
+   // A fresh Homepage-issued handoff supersedes a previous local-only state.
+   try{sessionStorage.setItem(suiteHandoffKey,delivered);sessionStorage.removeItem(suiteLocalKey)}catch(_){}
   }else {
    try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
   }
  }
- try{suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||''}catch(_){suiteHandoff=''}
+ try{
+  suiteHandoff=sessionStorage.getItem(suiteHandoffKey)||'';
+  explicitBrowserOnly=explicitBrowserOnly||sessionStorage.getItem(suiteLocalKey)==='1';
+ }catch(_){suiteHandoff=''}
  if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
 }
 readSuiteHandoff();
@@ -851,8 +859,19 @@ async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
  initSuiteAccountHeader();
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
- if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org' || !suiteHandoff){
+ if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
+ }
+ if(!suiteHandoff && !explicitBrowserOnly){
+  // Only Homepage can read its persistent host-only session cookie. A single
+  // top-level navigation lets it issue a new parent-bound handoff (or return
+  // #suite_mode=local if the login has expired/revoked). No credentials are
+  // exposed to NewsGo and no browser storage grants independent sign-in.
+  location.replace(homepageOrigin+'/launch/newsgo');
+  return;
+ }
+ if(!suiteHandoff){
+  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
  }
  try{
   const verifiedToken=suiteHandoff;
