@@ -623,7 +623,7 @@ function showView(view){
  el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
  el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics'&&view!=='exclusions');
  el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value||(value==='diagnostics'&&view==='exclusions')));
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-exclusions','exclusions'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value||(value==='diagnostics'&&view==='exclusions'))));
 }
 let refreshSequence=0;
 async function refresh(){
