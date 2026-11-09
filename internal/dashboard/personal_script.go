@@ -567,7 +567,7 @@ function renderPersonalArticles(){
   const sub=document.createElement('div');sub.className='story-meta';sub.textContent=a.date+'  ';
   if(a.dateWarning){const warning=document.createElement('span');warning.className='date-warning';warning.textContent=' ⚠ '+a.dateWarning;warning.title='Original feed date shown. Article age could not be determined.';sub.append(warning);}
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
-  sub.append(original);body.append(meta,title,sub);const exclude=excludeButton(a.url);if(exclude)body.append(exclude);const ad=articleDomain(a.url);if(ad){body.append(button('Exclude articles from '+ad,()=>toggleArticleDomain(ad),'exclude-article-domain'))}
+  sub.append(original);body.append(meta,title,sub)
   if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
    const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';img.src=a.image;
    const imageStart=performance.now();
