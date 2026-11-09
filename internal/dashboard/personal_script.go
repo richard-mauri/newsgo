@@ -723,6 +723,8 @@ async function catalogSubscriptionClick(candidate,trigger){
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
  }
  renderManager();renderReading();
+ // A now-unsubscribed, verified-broken candidate no longer belongs in search.
+ if(trigger.dataset.directoryStatus==='unavailable')trigger.closest('.catalog-card')?.remove();
  if(activeReadingSelection!==null)refresh();
  message('Unsubscribed from '+record.name+'.');
 }
