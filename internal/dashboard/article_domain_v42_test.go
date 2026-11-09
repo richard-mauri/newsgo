@@ -12,7 +12,7 @@ func TestArticleDomainExclusionPipelineV42(t *testing.T) {
 		"sources.has(a.source)&&!articleExcluded(a.url)", 
 		"excludedArticleDomains:articleDomains",
 		"function saveArticleExclusions(next)",
-		"Exclude articles from ",
+		"function toggleArticleDomain(value){toggleDomain(value)}",
 		"articleDomains=[...new Set(data.excludedArticleDomains||[])]",
 	} {
 		if !strings.Contains(personalJS, want) {
