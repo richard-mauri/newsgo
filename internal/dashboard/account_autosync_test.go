@@ -33,6 +33,8 @@ func TestNewsGoAutomaticAccountPreferences(t *testing.T) {
 		"response.status===409",
 		"accountOwner!==homepageIdentity.user",
 		"newsgo.account.last-owner.v1",
+		"homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token",
+		"accountStatus('Account preferences could not load:",
 	} {
 		if !strings.Contains(personalJS, required) {
 			t.Errorf("missing automatic account persistence invariant: %q", required)
