@@ -1,23 +1,25 @@
 # Current work — NewsGo
 
-## Issue #83 — grouped filtered audit domain exclusion (November 10, 2026)
+## Issue #85 — diagnose repeated cache misses (November 10, 2026)
 
-- **Merged baseline:** GitHub `main` at `a005d76644ad107fd51317b839363271c297d2de` (Account Sync cleanup PR #82 merged). New issue [#83](https://github.com/richard-mauri/newsgo/issues/83); branch `feat/83-filtered-domain-exclusion`.
-- **Request:** Diagnostics screenshot shows Unknown (75) filtered articles apparently from one Investor's Business Daily feed. Determine normalized publisher domain from article URLs and offer a single domain-level Exclude control instead of one per article.
-- **Implementation:** Each classification tab groups entries by `publisherScope(article.url)`, displays domain and count, and offers a single Exclude domain button per non-excluded, valid domain. It reuses `setUnifiedDomain` with the existing confirmation, local/account exclusion persistence and refresh. No automatic exclusion, altered classifier decisions, shortened per-item audit, or admin diagnostics changes. Invalid domains get no exclusion action.
-- **Validation:** Added grouped audit Go contract tests, JavaScript syntax checked. GitHub CI exact head pending; Mac/Safari/live classification and account persistence acceptance unverified.
-- **Authorization:** Owner requested feature development, not merge, restart, release, or Cloudflare change. A focused draft PR will target main.
+- **Merged baseline:** `main` at `83ca5081ca5f50e6651fc36cb84fe1048f0947b8`; Issue #83 / PR #84 merged and closed. New [Issue #85](https://github.com/richard-mauri/newsgo/issues/85), branch `fix/85-classification-cache-diagnostics`.
+- **Observed:** Repeated Safari reloads show 302 hits and 75 misses (80% hit rate) for 377 classifications with a 720-minute TTL; a prior screenshot showed 75 unknown article classifications. This suggests noncacheable outcomes, but exact per-URL match has not been confirmed.
+- **Implementation:** Distinguish absent versus expired misses, explicit unknown versus unavailable returned classifications, and upstream/protocol failures in per-feed stats and Diagnostics. Preserve deliberate no-cache behavior for ambiguous/unavailable/failure outcomes; do not relax safety or add speculative negative caching.
+- **Tests:** Added repeat-outcome and expired-entry regression tests. Latest exact-head GitHub CI to be verified. Mac/Safari/ScraperGo live acceptance remains unverified; no release or runtime restart authorized.
+- **Merge boundary:** Draft PR only; owner approval required for merge. No modifications to `main`, other apps, data, settings or Cloudflare configuration.
 
-## Owner Mac acceptance
+## Mac verification
+
 ```sh
 cd ~/projects/newsgo
 git status --short --branch
 git fetch origin
-git checkout feat/83-filtered-domain-exclusion
-git pull --ff-only origin feat/83-filtered-domain-exclusion
+git checkout fix/85-classification-cache-diagnostics
+git pull --ff-only origin fix/85-classification-cache-diagnostics
 go test -count=1 ./...
 ./devbuild.sh
+# Restart only after separate owner approval:
 ./newsgo.sh
 ```
 
-Restart only with owner approval. In Safari, visit Diagnostics → Filtered / unprocessed articles, select Unknown and verify that many entries sharing one domain produce one Exclude control; confirm cancellation leaves data intact and confirmation removes matching feed subscriptions only with the existing warning. Validate unknown URL handling, per-item admin diagnostics, local and authenticated account exclusion persistence, and unaffected classification counts.
+In Safari, repeat an All subscriptions read and reload; verify cache hits/misses and cold/expired breakdown add up, determine how many repeated misses are unknown, unavailable or upstream failures, confirm classification and filtered counts unchanged, then validate cache behavior after a deliberate service restart.
