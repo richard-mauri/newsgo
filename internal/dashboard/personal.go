@@ -21,6 +21,7 @@ type personalRequest struct {
  MaxArticleAgeDays int `json:"maxArticleAgeDays,omitempty"`
  RSSMetadataOnly bool `json:"rssMetadataOnly,omitempty"`
  UseClassificationCache *bool `json:"useClassificationCache,omitempty"`
+ ExcludedDomains []string `json:"excludedDomains,omitempty"`
 }
 type personalResult struct {
 	Source   feeds.Source      `json:"source"`
@@ -199,7 +200,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	var req personalRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Feeds) > 8 || !validArticleAgeDays(req.MaxArticleAgeDays) {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Feeds) > 8 || !validArticleAgeDays(req.MaxArticleAgeDays) || !validPersonalExcludedDomains(req.ExcludedDomains) {
 		http.Error(w, "Expected up to 8 feeds", 400)
 		return
 	}
@@ -229,7 +230,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    // RSS metadata-only controls presentation, not article eligibility.
    // Both reading modes require ScraperGo-confirmed articles.
    var cacheStats classificationCacheStats
-   decisions = classifyFeedArticlesWithAgeStats(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache, &cacheStats)
+   decisions = classifyFeedArticlesWithExclusionsStats(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache, req.ExcludedDomains, &cacheStats)
    res.ClassificationCacheHits=cacheStats.hits.Load()
    res.ClassificationCacheMisses=cacheStats.misses.Load()
    res.ClassificationCacheBypasses=cacheStats.bypasses.Load()
@@ -325,7 +326,34 @@ func classifyFeedArticlesWithAgeCache(ctx context.Context, reader string, articl
  return classifyFeedArticlesWithAgeStats(ctx,reader,articles,days,useCache,nil)
 }
 type classificationCacheStats struct {hits,misses,bypasses,disabled,cold,expired,unknown,unavailable,failures atomic.Int64}
+
+// Exclusions originate in the browser's local or Homepage-hydrated profile.
+// Validate them before use; no user-supplied domain is used for network access.
+func validPersonalExcludedDomains(domains []string) bool {
+ if len(domains)>128 {return false}
+ for _,domain:=range domains {
+  if len(domain)==0||len(domain)>253||strings.ToLower(domain)!=domain||strings.ContainsAny(domain,"/:@?#%\\ ")||strings.HasPrefix(domain,".")||strings.HasSuffix(domain,".")||!strings.Contains(domain,".") {return false}
+  for _,label:=range strings.Split(domain,".") {
+   if len(label)==0||len(label)>63||label[0]=='-'||label[len(label)-1]=='-' {return false}
+   for _,c:=range label {if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-') {return false}}
+  }
+ }
+ return true
+}
+func excludedArticleURL(raw string, excluded []string) bool {
+ u,err:=url.Parse(raw)
+ if err!=nil||(u.Scheme!="https"&&u.Scheme!="http")||u.User!=nil {return false}
+ host:=strings.TrimSuffix(strings.ToLower(u.Hostname()),".")
+ host=strings.TrimPrefix(host,"www.")
+ for _,domain:=range excluded {
+  if host==domain||strings.HasSuffix(host,"."+domain) {return true}
+ }
+ return false
+}
 func classifyFeedArticlesWithAgeStats(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool, stats *classificationCacheStats) []string {
+ return classifyFeedArticlesWithExclusionsStats(ctx,reader,articles,days,useCache,nil,stats)
+}
+func classifyFeedArticlesWithExclusionsStats(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool, exclusions []string, stats *classificationCacheStats) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
@@ -333,6 +361,12 @@ func classifyFeedArticlesWithAgeStats(ctx context.Context, reader string, articl
 		if i >= currentArticleSettings().MaxArticlesPerFeed {
 			break
 		}
+        // Exclusion must precede age handling and every classification/cache
+        // lookup. A skipped article is reported but never sent to ScraperGo.
+        if excludedArticleURL(a.URL,exclusions) {
+            out[i]="publisher exclusion"
+            continue
+        }
 		if articleTooOld(a.Published, days, time.Now()) {
 			out[i] = "too-old"
 			continue
