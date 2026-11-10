@@ -2,10 +2,10 @@
 
 ## Issue #85 — diagnose repeated cache misses (November 10, 2026)
 
-- **Merged baseline:** `main` at `83ca5081ca5f50e6651fc36cb84fe1048f0947b8`; Issue #83 / PR #84 merged and closed. New [Issue #85](https://github.com/richard-mauri/newsgo/issues/85), branch `fix/85-classification-cache-diagnostics`.
+- **Merged baseline:** `main` at `83ca5081ca5f50e6651fc36cb84fe1048f0947b8`; Issue #83 / PR #84 merged and closed. New [Issue #85](https://github.com/richard-mauri/newsgo/issues/85), branch `fix/85-classification-cache-diagnostics`, draft [PR #86](https://github.com/richard-mauri/newsgo/pull/86).
 - **Observed:** Repeated Safari reloads show 302 hits and 75 misses (80% hit rate) for 377 classifications with a 720-minute TTL; a prior screenshot showed 75 unknown article classifications. This suggests noncacheable outcomes, but exact per-URL match has not been confirmed.
 - **Implementation:** Distinguish absent versus expired misses, explicit unknown versus unavailable returned classifications, and upstream/protocol failures in per-feed stats and Diagnostics. Preserve deliberate no-cache behavior for ambiguous/unavailable/failure outcomes; do not relax safety or add speculative negative caching.
-- **Tests:** Added repeat-outcome and expired-entry regression tests. Latest exact-head GitHub CI to be verified. Mac/Safari/ScraperGo live acceptance remains unverified; no release or runtime restart authorized.
+- **Tests:** Added repeat-outcome and expired-entry regression tests. Go test and build passed on implementation head `6b040682444980eb9752151fdc07aa3fa73d0c2e` (GitHub Actions run 42866569601); reverify CI for this documentation update. Mac/Safari/ScraperGo live acceptance remains unverified; no release or runtime restart authorized.
 - **Merge boundary:** Draft PR only; owner approval required for merge. No modifications to `main`, other apps, data, settings or Cloudflare configuration.
 
 ## Mac verification
