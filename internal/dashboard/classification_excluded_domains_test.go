@@ -5,6 +5,7 @@ import (
  "net/http"
  "net/http/httptest"
  "sync/atomic"
+ "strings"
  "testing"
 
  "github.com/richard-mauri/newsgo/internal/feeds"
@@ -54,5 +55,14 @@ func TestPersonalDomainExclusionHostBoundary(t *testing.T){
  }
  for _,raw:=range []string{"https://notinvestors.com/story","https://investors.com.evil.org/story","https://example.org/story"} {
   if excludedArticleURL(raw,[]string{"investors.com"}){t.Fatalf("unrelated hostname incorrectly excluded: %s",raw)}
+ }
+}
+
+func TestPersonalReaderSendsExcludedDomainsBeforeClassification(t *testing.T) {
+ if !strings.Contains(personalJS, "excludedDomains:effectiveExcludedDomains()") {
+  t.Fatal("NewsGo browser must send its normalized exclusion list to /api/personal")
+ }
+ if !strings.Contains(personalJS, "const res=await fetch('/api/personal'") {
+  t.Fatal("missing bounded personal feed read request")
  }
 }
