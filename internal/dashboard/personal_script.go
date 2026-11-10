@@ -777,6 +777,9 @@ const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
+// The local-mode fragment suppresses recovery for this visit only. A later
+// direct visit must recheck Homepage, which may have gained a valid login.
+let explicitBrowserOnly=false;
 function readSuiteHandoff(){
  const fragment=new URLSearchParams(location.hash.slice(1));
  const delivered=fragment.get('suite_token');
@@ -784,7 +787,9 @@ function readSuiteHandoff(){
  if(delivered!==null || browserOnly){
   history.replaceState(null,'',location.pathname+location.search);
   if(browserOnly){
-   // Explicit signed-out launch: do not reuse an older Safari tab bearer.
+   // Homepage explicitly said there is no live account. Suppress redirect
+   // during this page visit, preserving browser-local subscriptions.
+   explicitBrowserOnly=true;
    try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
   }else if(/^[a-f0-9]{64}$/.test(delivered)){
    try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
@@ -802,84 +807,14 @@ function mayAdminister(){return homepageAdminActive()}
 function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{}}
 let suiteExpiresAt=0;
 let suiteAccountLine=null;
-let suiteRenewLink=null;
-let suiteRenewStatus=null;
-function sessionRenewFeedback(text,failed=false){
- if(!suiteRenewStatus)return;
- suiteRenewStatus.textContent=text;
- suiteRenewStatus.hidden=!text;
- suiteRenewStatus.style.color=failed?'var(--text)':'var(--accent)';
-}
-function sessionTimeRemaining(seconds){
- const hours=Math.floor(seconds/3600),minutes=Math.floor((seconds%3600)/60),secs=seconds%60;
- return String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+':'+String(secs).padStart(2,'0');
-}
-function showSuiteCountdown(){
+// Homepage alone owns countdown and renewal. NewsGo holds only a short-lived
+// parent-bound handoff and asks Homepage whether it remains authorized.
+function showSuiteSessionStatus(){
  if(!suiteAccountLine)return;
- const remaining=Math.max(0,Math.ceil((suiteExpiresAt-Date.now())/1000));
- if(remaining===0 && homepageIdentity){
-  homepageIdentity=null;accountSessionState();
-  suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
- }
  if(homepageIdentity){
-  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' · Current session: '+sessionTimeRemaining(remaining)+' remaining';
+  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' (Homepage)';
  }else{
-  suiteAccountLine.textContent=suiteExpiresAt>0&&remaining===0?'Current session expired':'Not signed in';
- }
- if(suiteRenewLink){
-  suiteRenewLink.hidden=!(homepageIdentity&&suiteExpiresAt>Date.now());
- }
-}
-// The parent Homepage login is extended on the server only after validation
-// of this still-live, parent-bound NewsGo handoff. Never retain personal tokens.
-let suiteRenewPending=false;
-async function renewSuiteSession(){
- if(suiteRenewPending)return;
- if(!suiteHandoff||!homepageIdentity||suiteExpiresAt<=Date.now()){
-  sessionRenewFeedback('Session expired. Sign in through Homepage and relaunch NewsGo.',true);
-  return;
- }
- suiteRenewPending=true;
- // The countdown is the only success indicator. Keep the caption stable and
- // remove any previous error before another attempt.
- sessionRenewFeedback('');
- const previousToken=suiteHandoff;
- try{
-  const response=await fetch(homepageOrigin+'/api/handoff/extend-session',{
-   method:'POST',credentials:'omit',cache:'no-store',
-   headers:{Authorization:'Bearer '+previousToken}
-  });
-  if(response.status===401){
-   suiteExpiresAt=0;
-   suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
-   homepageIdentity=null;accountSessionState();showSuiteCountdown();
-   sessionRenewFeedback('Session expired or revoked. Sign in through Homepage and relaunch NewsGo.',true);
-   return;
-  }
-  if(response.status===404){
-   sessionRenewFeedback('Homepage renewal endpoint unavailable (HTTP 404). Update and restart Homepage from PR #21.',true);
-   return;
-  }
-  if(!response.ok)throw Error('Homepage returned HTTP '+response.status);
-  const data=await response.json();
-  const expiry=Date.parse(data.expiresAt);
-  if(!/^[a-f0-9]{64}$/.test(data.token)||!Number.isFinite(expiry)||expiry<=Date.now()||
-     !homepageIdentity||data.user!==homepageIdentity.user||
-     (data.role!=='admin'&&data.role!=='user')){
-   throw Error('Invalid renewal response');
-  }
-  if(suiteHandoff!==previousToken)throw Error('Session changed during renewal');
-  sessionStorage.setItem(suiteHandoffKey,data.token);
-  suiteHandoff=data.token;
-  suiteExpiresAt=expiry;
-  homepageIdentity.role=data.role;
-  accountSessionState();
-  showSuiteCountdown();
-  sessionRenewFeedback('');
- }catch(e){
-  sessionRenewFeedback('Renewal failed: '+e.message+'. Existing session unchanged.',true);
- }finally{
-  suiteRenewPending=false;
+  suiteAccountLine.textContent=suiteExpiresAt>0&&suiteExpiresAt<=Date.now()?'Homepage session expired':'Not signed in';
  }
 }
 function initSuiteAccountHeader(){
@@ -888,23 +823,18 @@ function initSuiteAccountHeader(){
  container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
  suiteAccountLine=document.createElement('span');
  suiteAccountLine.setAttribute('aria-live','off');
- suiteRenewLink=document.createElement('button');
- suiteRenewLink.type='button';
- suiteRenewLink.textContent='Renew';
- suiteRenewLink.title='Extend this active Homepage session for 12 hours without signing in again';
- suiteRenewLink.setAttribute('aria-label','Renew current session');
- suiteRenewLink.className='suite-renew-button';
- suiteRenewLink.addEventListener('click',renewSuiteSession);
- suiteRenewStatus=document.createElement('span');
- suiteRenewStatus.id='suite-renew-status';
- suiteRenewStatus.setAttribute('role','status');
- suiteRenewStatus.setAttribute('aria-live','polite');
- suiteRenewStatus.hidden=true;
- container.append(suiteAccountLine,suiteRenewLink,suiteRenewStatus);
+ container.append(suiteAccountLine);
  homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
  homepageSessionStatus.hidden=true;
- showSuiteCountdown();
- setInterval(showSuiteCountdown,1000);
+ showSuiteSessionStatus();
+ // A parent may have been renewed in Homepage while NewsGo was open.
+ // Revalidate the child bearer at its cached deadline before discarding it.
+ let deadlineCheckPending=false;
+ setInterval(()=>{
+  if(!suiteHandoff||!homepageIdentity||suiteExpiresAt>Date.now()||deadlineCheckPending)return;
+  deadlineCheckPending=true;
+  void checkHomepageSession().finally(()=>{deadlineCheckPending=false;});
+ },1000);
 }
 function accountSessionState(){
  updateScraperTraceExportVisibility();
@@ -925,9 +855,20 @@ function accountSessionState(){
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
  initSuiteAccountHeader();
- const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteCountdown()};
- if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org' || !suiteHandoff){
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
+ if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
+ }
+ if(!suiteHandoff && !explicitBrowserOnly){
+  // Only Homepage can read its persistent host-only session cookie. A single
+  // top-level navigation lets it issue a new parent-bound handoff (or return
+  // #suite_mode=local if the login has expired/revoked). No credentials are
+  // exposed to NewsGo and no browser storage grants independent sign-in.
+  location.replace(homepageOrigin+'/launch/newsgo');
+  return;
+ }
+ if(!suiteHandoff){
+  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
  }
  try{
   const verifiedToken=suiteHandoff;
@@ -946,9 +887,9 @@ async function checkHomepageSession(){
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
-  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteCountdown();
+  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteSessionStatus();
  }catch(e){
-  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteCountdown();
+  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteSessionStatus();
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
