@@ -811,7 +811,7 @@ let suiteAccountLine=null;
 function showSuiteSessionStatus(){
  if(!suiteAccountLine)return;
  if(homepageIdentity){
-  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' (Homepage)';
+  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' (Homepage)'+(accountNotice?' · '+accountNotice:'');
  }else{
   suiteAccountLine.textContent=suiteExpiresAt>0&&suiteExpiresAt<=Date.now()?'Homepage session expired':'Not signed in';
  }
@@ -895,7 +895,8 @@ async function homepageReaderRecord(){
 // Account settings follow MauriStocks: local browser data first, explicit
 // load, and revision-checked saves after the user establishes an account copy.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
-const accountStatus=message=>{if(suiteAccountLine)suiteAccountLine.title=message||''};
+let accountNotice='';
+const accountStatus=message=>{accountNotice=message||'';if(suiteAccountLine){suiteAccountLine.title=accountNotice;showSuiteSessionStatus()}};
 function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
 async function accountSave(){
