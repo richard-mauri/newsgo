@@ -55,8 +55,8 @@ func TestClassificationCachePreferenceWiring(t *testing.T){
  }
  for _,needle:=range []string{
   "localStorage.getItem(classificationCachePreferenceKey)!=='false'",
-  "JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache})",
-  "JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache})",
+  "JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})",
+  "JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})",
   "useClassificationCache",
   "useClassificationCache,lastReadingSelection:",
   "data.useClassificationCache!==false",
