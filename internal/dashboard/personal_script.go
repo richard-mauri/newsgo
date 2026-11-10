@@ -618,11 +618,10 @@ function showView(view){
  el('personal-panel').classList.toggle('personal-hidden',view!=='discover');
  el('subscriptions-panel').classList.toggle('personal-hidden',view!=='subscriptions');
  el('news-content').classList.toggle('personal-hidden',view!=='news');
- el('sync-panel').classList.toggle('personal-hidden',view!=='sync');
  el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
  el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics');
  el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-sync','sync'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -838,18 +837,11 @@ function initSuiteAccountHeader(){
 }
 function accountSessionState(){
  updateScraperTraceExportVisibility();
- const available=!!homepageIdentity;
  updateAccountControls();
- const nav=el('manage-sync');if(nav)nav.hidden=!available;
- if(!available&& !el('sync-panel').classList.contains('personal-hidden'))showView('news');
- const save=el('account-save-button'),load=el('account-load-button');
- if(save)save.disabled=!available;
- if(load)load.disabled=!available;
- if(!available){
-  const saveButton=el('account-save-button');if(saveButton)saveButton.hidden=false;
+ if(!homepageIdentity){
   clearTimeout(accountTimer);accountTimer=null;
   accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
-  accountStatus('Sign in through Homepage to save or load account settings. Browser settings remain available.');
+  accountStatus('');
  }
 }
 async function checkHomepageSession(){
@@ -888,6 +880,7 @@ async function checkHomepageSession(){
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
   accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteSessionStatus();
+  void initializeHomepageAccount(profile.user,verifiedToken);
  }catch(e){
   homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteSessionStatus();
  }
@@ -902,7 +895,7 @@ async function homepageReaderRecord(){
 // Account settings follow MauriStocks: local browser data first, explicit
 // load, and revision-checked saves after the user establishes an account copy.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
-const accountStatus=message=>{const e=el('account-sync-status');if(e)e.textContent=message};
+const accountStatus=message=>{if(suiteAccountLine)suiteAccountLine.title=message||''};
 function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
 async function accountSave(){
@@ -924,58 +917,39 @@ function scheduleAccountSave(){
  if(!homepageIdentity||!accountReady||accountConflict)return;
  accountDirty=true;clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,650);
 }
-function confirmAccountChange(message){
- const dialog=el('homepage-confirm-dialog');
- if(!dialog||typeof dialog.showModal!=='function')return Promise.resolve(false);
- el('homepage-confirm-message').textContent=message;
- return new Promise(resolve=>{
-  dialog.returnValue='cancel';
-  dialog.addEventListener('close',()=>resolve(dialog.returnValue==='confirm'),{once:true});
-  dialog.showModal();
- });
-}
-async function accountLoad(){
- await checkHomepageSession();
- if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
- if(accountPending){accountStatus('An account save is in progress.');return}
+// Homepage account profile is loaded automatically after verified sign-in.
+// Never treat a failed GET as an empty account; do not overwrite on 409.
+let accountLoadingUser=null;
+async function initializeHomepageAccount(owner,token){
+ if(accountReady&&accountOwner===owner)return;
+ if(accountLoadingUser===owner)return;
+ accountLoadingUser=owner;
  try{
   const record=await homepageReaderRecord();
-  if(!record){accountStatus('No saved account settings yet. Use Save to account to create them.');return}
-  if(!validAccountData(record.data))throw Error('Saved account data invalid; browser unchanged.');
-  if(!await confirmAccountChange('Replace this browser’s NewsGo subscriptions and preferences with your Homepage account settings?'))return;
-  clearTimeout(accountTimer);
-  applyAccountPreferences({...record.data,revision:record.revision});
-  accountOwner=homepageIdentity.user;accountRevision=record.revision;accountReady=true;accountConflict=false;accountDirty=false;
-  accountStatus('Loaded Homepage settings. Future changes save automatically.');
-  const b=el('account-save-button');if(b)b.hidden=true;
- }catch(e){accountStatus(e.message)}
-}
-async function accountEstablish(){
- await checkHomepageSession();
- if(!homepageIdentity){accountStatus('Sign in through Homepage first.');return}
- try{
-  const existing=await homepageReaderRecord();
-  if(existing&&!validAccountData(existing.data))throw Error('Invalid account settings; cannot overwrite.');
-  if(!await confirmAccountChange(existing?'Replace your saved Homepage settings with this browser’s preferences?':'Save current browser preferences to your Homepage account?'))return;
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:existing?existing.revision:0,data:accountSnapshot()})});
-  if(response.status===409)throw Error('Account changed on another device. No data overwritten.');
-  if(!response.ok)throw Error('Account save failed (HTTP '+response.status+').');
-  const saved=await response.json();accountOwner=homepageIdentity.user;accountRevision=saved.revision;accountReady=true;accountConflict=false;accountDirty=false;
-  accountStatus('Saved to Homepage. Future changes save automatically.');
-  const b=el('account-save-button');if(b)b.hidden=true;
- }catch(e){accountStatus(e.message)}
-}
-function mountAccountActions(){
- const panel=el('sync-panel');if(!panel)return;
- const heading=panel.querySelector('.panel-heading');
- if(heading){const title=heading.querySelector('h2');if(title)title.textContent='Account Sync'}
- const explanation=document.createElement('p');explanation.className='homepage-sync-note';
- explanation.textContent='Your subscriptions and preferences stay in this browser. Once saved to Homepage, changes sync automatically.';
- const wrap=document.createElement('div');wrap.className='homepage-actions';
- const save=document.createElement('button');save.type='button';save.disabled=true;save.id='account-save-button';save.textContent='Save to account';save.addEventListener('click',accountEstablish);
- const load=document.createElement('button');load.type='button';load.disabled=true;load.id='account-load-button';load.textContent='Load from account';load.addEventListener('click',accountLoad);
- const status=document.createElement('p');status.id='account-sync-status';status.className='homepage-sync-note';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
- wrap.append(save,load);panel.append(explanation,wrap,status);
+  if(!homepageIdentity||homepageIdentity.user!==owner||suiteHandoff!==token)return;
+  if(record&&(!validAccountData(record.data)||!Number.isSafeInteger(record.revision)||record.revision<0))
+   throw Error('Invalid saved account settings; local preferences retained');
+  clearTimeout(accountTimer);accountTimer=null;
+  let prior='';
+  try{prior=localStorage.getItem('newsgo.account.last-owner.v1')||''}catch(_){}
+  if(record){
+   applyAccountPreferences(record.data);
+   accountRevision=record.revision;
+  }else{
+   // A new account must not inherit a different verified user's local data.
+   if(prior&&prior!==owner){
+    applyAccountPreferences({subscriptions:[],excludedDomains:[],excludedArticleDomains:[],maxArticleAgeDays:0,maximumLeadStories:3,leadOnlyAllSubscriptions:false,useClassificationCache:true,lastReadingSelection:''});
+   }
+   accountRevision=0;
+  }
+  accountOwner=owner;accountReady=true;accountConflict=false;accountDirty=false;
+  try{localStorage.setItem('newsgo.account.last-owner.v1',owner)}catch(_){}
+  accountStatus('');
+  if(!record)scheduleAccountSave();
+ }catch(e){
+  accountReady=false;
+  accountStatus('Account preferences could not load: '+e.message);
+ }finally{if(accountLoadingUser===owner)accountLoadingUser=null}
 }
 let adminRevision=0;
 function updateAccountControls(){
@@ -998,8 +972,6 @@ function applyAccountPreferences(data){
 
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
-el('manage-sync').addEventListener('click',()=>showView('sync'));
-el('close-sync').addEventListener('click',()=>showView('news'));
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
 // Add classification-cache TTL control alongside feed-cache settings.
 const feedCacheInput=document.getElementById('admin-feed-cache');
@@ -1084,7 +1056,6 @@ window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDef
 el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
 updateAccountControls();
 restoreReadingSelection(localStorage.getItem(readingSelectionKey));
-mountAccountActions();
 void checkHomepageSession();
 window.addEventListener('focus',()=>{void checkHomepageSession()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void checkHomepageSession()});
