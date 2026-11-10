@@ -903,15 +903,21 @@ async function accountSave(){
  await checkHomepageSession();
  if(!homepageIdentity||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
  accountPending=true;accountDirty=false;
+ const owner=accountOwner,token=suiteHandoff,revision=accountRevision;
  try{
   const data=accountSnapshot();
   if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision:accountRevision,data})});
-  if(response.status===409){accountConflict=true;throw Error('Account profile changed elsewhere; load account settings before saving again.')}
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision,data})});
+  // An older in-flight write must never update a newly signed-in user's
+  // revision or account status.
+  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
+  if(response.status===409){accountConflict=true;throw Error('Account settings changed elsewhere. Local changes were not saved; reload to use the latest account record.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
-  const result=await response.json();accountRevision=result.revision;
-  accountStatus('Saved to Homepage (revision '+accountRevision+').');
- }catch(e){accountDirty=true;accountStatus(e.message)}
+  const result=await response.json();
+  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
+  accountRevision=result.revision;
+  accountStatus('');
+ }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message)}}
  finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
 }
 function scheduleAccountSave(){
