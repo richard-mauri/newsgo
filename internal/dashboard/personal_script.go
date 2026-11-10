@@ -668,7 +668,7 @@ async function refresh(){
   for(let offset=0;offset<snapshot.length;offset+=8){
    const batch=snapshot.slice(offset,offset+8);
    const batchStart=performance.now();
-   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache})});
+   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})});
    if(sequence!==refreshSequence)return;
    if(!res.ok)throw new Error('HTTP '+res.status);
    data.push(...await res.json());batchDuration+=performance.now()-batchStart;
