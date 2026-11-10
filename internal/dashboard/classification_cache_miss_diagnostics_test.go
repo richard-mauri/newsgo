@@ -5,6 +5,7 @@ import (
  "net/http"
  "net/http/httptest"
  "testing"
+ "time"
 )
 
 func TestClassificationCacheRepeatedNoncacheableOutcomesAreExplained(t *testing.T) {
@@ -65,7 +66,7 @@ func TestClassificationCacheExpiredMissIsReported(t *testing.T) {
  key:=server.URL+"|"+normalizeClassificationURL(url)
  newsClassificationCache.Lock()
  entry:=newsClassificationCache.entries[key]
- entry.expiry=entry.expiry.Add(-24*60*60*1000000000)
+ entry.expiry=time.Now().Add(-time.Second)
  newsClassificationCache.entries[key]=entry
  newsClassificationCache.Unlock()
  if got:=newsClassifyWithCacheStats(context.Background(),server.URL,url,true,stats);got!="article"{t.Fatal(got)}
