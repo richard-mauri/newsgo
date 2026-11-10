@@ -892,8 +892,8 @@ async function homepageReaderRecord(){
  if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
  return response.json();
 }
-// Account settings follow MauriStocks: local browser data first, explicit
-// load, and revision-checked saves after the user establishes an account copy.
+// Homepage-verified NewsGo preferences hydrate automatically; local browser
+// settings remain available when signed out. Saves use revisioned writes.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
 let accountNotice='';
 const accountStatus=message=>{accountNotice=message||'';if(suiteAccountLine){suiteAccountLine.title=accountNotice;showSuiteSessionStatus()}};
