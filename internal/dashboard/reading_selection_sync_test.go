@@ -10,7 +10,7 @@ func TestReadingSelectionHomepageAccountContract(t *testing.T){
   "rememberReadingSelection(url)",
   "restoreReadingSelection(localStorage.getItem(readingSelectionKey))",
   "const restored=validReadingSelection(data.lastReadingSelection)",
-  "async function accountLoad()",
-  "async function accountEstablish()",
+  "async function initializeHomepageAccount(owner,token)",
+  "applyAccountPreferences(record.data)",
  }{if !strings.Contains(personalJS,needle){t.Errorf("missing Homepage reading-selection contract %q",needle)}}
 }
