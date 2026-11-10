@@ -76,3 +76,11 @@ After a completed read, open **Diagnostics → Raw feed responses** to inspect t
 ### Grouped filtered-article audit
 
 In Diagnostics → Filtered / unprocessed articles, each classification tab groups filtered article rows by their normalized publisher URL domain and shows a count per domain. A single **Exclude domain** control appears per non-excluded valid domain, rather than repeated controls for every article. Choosing it uses the existing exclusion workflow, including confirmation before removing affected subscriptions, saves the reader's exclusion settings, and refreshes the reading results. No domain is excluded based solely on high filtered counts; the individual article links and optional administrator fresh-classification diagnostics remain available. Unknown or invalid domains have no exclusion button.
+
+### Understanding classification cache misses
+
+Diagnostics → Latest read now separates **cold / absent** and **expired** classification-cache entries, and reports misses that ended in an **unknown** or **unavailable** classification or an **upstream/protocol failure**. Only successful `article`, `homepage` and `unreadable` results are cached. As a result, recurring unknown/unavailable classifications or transient upstream failures can keep the overall hit rate below 100%, even with unchanged feeds and a 720-minute cache TTL. The counters identify categories, not article URLs, and do not imply every miss is a defect. This diagnostic change does not negatively cache ambiguous results or alter classification eligibility.
+
+### Excluded domains bypass classification
+
+When a domain is excluded under Diagnostics → Excluded Domains, NewsGo passes its normalized browser/authorized Homepage preference exclusions to the server with the reading request. After fetching a feed, but **before** classifying each article with ScraperGo, the server marks matching publisher URLs as `publisher exclusion`. Those articles do not make classification requests and cannot generate cache misses. The filtered audit still lists them as excluded. Article host and subdomain matching is boundary-safe (excluding `investors.com` does not exclude `notinvestors.com`). The RSS feed itself may still be fetched; this feature avoids unnecessary *article classification* rather than automatically unsubscribing from a feed.
