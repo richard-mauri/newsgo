@@ -30,10 +30,10 @@ func TestArticleDomainExclusionPipelineV42(t *testing.T) {
 func TestArticleDomainExclusionsPersistWithHomepage(t *testing.T){
  for _,needle:=range []string{
   "excludedArticleDomains:articleDomains",
-  "async function accountLoad()",
-  "async function accountEstablish()",
+  "async function initializeHomepageAccount(owner,token)",
+  "applyAccountPreferences(record.data)",
   "async function accountSave()",
-  "revision:accountRevision",
+  "const owner=accountOwner,token=suiteHandoff,revision=accountRevision",
   "articleDomains=[...new Set(data.excludedArticleDomains||[])]",
  }{
   if !strings.Contains(personalJS,needle){t.Errorf("missing Homepage article exclusion persistence %q",needle)}

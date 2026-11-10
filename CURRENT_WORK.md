@@ -1,23 +1,25 @@
 # Current work — NewsGo
 
-## Active draft — Homepage-only session management (Issue #79, November 9, 2026)
+## Issue #81 / draft PR — seamless account preferences (November 10, 2026)
 
-- **Merged baseline:** GitHub `main` at `4971142157d0c75b31406355f7ee967baf34d10c` (PR #78 merged). Previous Issue #57 / PR #69 is already merged.
-- **Current scope:** [Issue #79](https://github.com/richard-mauri/newsgo/issues/79), `refactor/79-homepage-session-management`, draft [PR #80](https://github.com/richard-mauri/newsgo/pull/80). This removes NewsGo's redundant countdown, Renew button, and legacy cross-origin session extension calls, and fixes loss of the tab bearer after Safari/browser closure by delegating recovery to Homepage Issue #24, branch `fix/24-newsgo-session-recovery`. Homepage's merged Issue #22 is the single session authority.
-- **Preserved:** Homepage transfer bearer and `/api/session/profile` validation; explicit browser-only launch; admin-only server-side controls; per-user account storage, subscriptions, exclusions and local preferences. On a direct HTTPS NewsGo visit without a bearer, the app navigates once via Homepage `/launch/newsgo`: a valid parent gets a fresh bound handoff; a signed-out/expired parent returns `#suite_mode=local`, recognized for the current visit to prevent a redirect loop; later direct visits recheck Homepage. At cached handoff expiry NewsGo revalidates with Homepage before expiring a bearer that Homepage may already have extended.
-- **Other apps:** MauriStocks already consumes Homepage handoffs without a Renew button. SailingGo and ScraperGo are browser-only for account/session management. No edits to any of these repositories.
-- **Validation:** Go CI [run 42691825045](https://github.com/richard-mauri/newsgo/actions/runs/42691825045) passed at implementation head `6d3cc7ebeb8ed5d6945ab3aaffb3d5e5d38056c6` (Go tests and build); recheck after this final documentation status update. Mac/Safari and live cross-origin behavior remain owner-only and unverified.
-- **Owner acceptance:** After approving both Homepage #24 and NewsGo #80 candidate restarts, sign in to Homepage, launch NewsGo, then close Safari, restart NewsGo and open NewsGo directly. Confirm Homepage silently recovers the same parent login (not a new 12-hour session). Verify identity, account storage/admin role, and no local Renew/timer; navigate to Homepage Manage Tokens for Renew and Disconnect. Confirm invalid/expired Homepage login returns NewsGo in browser-only mode with intact local subscriptions, without loops.
-- **Merge boundary:** Draft PR only; no merges, releases, version changes, deployment, process restart or Cloudflare changes without owner authorization.
+- **Merged baseline:** GitHub `main` at `73223995943bd2c4c71745c77d588f74e7c1a366`; PR #80 (Homepage-only session management and direct-visit session recovery) is merged, Issue #79 closed. This candidate does not alter authentication authority, session lifecycle, admin authorization or other apps.
+- **New issue/branch:** [Issue #81](https://github.com/richard-mauri/newsgo/issues/81), branch `fix/81-seamless-account-preferences`, draft [PR #82](https://github.com/richard-mauri/newsgo/pull/82).
+- **Observed:** Account Sync tab still requires an explicit first Save or Load before NewsGo's automatic account writes begin. User requested removal and fully automatic behavior like SailingGo.
+- **Implementation:** Remove obsolete Account Sync nav/panel/manual handlers; after validated Homepage profile, GET the user-scoped existing record, validate and apply it, set revision and automatically save changes. If 404, initialize a user-scoped profile, but do not copy an earlier verified user's local preferences into a different user. Asynchronous PUT results are also guarded against writing an old account's revision into the next verified identity. On failed GET, do not perform a potentially destructive initial PUT. Retain conflict checking, browser-only fallback, admin permissions, subscription/exclusion/reading preference schema and per-user settings isolation.
+- **Validation:** New Go regression test checks absent manual UI and automatic hydration invariants. JavaScript syntax verified using a JS parser; latest-head GitHub CI pending final check. No local Mac, Safari, Cloudflare or subscription roundtrip testing performed remotely.
+- **Authorization:** Owner authorized removal/automation but not merge, release or restart. Retain Issue → dedicated branch → draft PR workflow. GitHub main remains unmodified pending approval.
 
-## Mac commands
+## Owner-side Mac validation
 
-```bash
+```sh
 cd ~/projects/newsgo
+git status --short --branch
 git fetch origin
-git checkout refactor/79-homepage-session-management
-git pull --ff-only origin refactor/79-homepage-session-management
+git checkout fix/81-seamless-account-preferences
+git pull --ff-only origin fix/81-seamless-account-preferences
 go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
+
+Do not restart until separately authorized. Test both authenticated and browser-only sessions, subscription add/remove, exclusion toggles, max article age/lead settings, account persistence after Safari restart and Homepage roundtrip, and second user isolation. Verify an expired/revoked Homepage bearer, unsupported record and 409 conflict never overwrite an account. Keep the previous Mac binary and settings data intact until accepted.
