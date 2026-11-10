@@ -520,7 +520,30 @@ function renderFilteredArticles(){
   tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();let next=event.key==='Home'?0:event.key==='End'?sorted.length-1:(index+(event.key==='ArrowRight'?1:-1)+sorted.length)%sorted.length;activate(next);views[next].tab.focus();});
   tabs.append(tab);panels.append(section);views.push({tab,panel:section});
   if(reason==='unprocessed'){for(const x of items){const p=document.createElement('p');p.textContent=x.source+': '+x.count+' additional feed entries not processed (per-feed cap)';section.append(p)}return;}
-  for(const a of items){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);
+  // Aggregate using normalized article URL hostnames rather than feed titles.
+  // Exclude is offered once per publisher domain within a classification tab.
+  const byDomain=new Map();
+  for(const article of items){
+   const domain=publisherScope(article.url);
+   if(!byDomain.has(domain))byDomain.set(domain,[]);
+   byDomain.get(domain).push(article);
+  }
+  for(const [domain,domainItems] of byDomain){
+   const group=document.createElement('div');group.className='filtered-domain-group';
+   const heading=document.createElement('div');heading.className='filtered-domain-heading';
+   const name=document.createElement('strong');
+   name.textContent=(domain||'Unknown domain')+' ('+domainItems.length+')';
+   heading.append(name);
+   if(domain&&!domainIsExcluded(domain)){
+    const exclude=button('Exclude '+domain,async()=>{
+     await setUnifiedDomain(domain,false);
+    });
+    exclude.className='filtered-domain-exclude';
+    exclude.setAttribute('aria-label','Exclude publisher domain '+domain);
+    heading.append(exclude);
+   }
+   group.append(heading);
+   for(const a of domainItems){const row=document.createElement('p');row.className='personal-row';const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.title||a.url;const reason=document.createElement('small');reason.textContent=' '+a.source+' — '+(a.reason==='too-old'?'Older than '+maxArticleAgeDays+' days':(a.reason||'unknown'))+(a.published&&a.reason==='too-old'?' · Published '+new Date(a.published).toLocaleDateString():'');row.append(link,reason);
  if(mayAdminister()&&a.url&&a.reason!=='too-old'&&a.reason!=='publisher exclusion'&&a.reason!=='article-domain exclusion'){
   const details=document.createElement('details');
   const summary=document.createElement('summary');summary.textContent='Admin diagnostics (run fresh classification)';
@@ -543,7 +566,9 @@ function renderFilteredArticles(){
   });
   row.append(details);
  }
- section.append(row)}
+ group.append(row)}
+   section.append(group);
+  }
  });
  if(views.length){list.append(tabs,panels);activate(0)}
 }

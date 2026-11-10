@@ -36,3 +36,7 @@ Publisher URLs and responses are untrusted and subject to existing validation, r
 ## Build and release
 
 `devbuild.sh` produces architecture-specific Mac binaries with a local build label. GitHub `main` remains the authoritative merged baseline. Draft PR #68 is not merged; see [CURRENT_WORK.md](CURRENT_WORK.md) for owner acceptance and exact-head CI.
+
+## Filtered audit domain grouping (Issue #83)
+
+Within each reason tab, browser-side `renderFilteredArticles` groups the existing filtered audit entries by `publisherScope(article.url)`, not display names or counts from feeds. Each normalized non-excluded domain gets exactly one `setUnifiedDomain(domain,false)` action alongside its count. Unknown hosts are grouped without a destructive action. `setUnifiedDomain` preserves the existing `confirmDomainRemoval` prompt and per-user exclusion/account storage workflow. Classification, counts, per-article links, admin fresh-classification details and the single-feed unsubscribe recommendation remain independent and unchanged. Grouping is presentation-only; no automatic exclusions.
