@@ -9,7 +9,7 @@ func TestDiagnosticsOwnsFilteredAuditAndExcludedDomains(t *testing.T) {
 	html := page.Tree.Root.String()
 	nav := strings.Index(html, `<nav class="news-nav"`)
 	diagnostics := strings.Index(html, `id="diagnostics-panel"`)
-	diagnosticsEnd := strings.Index(html, `id="homepage-confirm-dialog"`)
+	diagnosticsEnd := strings.Index(html, `id="personal-panel"`)
 	news := strings.Index(html, `id="news-content"`)
 	if nav < 0 || diagnostics < 0 || diagnosticsEnd <= diagnostics || news <= diagnosticsEnd {
 		t.Fatal("unexpected dashboard section ordering")
