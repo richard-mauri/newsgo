@@ -1,25 +1,27 @@
 # Current work — NewsGo
 
-## Issue #85 — diagnose repeated cache misses (November 10, 2026)
+## Issue #87 — preserve standalone duplicate-audit CLI (November 11, 2026)
 
-- **Merged baseline:** `main` at `83ca5081ca5f50e6651fc36cb84fe1048f0947b8`; Issue #83 / PR #84 merged and closed. New [Issue #85](https://github.com/richard-mauri/newsgo/issues/85), branch `fix/85-classification-cache-diagnostics`, draft [PR #86](https://github.com/richard-mauri/newsgo/pull/86).
-- **Observed:** Repeated Safari reloads show 302 hits and 75 misses (80% hit rate) for 377 classifications with a 720-minute TTL; a prior screenshot showed 75 unknown article classifications. This suggests noncacheable outcomes, but exact per-URL match has not been confirmed.
-- **Implementation:** Distinguish absent versus expired misses, explicit unknown versus unavailable returned classifications, and upstream/protocol failures in per-feed stats and Diagnostics. New screenshot confirms `investors.com` is in excluded domains but 75 unknown articles from that domain are still classified: exclusions were applied in browser after `/api/personal`, not before ScraperGo. The browser now sends the normalized excluded domains; Go validates them and short-circuits matching articles to `publisher exclusion` before classification and cache lookups. Feed fetch itself remains unchanged. Preserve no-cache policy for ambiguous/failure outcomes; no speculative negative caching.
-- **Tests:** Added repeat-outcome, expired-entry, and excluded-domain no-ScraperGo-request regression tests. Go test and build passed on implementation head `6b040682444980eb9752151fdc07aa3fa73d0c2e` (GitHub Actions run 42866569601); reverify CI for this documentation update. Mac/Safari/ScraperGo live acceptance remains unverified; no release or runtime restart authorized.
-- **Merge boundary:** Draft PR only; owner approval required for merge. No modifications to `main`, other apps, data, settings or Cloudflare configuration.
+- **Authoritative source:** GitHub `main`; current work is scoped to branch `feat/87-preserve-duplicate-audit`, [Issue #87](https://github.com/richard-mauri/newsgo/issues/87). This issue was reopened at the owner's explicit request to preserve and merge the useful standalone duplicate-analysis tool. It does **not** reopen the ScraperGo extraction-fix issue.
+- **Change:** Add `cmd/duplicateaudit/main.go`, `main_test.go`, and `README.md` from the previously delivered and actively used ZIP. Update the root README alongside the existing `cmd/scrapertrace` export instructions. This tool reads `newsgo.scrapergo-batch.v1` JSON, calls the existing ScraperGo `POST /api/read`, reports exact/overlap duplicate *candidates* in a CSV, and records failed reads separately.
+- **Security/integration:** No NewsGo server, UI, authentication, feed processing, cache, launcher, or settings changes. Defaults to sequential requests with pacing and a local loopback ScraperGo endpoint; the approved public HTTPS hostname requires explicit `-public`. Reports are private local files that can contain URLs and short excerpts. No publisher content or token is committed.
+- **Validation:** Standalone command's Go tests passed locally on Linux Go 1.23.2 before import. GitHub Actions on exact PR head and owner's Mac test/build have not yet been confirmed at the time of this handoff; do not claim a green CI until checked. No NewsGo restart or Safari acceptance is needed for this CLI-only change. The owner explicitly authorized preserving and merging the utility, subject to verification.
+- **Boundary:** [ScraperGo Issue #119](https://github.com/richard-mauri/scrapergo/issues/119) / [PR #120](https://github.com/richard-mauri/scrapergo/pull/120) remain solely responsible for correcting duplicate article text. This NewsGo PR contains no extraction logic or policy changes.
 
-## Mac verification
+## Previous work
+
+NewsGo Issue #85 / PR #86 concerned avoiding repeated classification of excluded domains and better classification-cache miss diagnostics. Its previous handoff is retained in Git history; it is unrelated to the duplicate-audit CLI. Check live GitHub issue/PR state rather than assuming a historical handoff reflects current status.
+
+## Owner Mac verification (CLI code, no server restart)
 
 ```sh
 cd ~/projects/newsgo
-git status --short --branch
 git fetch origin
-git checkout fix/85-classification-cache-diagnostics
-git pull --ff-only origin fix/85-classification-cache-diagnostics
+git checkout feat/87-preserve-duplicate-audit
+git pull --ff-only origin feat/87-preserve-duplicate-audit
 go test -count=1 ./...
 ./devbuild.sh
-# Restart only after separate owner approval:
-./newsgo.sh
+go run ./cmd/duplicateaudit -input ~/Downloads/newsgo-scrapergo-urls.json -limit 10 -output ~/Downloads/duplicate-audit-integrated.csv
 ```
 
-In Safari, repeat an All subscriptions read and reload; verify cache hits/misses and cold/expired breakdown add up, determine how many repeated misses are unknown, unavailable or upstream failures, confirm classification and filtered counts unchanged, then validate cache behavior after a deliberate service restart.
+Review the CSV for duplicate candidates, legitimate repetitions, and explicit `read_failed` records; choose a new output name for each run. `./newsgo.sh` is **not needed** for this tool-only change, and no release or deployment is authorized.
