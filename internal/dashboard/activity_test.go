@@ -84,6 +84,7 @@ func TestIsolatedActivityHarnessSafetyAndSyntax(t *testing.T) {
  for _,required:=range []string{
   "TEST_ROOT", "homepage-activity.", "127.0.0.1:8788", "127.0.0.1:8085",
   "HOMEPAGE_ACTIVITY_KEY_NEWSGO", "NEWSGO_ACTIVITY_URL", "-settings-dir",
+  "LISTEN_ADDR=127.0.0.1:8788",
   "trap cleanup EXIT", "exec env", "lsof", "go test -count=1 ./...",
  } {
   if !strings.Contains(source,required){t.Errorf("missing harness isolation invariant %q",required)}
