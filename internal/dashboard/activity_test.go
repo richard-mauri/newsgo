@@ -3,6 +3,8 @@ package dashboard
 import (
  "context"
  "encoding/json"
+ "os"
+ "os/exec"
  "net/http"
  "net/http/httptest"
  "strings"
@@ -73,4 +75,24 @@ func TestActivityScriptIsOptional(t *testing.T) {
  state.SetActivityReporter(a)
  w=httptest.NewRecorder();state.ServeHTTP(w,r)
  if !strings.Contains(w.Body.String(),"/activity.js") {t.Fatal("reporter script missing")}
+}
+
+func TestIsolatedActivityHarnessSafetyAndSyntax(t *testing.T) {
+ script,err:=os.ReadFile("../../scripts/activity-integration-test.sh")
+ if err!=nil{t.Fatal(err)}
+ source:=string(script)
+ for _,required:=range []string{
+  "TEST_ROOT", "homepage-activity.", "127.0.0.1:8788", "127.0.0.1:8085",
+  "HOMEPAGE_ACTIVITY_KEY_NEWSGO", "NEWSGO_ACTIVITY_URL", "-settings-dir",
+  "trap cleanup EXIT", "exec env", "lsof", "go test -count=1 ./...",
+ } {
+  if !strings.Contains(source,required){t.Errorf("missing harness isolation invariant %q",required)}
+ }
+ for _,forbidden:=range []string{"./newsgo.sh","./homego.sh","cloudflared tunnel","killall","pkill","git reset --hard"}{
+  if strings.Contains(source,forbidden){t.Errorf("harness references unsafe operation %q",forbidden)}
+ }
+ cmd:=exec.Command("bash","-n","../../scripts/activity-integration-test.sh")
+ if output,err:=cmd.CombinedOutput();err!=nil{
+  t.Fatalf("invalid Bash syntax: %v: %s",err,output)
+ }
 }
