@@ -53,7 +53,10 @@ func main() {
 	}
 	settingsStore.ActivateClassificationCache()
 	app.SetSettingsStore(settingsStore)
+	activity,activityErr:=dashboard.NewActivityReporter(os.Getenv("NEWSGO_ACTIVITY_URL"),os.Getenv("HOMEPAGE_ACTIVITY_KEY_NEWSGO"))
+	if activityErr!=nil {log.Printf("NewsGo activity reporting disabled: invalid configuration");} else if activity!=nil {app.SetActivityReporter(activity)}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	if activity!=nil && activityErr==nil {go activity.Run(ctx)}
 	defer stop()
 	// Feed catalog is for discovery only. Browser requests subscribed feeds via /api/personal.
 	srv := &http.Server{Addr: *addr, Handler: app, ReadHeaderTimeout: 5 * time.Second}
