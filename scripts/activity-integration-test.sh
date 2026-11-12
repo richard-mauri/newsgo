@@ -54,7 +54,7 @@ mkdir -p "$test_dir/settings"
 echo 'Starting isolated Homepage on 127.0.0.1:8788, retaining its existing test history.'
 (
   cd "$TEST_ROOT/src"
-  exec env SUITE_DATA_DIR="$TEST_ROOT/data" HOMEPAGE_ACTIVITY_KEY_NEWSGO="$key" \
+  exec env SUITE_DATA_DIR="$TEST_ROOT/data" LISTEN_ADDR=127.0.0.1:8788 HOMEPAGE_ACTIVITY_KEY_NEWSGO="$key" \
     "$TEST_ROOT/homepage" > "$test_dir/homepage.log" 2>&1
 ) &
 home_pid=$!
