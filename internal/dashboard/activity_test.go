@@ -8,6 +8,8 @@ import (
  "strings"
  "testing"
  "time"
+
+ "github.com/richard-mauri/newsgo/internal/feeds"
 )
 
 func TestActivityReporterConfig(t *testing.T){
@@ -62,7 +64,7 @@ func TestActivityReportIsServerOnlyAggregate(t *testing.T){
 }
 
 func TestActivityScriptIsOptional(t *testing.T) {
- state,err:=New(nil,"https://scrapergo.themauris.org",nil)
+ state,err:=New([]feeds.Source{{Name:"Test feed",Category:"World",URL:"https://example.org/rss"}},"https://scrapergo.themauris.org",nil)
  if err!=nil{t.Fatal(err)}
  r:=httptest.NewRequest("GET","http://127.0.0.1:9081/",nil)
  w:=httptest.NewRecorder();state.ServeHTTP(w,r)
