@@ -43,7 +43,17 @@ type view struct {
 }
 
 func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/tanner.jpg" {
+	if s.activity!=nil && r.URL.Path=="/api/activity/ping" {s.activity.ping(w,r);return}
+ if s.activity!=nil && r.URL.Path=="/api/personal" {defer s.activity.working()()}
+ if r.URL.Path == "/activity.js" {
+  if r.Method!=http.MethodGet{w.Header().Set("Allow","GET");http.Error(w,"method not allowed",405);return}
+  w.Header().Set("Content-Type","application/javascript; charset=utf-8")
+  w.Header().Set("Cache-Control","no-store")
+  w.Header().Set("X-Content-Type-Options","nosniff")
+  _,_=io.WriteString(w,activityJS)
+  return
+ }
+ if r.URL.Path == "/tanner.jpg" {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -149,7 +159,7 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 .suite-home-link{display:inline-block;margin:4px 0 10px;padding:3px 5px;border-radius:5px;color:var(--accent,#69c6d3);font:500 12px/1.4 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;opacity:.78;transition:background-color .15s,color .15s,opacity .15s}.suite-home-link:hover{background:rgba(96,151,172,.16);color:var(--accent,#69c6d3);text-decoration:underline;opacity:1}.suite-home-link:focus-visible{outline:2px solid var(--accent,#69c6d3);outline-offset:2px;opacity:1}
 .article-url-export-actions{display:flex;justify-content:flex-end;align-items:center;margin:4px 0 16px}.article-url-export-button{font:inherit;font-size:.87rem;font-weight:650;line-height:1.35;padding:9px 14px;cursor:pointer;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background-color .15s}.article-url-export-button:hover{border-color:var(--accent);background:var(--soft)}.article-url-export-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.article-url-export-button[hidden]{display:none!important}
 .raw-feed-entry{padding:12px 0;border-top:1px solid var(--line)}.raw-feed-entry summary{cursor:pointer}.raw-feed-controls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.raw-feed-source{display:block;font-size:.85rem;overflow-wrap:anywhere}.raw-feed-body{max-height:420px;overflow:auto;white-space:pre;tab-size:2;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-</style><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
+</style><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script><script defer src="/activity.js?v={{.ScriptRevision}}"></script></head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
 <nav class="news-nav" aria-label="NewsGo sections"><button type="button" id="manage-personal" aria-pressed="false">Find Subscriptions</button><button type="button" id="view-subscriptions" aria-pressed="false">My Subscriptions <span id="personal-count">(0)</span></button><button type="button" id="manage-preferences">Reading Preferences</button><button type="button" id="manage-admin" hidden>Admin Settings</button><button type="button" id="manage-diagnostics" hidden>Diagnostics</button></nav>
