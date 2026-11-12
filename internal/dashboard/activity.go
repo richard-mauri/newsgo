@@ -2,6 +2,7 @@ package dashboard
 
 import (
  "bytes"
+ _ "embed"
  "context"
  "crypto/rand"
  "encoding/hex"
@@ -15,6 +16,9 @@ import (
  "sync"
  "time"
 )
+
+//go:embed activity.js
+var activityJS string
 
 // ActivityReporter is an optional, best-effort, server-only adapter to the
 // Homepage collector. It never sends URLs, account tokens, or visitor IDs.
