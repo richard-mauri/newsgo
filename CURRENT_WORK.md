@@ -1,5 +1,7 @@
 # Current work — NewsGo
 
+- **Same-tab reader navigation:** NewsGo headline links now open ScraperGo in the current tab (no named `newsgo-scrapergo` target), preserving the existing URL and Homepage handoff. External original-publisher links remain separate. Await exact-head CI and owner Safari acceptance; no merge.
+
 - **Heartbeat revocation follow-up:** NewsGo's normal activity ping now returns HTTP 401 on a supplied revoked/expired handoff (never reclassifying it as anonymous); the browser notifies its existing account controller, which revalidates against Homepage and opens the existing sign-in-required dialog. An unavailable Homepage returns 503. CI #606 passed before this note; Mac Safari acceptance pending.
 
 ## Issue #93 — Non-dismissible suite sign-in prompt
