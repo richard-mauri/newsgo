@@ -826,6 +826,38 @@ function readSuiteHandoff(){
 }
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+// A separately opened NewsGo tab has a fresh sessionStorage. Recover a
+// previously verified child handoff from another NewsGo tab, without a redirect.
+const suiteTabChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('newsgo.suite-handoff.v1'):null;
+let suiteTabRecovery=null;
+if(suiteTabChannel)suiteTabChannel.onmessage=event=>{
+ const data=event.data;
+ if(!data||typeof data!=='object')return;
+ if(data.type==='request'){
+  if(homepageIdentity&&suiteHandoff&&suiteExpiresAt>Date.now()&&/^[a-f0-9]{64}$/.test(suiteHandoff)){
+   suiteTabChannel.postMessage({type:'offer',request:data.request,token:suiteHandoff});
+  }
+ }else if(data.type==='offer'&&suiteTabRecovery&&data.request===suiteTabRecovery.request&&
+  !suiteHandoff&&!explicitBrowserOnly&&typeof data.token==='string'&&/^[a-f0-9]{64}$/.test(data.token)){
+  const recovery=suiteTabRecovery;suiteTabRecovery=null;
+  suiteHandoff=data.token;
+  try{sessionStorage.setItem(suiteHandoffKey,suiteHandoff)}catch(_){}
+  clearTimeout(recovery.timer);recovery.resolve(true);
+ }
+};
+function recoverSuiteHandoffFromTab(){
+ if(!suiteTabChannel||explicitBrowserOnly||suiteHandoff)return Promise.resolve(false);
+ if(suiteTabRecovery)return suiteTabRecovery.promise;
+ const request=Math.random().toString(36).slice(2)+Date.now().toString(36);
+ let resolveRecovery;
+ const promise=new Promise(resolve=>{resolveRecovery=resolve});
+ const recovery={request,promise,resolve:resolveRecovery,timer:null};
+ recovery.timer=setTimeout(()=>{if(suiteTabRecovery===recovery)suiteTabRecovery=null;recovery.resolve(false)},750);
+ suiteTabRecovery=recovery;
+ suiteTabChannel.postMessage({type:'request',request});
+ return promise;
+}
+
 let suiteSignInPrompt=null;
 function promptSuiteSignIn(){
  if(!suiteSignInPrompt){
@@ -891,8 +923,10 @@ async function checkHomepageSession(){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();return;
  }
  if(!suiteHandoff && !explicitBrowserOnly){
-  // Never navigate automatically. Homepage issues a handoff only after the
-  // user explicitly chooses to visit it and launch NewsGo.
+  // A live sibling tab may have a verified child bearer; ask it in-place.
+  // Never automatically navigate to Homepage or treat the offer as verified.
+  const recovered=await recoverSuiteHandoffFromTab();
+  if(recovered)return checkHomepageSession();
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();
   return;
  }
