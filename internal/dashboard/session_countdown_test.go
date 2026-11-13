@@ -15,6 +15,13 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   "sessionStorage.removeItem(suiteHandoffKey)",
   "const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{}",
   "async function checkHomepageSession()",
+  "new BroadcastChannel('newsgo.suite-handoff.v1')",
+  "recoverSuiteHandoffFromTab()",
+  "suiteTabChannel.postMessage({type:'request',request})",
+  "suiteTabChannel.postMessage({type:'offer',request:data.request,token:suiteHandoff})",
+  "if(recovered)return checkHomepageSession()",
+  "sessionStorage.setItem(suiteHandoffKey,suiteHandoff)",
+
   "'/api/session/profile'",
   "suiteExpiresAt=Date.parse(profile.expiresAt)",
   "Signed in as '+homepageIdentity.user+' (Homepage)",
