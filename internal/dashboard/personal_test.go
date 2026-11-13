@@ -49,7 +49,7 @@ func TestPersonalAPIValidationAndMarkup(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/personal.js", nil))
-	if !strings.Contains(w.Body.String(), "newsgo.subscriptions.unified.v1") || !strings.Contains(w.Body.String(), "newsgo-scrapergo") {
+	if !strings.Contains(w.Body.String(), "newsgo.subscriptions.unified.v1") {
 		t.Fatal("personal JavaScript missing")
 	}
 }
@@ -71,4 +71,13 @@ func TestPersonalArticleJSONNames(t *testing.T) {
 	if decoded["Title"] != nil {
 		t.Errorf("unexpected capitalized key: %s", data)
 	}
+}
+
+func TestScraperGoHeadlineUsesSameTab(t *testing.T) {
+ if !strings.Contains(personalJS,"title.href=a.open;title.textContent=a.title;") {
+  t.Fatal("ScraperGo article headline should preserve its destination")
+ }
+ if strings.Contains(personalJS,"title.target='newsgo-scrapergo'") || strings.Contains(personalJS,"title.target='_blank'") {
+  t.Fatal("ScraperGo article headline must not create another browser tab")
+ }
 }
