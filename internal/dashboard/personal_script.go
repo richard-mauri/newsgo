@@ -826,6 +826,20 @@ function readSuiteHandoff(){
 }
 readSuiteHandoff();
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+let suiteSignInPrompt=null;
+function promptSuiteSignIn(){
+ if(!suiteSignInPrompt){
+  const dialog=document.createElement('dialog');dialog.id='suite-signin-dialog';
+  dialog.style.cssText='max-width:34rem;padding:1.5rem;border:1px solid #496771;border-radius:12px;background:#10232d;color:#eaf4f4';
+  const title=document.createElement('h2');title.textContent='Suite sign-in required';
+  const description=document.createElement('p');description.textContent='Visit Homepage to sign in with your personal token or obtain a temporary authenticated guest session valid for one hour. Guests cannot save or restore account settings.';
+  const link=document.createElement('a');link.href=homepageOrigin+'/';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Go to Homepage';
+  const close=document.createElement('button');close.type='button';close.textContent='Close';close.addEventListener('click',()=>dialog.close());
+  dialog.append(title,description,link,close);document.body.append(dialog);suiteSignInPrompt=dialog;
+ }
+ if(!suiteSignInPrompt.open)suiteSignInPrompt.showModal();
+}
+function dismissSuiteSignInPrompt(){if(suiteSignInPrompt&&suiteSignInPrompt.open)suiteSignInPrompt.close()}
 function homepageAdminActive(){return !!(homepageIdentity&&homepageIdentity.role==='admin'&&suiteHandoff&&suiteExpiresAt>Date.now())}
 function mayAdminister(){return homepageAdminActive()}
 function adminAuthHeader(){return homepageAdminActive()?{'X-NewsGo-Homepage-Authorization':'Bearer '+suiteHandoff}:{}}
@@ -863,7 +877,7 @@ function initSuiteAccountHeader(){
 function accountSessionState(){
  updateScraperTraceExportVisibility();
  updateAccountControls();
- if(!homepageIdentity){
+ if(!homepageIdentity||homepageIdentity.role==='guest'){
   clearTimeout(accountTimer);accountTimer=null;
   accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
   accountStatus('');
@@ -874,18 +888,16 @@ async function checkHomepageSession(){
  initSuiteAccountHeader();
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');return;
+  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();return;
  }
  if(!suiteHandoff && !explicitBrowserOnly){
-  // Only Homepage can read its persistent host-only session cookie. A single
-  // top-level navigation lets it issue a new parent-bound handoff (or return
-  // #suite_mode=local if the login has expired/revoked). No credentials are
-  // exposed to NewsGo and no browser storage grants independent sign-in.
-  location.replace(homepageOrigin+'/launch/newsgo');
+  // Never navigate automatically. Homepage issues a handoff only after the
+  // user explicitly chooses to visit it and launch NewsGo.
+  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();
   return;
  }
  if(!suiteHandoff){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');return;
+  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');promptSuiteSignIn();return;
  }
  try{
   const verifiedToken=suiteHandoff;
@@ -895,7 +907,7 @@ async function checkHomepageSession(){
   if(response.status===401){
    suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
-   homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');return;
+   homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');promptSuiteSignIn();return;
   }
   if(!response.ok)throw Error('HTTP '+response.status);
   const profile=await response.json();
@@ -903,15 +915,17 @@ async function checkHomepageSession(){
   if(!Number.isFinite(suiteExpiresAt)||suiteExpiresAt<=Date.now())throw Error('Expired profile');
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
-  homepageIdentity={user:profile.user,role:profile.role==='admin'?'admin':'user'};
+  homepageIdentity={user:profile.user,role:profile.role==='guest'?'guest':profile.role==='admin'?'admin':'user'};
+  dismissSuiteSignInPrompt();
   accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteSessionStatus();
-  void initializeHomepageAccount(profile.user,verifiedToken);
+  if(homepageIdentity.role!=='guest')void initializeHomepageAccount(profile.user,verifiedToken);
  }catch(e){
   homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteSessionStatus();
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
 async function homepageReaderRecord(){
+ if(homepageIdentity?.role==='guest')throw Error('Temporary guest account settings are unavailable');
  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{credentials:'omit',cache:'no-store',headers:homepageAccountHeaders()});
  if(response.status===404)return null;
  if(!response.ok)throw Error('Homepage storage unavailable (HTTP '+response.status+')');
@@ -926,7 +940,7 @@ function accountSnapshot(){return {subscriptions:registry,excludedDomains,exclud
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
 async function accountSave(){
  await checkHomepageSession();
- if(!homepageIdentity||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
+ if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
  accountPending=true;accountDirty=false;
  const owner=accountOwner,token=suiteHandoff,revision=accountRevision;
  try{
@@ -946,7 +960,7 @@ async function accountSave(){
  finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
 }
 function scheduleAccountSave(){
- if(!homepageIdentity||!accountReady||accountConflict)return;
+ if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountConflict)return;
  accountDirty=true;clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,650);
 }
 // Homepage account profile is loaded automatically after verified sign-in.
