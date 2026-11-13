@@ -65,6 +65,42 @@ func TestActivityReportIsServerOnlyAggregate(t *testing.T){
  if received.Active2!=1 || received.Anonymous!=1 || received.Active60!=1 {t.Fatalf("aggregate %+v",received)}
 }
 
+func TestRejectedNewsGoHeartbeatDoesNotBecomeAnonymous(t *testing.T) {
+ valid:=strings.Repeat("a",64)
+ revoked:=false
+ unavailable:=false
+ profile:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if unavailable {w.WriteHeader(http.StatusServiceUnavailable);return}
+  if revoked {w.WriteHeader(http.StatusUnauthorized);return}
+  _,_=w.Write([]byte(`{"user":"guest-test","activitySession":"`+strings.Repeat("1",64)+`","activityUser":"`+strings.Repeat("2",64)+`"}`))
+ }))
+ defer profile.Close()
+ a,_:=NewActivityReporter("http://127.0.0.1:8788/api/admin/activity/ingest",strings.Repeat("k",40))
+ a.profileEndpoint=profile.URL
+ a.client=profile.Client()
+ ping:=func(bearer string)int{
+  r:=httptest.NewRequest(http.MethodPost,"https://newsgo.themauris.org/api/activity/ping",strings.NewReader(`{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","visible":true}`))
+  r.Header.Set("Origin","https://newsgo.themauris.org");r.Header.Set("Content-Type","application/json")
+  if bearer!="" {r.Header.Set("Authorization","Bearer "+bearer)}
+  w:=httptest.NewRecorder();a.ping(w,r);return w.Code
+ }
+ if code:=ping(valid);code!=204{t.Fatalf("valid ping: %d",code)}
+ if a.snapshot().Authenticated!=1{t.Fatal("valid profile missing")}
+ revoked=true
+ if code:=ping(valid);code!=401{t.Fatalf("revoked ping: %d",code)}
+ if p:=a.snapshot();p.Authenticated!=0||p.Anonymous!=0{t.Fatalf("revoked identity became anonymous: %+v",p)}
+ unavailable=true
+ if code:=ping(valid);code!=503{t.Fatalf("validation outage: %d",code)}
+ if code:=ping("");code!=204{t.Fatalf("anonymous ping: %d",code)}
+}
+
+func TestNewsGoHeartbeatRechecksAccountController(t *testing.T){
+ script,err:=os.ReadFile("activity.js");if err!=nil{t.Fatal(err)}
+ if !strings.Contains(string(script),"homepage-heartbeat-rejected"){t.Fatal("activity reporter must notify account controller")}
+ personal,err:=os.ReadFile("personal_script.go");if err!=nil{t.Fatal(err)}
+ if !strings.Contains(string(personal),"void checkHomepageSession();"){t.Fatal("account controller must verify revoked handoff")}
+}
+
 func TestActivityScriptIsOptional(t *testing.T) {
  state,err:=New([]feeds.Source{{Name:"Test feed",Category:"World",URL:"https://example.org/rss"}},"https://scrapergo.themauris.org",nil)
  if err!=nil{t.Fatal(err)}
