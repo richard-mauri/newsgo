@@ -59,3 +59,12 @@ func TestNoNewsGoRenewButtonOrCountdownStyles(t *testing.T) {
   if strings.Contains(markup,obsolete){t.Errorf("obsolete session renewal UI in markup: %s",obsolete)}
  }
 }
+
+func TestSuiteSignInPromptCannotBeDismissedWithoutIdentity(t *testing.T) {
+ for _,snippet:=range []string{
+  "dialog.addEventListener('cancel',event=>event.preventDefault())",
+  "dialog.append(title,description,link)",
+  "function dismissSuiteSignInPrompt()",
+ } { if !strings.Contains(personalJS,snippet) {t.Errorf("missing sign-in dialog contract: %s",snippet)} }
+ if strings.Contains(personalJS,"close.textContent='Close';close.addEventListener('click',()=>dialog.close())") {t.Fatal("sign-in dialog still offers Close bypass")}
+}
