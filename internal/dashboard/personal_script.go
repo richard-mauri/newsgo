@@ -588,7 +588,7 @@ function renderPersonalArticles(){
   const row=document.createElement('article');row.className=featured?'feature':'item';
   const body=document.createElement('div');body.className='item-body';
   const meta=document.createElement('div');meta.className='source';meta.textContent=a.source+' · '+a.category;
-  const title=document.createElement('a');title.className='story-title';title.href=a.open;title.target='newsgo-scrapergo';title.textContent=a.title;
+  const title=document.createElement('a');title.className='story-title';title.href=a.open;title.textContent=a.title;
   const sub=document.createElement('div');sub.className='story-meta';sub.textContent=a.date+'  ';
   if(a.dateWarning){const warning=document.createElement('span');warning.className='date-warning';warning.textContent=' ⚠ '+a.dateWarning;warning.title='Original feed date shown. Article age could not be determined.';sub.append(warning);}
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
