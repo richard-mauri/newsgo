@@ -20,10 +20,13 @@
     if (now-sentAt<25000)return;
     sentAt=now;
     const body=JSON.stringify({id,visible:true,interacted});
+    let child='';
+    try {child=sessionStorage.getItem('newsgo.homepage.handoff.v1')||''}catch(_){}
+    if(!/^[a-f0-9]{64}$/.test(child))child='';
     interacted=false;
     try {
       fetch('/api/activity/ping',{method:'POST',cache:'no-store',credentials:'same-origin',
-        headers:{'Content-Type':'application/json'},body,keepalive:true}).catch(()=>{});
+        headers:{'Content-Type':'application/json',...(child?{Authorization:'Bearer '+child}:{})},body,keepalive:true}).catch(()=>{});
     }catch(_){}
   }
   function mark() {interacted=true;send()}
