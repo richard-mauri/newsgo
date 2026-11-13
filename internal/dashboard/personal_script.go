@@ -588,7 +588,7 @@ function renderPersonalArticles(){
   const row=document.createElement('article');row.className=featured?'feature':'item';
   const body=document.createElement('div');body.className='item-body';
   const meta=document.createElement('div');meta.className='source';meta.textContent=a.source+' · '+a.category;
-  const title=document.createElement('a');title.className='story-title';title.href=a.open;title.target='newsgo-scrapergo';title.textContent=a.title;
+  const title=document.createElement('a');title.className='story-title';title.href=a.open;title.textContent=a.title;
   const sub=document.createElement('div');sub.className='story-meta';sub.textContent=a.date+'  ';
   if(a.dateWarning){const warning=document.createElement('span');warning.className='date-warning';warning.textContent=' ⚠ '+a.dateWarning;warning.title='Original feed date shown. Article age could not be determined.';sub.append(warning);}
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
@@ -825,6 +825,12 @@ function readSuiteHandoff(){
  if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
 }
 readSuiteHandoff();
+// The existing activity heartbeat signals a rejected identity to this one
+// account controller; individual NewsGo features need no auth callbacks.
+window.addEventListener('homepage-heartbeat-rejected',event=>{
+ if(!suiteHandoff || event.detail?.token!==suiteHandoff)return;
+ void checkHomepageSession();
+});
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 // A separately opened NewsGo tab has a fresh sessionStorage. Recover a
 // previously verified child handoff from another NewsGo tab, without a redirect.
@@ -866,8 +872,9 @@ function promptSuiteSignIn(){
   const title=document.createElement('h2');title.textContent='Suite sign-in required';
   const description=document.createElement('p');description.textContent='Visit Homepage to sign in with your personal token or obtain a temporary authenticated guest session valid for one hour. Guests cannot save or restore account settings.';
   const link=document.createElement('a');link.href=homepageOrigin+'/';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Go to Homepage';
-  const close=document.createElement('button');close.type='button';close.textContent='Close';close.addEventListener('click',()=>dialog.close());
-  dialog.append(title,description,link,close);document.body.append(dialog);suiteSignInPrompt=dialog;
+  // Invalid identity cannot dismiss this prompt; Homepage validation closes it.
+  dialog.addEventListener('cancel',event=>event.preventDefault());
+  dialog.append(title,description,link);document.body.append(dialog);suiteSignInPrompt=dialog;
  }
  if(!suiteSignInPrompt.open)suiteSignInPrompt.showModal();
 }
