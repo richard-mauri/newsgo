@@ -97,3 +97,41 @@ func TestIsolatedActivityHarnessSafetyAndSyntax(t *testing.T) {
   t.Fatalf("invalid Bash syntax: %v: %s",err,output)
  }
 }
+
+func TestVerifiedNewsGoSessionsDeduplicateTabsAndRetainGuestIdentity(t *testing.T) {
+ profiles:=map[string]struct{session,userKey,user string}{
+  "a":{strings.Repeat("1",64),strings.Repeat("2",64),"richard"},
+  "b":{strings.Repeat("1",64),strings.Repeat("2",64),"richard"},
+  "c":{strings.Repeat("3",64),strings.Repeat("2",64),"richard"},
+  "d":{strings.Repeat("4",64),strings.Repeat("5",64),"guest-a1b2c3"},
+ }
+ server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path!="/api/session/profile" || r.Header.Get("Origin")!="https://newsgo.themauris.org" {
+   t.Errorf("invalid profile request: %s",r.URL.Path);w.WriteHeader(400);return
+  }
+  bearer:=strings.TrimPrefix(r.Header.Get("Authorization"),"Bearer ")
+  entry,ok:=profiles[bearer[:1]]
+  if !ok {w.WriteHeader(401);return}
+  json.NewEncoder(w).Encode(map[string]string{"activitySession":entry.session,"activityUser":entry.userKey,"user":entry.user})
+ }))
+ defer server.Close()
+ a,_:=NewActivityReporter("http://127.0.0.1:8788/api/admin/activity/ingest",strings.Repeat("x",40))
+ a.profileEndpoint=server.URL+"/api/session/profile"
+ a.client=server.Client()
+ ping:=func(id,bearer string)int{
+  r:=httptest.NewRequest("POST","https://newsgo.themauris.org/api/activity/ping",strings.NewReader(`{"id":"`+id+`","visible":true}`))
+  r.Header.Set("Origin","https://newsgo.themauris.org")
+  r.Header.Set("Content-Type","application/json")
+  r.Header.Set("Authorization","Bearer "+bearer)
+  w:=httptest.NewRecorder();a.ping(w,r);return w.Code
+ }
+ for i,ch:=range []string{"a","b","c","d"}{
+  id:=strings.Repeat(string(rune('a'+i)),32)
+  if status:=ping(id,ch+strings.Repeat("f",63));status!=204 {t.Fatalf("ping %s: %d",ch,status)}
+ }
+ p:=a.snapshot()
+ if p.Active2!=3 || p.Authenticated!=3 || p.UniqueUsers!=2 || p.Anonymous!=0 {
+  t.Fatalf("incorrect session/guest identity counts: %+v",p)
+ }
+ if len(p.Users)!=2 {t.Fatalf("missing per-user summaries: %+v",p.Users)}
+}

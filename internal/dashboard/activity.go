@@ -27,6 +27,7 @@ type ActivityReporter struct {
  now func() time.Time
  client *http.Client
  endpoint string
+ profileEndpoint string
  key string
  presence map[string]activityPresence
  inFlight int
@@ -36,11 +37,19 @@ type activityPresence struct {
  seen time.Time
  interacted time.Time
  visible bool
+ sessionKey string
+ userKey string
+ username string
 }
 type activityPing struct {
  ID string `json:"id"`
  Visible bool `json:"visible"`
  Interacted bool `json:"interacted"`
+}
+type activityUserSummary struct {
+ User string `json:"user"`
+ Sessions int `json:"sessions"`
+ LastSeen string `json:"lastSeen"`
 }
 type activityPayload struct {
  Active2 int `json:"active2"`
@@ -51,6 +60,8 @@ type activityPayload struct {
  Background int `json:"background"`
  Anonymous int `json:"anonymous"`
  Authenticated int `json:"authenticated"`
+ UniqueUsers int `json:"uniqueUsers,omitempty"`
+ Users []activityUserSummary `json:"users,omitempty"`
  InFlight int `json:"inFlight"`
  LastInteraction string `json:"lastInteraction,omitempty"`
 }
@@ -69,12 +80,36 @@ func NewActivityReporter(endpoint,key string) (*ActivityReporter,error) {
  }
  return &ActivityReporter{
   now:time.Now,client:&http.Client{Timeout:3*time.Second,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}},
-  endpoint:endpoint,key:key,presence:make(map[string]activityPresence),
+  endpoint:endpoint,profileEndpoint:strings.TrimSuffix(endpoint,"/api/admin/activity/ingest")+"/api/session/profile",key:key,presence:make(map[string]activityPresence),
  },nil
 }
 
 // SetActivityReporter attaches the optional collector to the main dashboard.
 func (s *State) SetActivityReporter(r *ActivityReporter) {s.activity=r}
+
+// verifyHandoff revalidates the child bearer with Homepage on each ping.
+// Only origin-scoped pseudonymous identifiers enter the telemetry map.
+func (a *ActivityReporter) verifyHandoff(ctx context.Context,bearer string) (string,string,string,bool) {
+ if len(bearer)!=64 || strings.Trim(bearer,"0123456789abcdef")!="" {return "","","",true}
+ req,err:=http.NewRequestWithContext(ctx,http.MethodGet,a.profileEndpoint,nil)
+ if err!=nil{return "","","",false}
+ req.Header.Set("Origin","https://newsgo.themauris.org")
+ req.Header.Set("Authorization","Bearer "+bearer)
+ resp,err:=a.client.Do(req)
+ if err!=nil{return "","","",false}
+ defer resp.Body.Close()
+ if resp.StatusCode==http.StatusUnauthorized || resp.StatusCode==http.StatusForbidden {return "","","",true}
+ if resp.StatusCode!=http.StatusOK{return "","","",false}
+ var profile struct {
+  User string `json:"user"`
+  ActivitySession string `json:"activitySession"`
+  ActivityUser string `json:"activityUser"`
+ }
+ if json.NewDecoder(io.LimitReader(resp.Body,2048)).Decode(&profile)!=nil{return "","","",false}
+ if len(profile.ActivitySession)!=64 || len(profile.ActivityUser)!=64 || len(profile.User)==0 || len(profile.User)>128 ||
+  strings.Trim(profile.ActivitySession,"0123456789abcdef")!="" || strings.Trim(profile.ActivityUser,"0123456789abcdef")!="" {return "","","",false}
+ return profile.ActivitySession,profile.ActivityUser,profile.User,true
+}
 
 func (a *ActivityReporter) ping(w http.ResponseWriter,r *http.Request) {
  w.Header().Set("Cache-Control","no-store")
@@ -92,6 +127,12 @@ func (a *ActivityReporter) ping(w http.ResponseWriter,r *http.Request) {
  if dec.Decode(&extra)!=io.EOF || len(p.ID)!=32 || strings.Trim(p.ID,"0123456789abcdef")!=""{
   http.Error(w,"invalid activity ID",400);return
  }
+ sessionKey,userKey,username:="","",""
+ if bearer,ok:=strings.CutPrefix(r.Header.Get("Authorization"),"Bearer ");ok {
+  var available bool
+  sessionKey,userKey,username,available=a.verifyHandoff(r.Context(),bearer)
+  if !available {http.Error(w,"Homepage identity validation unavailable",503);return}
+ }
  now:=a.now()
  a.mu.Lock()
  defer a.mu.Unlock()
@@ -101,6 +142,9 @@ func (a *ActivityReporter) ping(w http.ResponseWriter,r *http.Request) {
  if exists && now.Sub(past.seen)<15*time.Second {w.WriteHeader(204);return}
  past.seen=now
  past.visible=p.Visible
+ past.sessionKey=sessionKey
+ past.userKey=userKey
+ past.username=username
  if p.Interacted && p.Visible {past.interacted=now;a.lastInteraction=now}
  a.presence[p.ID]=past
  w.WriteHeader(204)
@@ -115,21 +159,39 @@ func (a *ActivityReporter) snapshot() activityPayload {
  a.mu.Lock();defer a.mu.Unlock()
  now:=a.now()
  p:=activityPayload{InFlight:a.inFlight}
+ identities:=make(map[string]activityPresence,len(a.presence))
  for id,v:=range a.presence {
   age:=now.Sub(v.seen)
   if age>time.Hour {delete(a.presence,id);continue}
   if age<0 {continue}
-  if age<=time.Hour {p.Active60++}
+  key:="guest:"+id
+  if v.sessionKey!="" {key="session:"+v.sessionKey}
+  previous,exists:=identities[key]
+  if !exists || v.seen.After(previous.seen) {identities[key]=v}
+ }
+ users:=make(map[string]bool)
+ summaries:=make(map[string]activityUserSummary)
+ for _,v:=range identities {
+  age:=now.Sub(v.seen)
+  p.Active60++
+  if v.sessionKey!="" && v.username!="" {
+   summary:=summaries[v.username];summary.User=v.username
+   if summary.LastSeen=="" || v.seen.UTC().Format(time.RFC3339)>summary.LastSeen {summary.LastSeen=v.seen.UTC().Format(time.RFC3339)}
+   if age<=2*time.Minute {summary.Sessions++}
+   summaries[v.username]=summary
+  }
   if age<=15*time.Minute {p.Active15++}
   if age<=5*time.Minute {p.Active5++}
   if age<=2*time.Minute {
    p.Active2++
    if v.visible {p.Foreground++}else{p.Background++}
-   // A NewsGo tab is anonymous/unverified until its Homepage identity is
-   // verified by the server. Never trust browser-provided role flags.
-   p.Anonymous++
+   if v.sessionKey!="" {
+    p.Authenticated++;users[v.userKey]=true
+   }else{p.Anonymous++}
   }
  }
+ p.UniqueUsers=len(users)
+ for _,summary:=range summaries {p.Users=append(p.Users,summary)}
  if !a.lastInteraction.IsZero(){p.LastInteraction=a.lastInteraction.UTC().Format(time.RFC3339)}
  return p
 }
