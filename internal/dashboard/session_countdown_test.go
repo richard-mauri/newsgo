@@ -21,7 +21,10 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   "Homepage session expired",
   "deadlineCheckPending=true",
   "checkHomepageSession().finally",
-  "location.replace(homepageOrigin+'/launch/newsgo')",
+  "promptSuiteSignIn()",
+  "temporary authenticated guest session valid for one hour",
+  "homepageIdentity.role==='guest'",
+  "if(homepageIdentity.role!=='guest')void initializeHomepageAccount",
   "explicitBrowserOnly=true",
   "if(browserOnly)",
   "if(!suiteHandoff && !explicitBrowserOnly)",
@@ -29,6 +32,7 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   if !strings.Contains(personalJS,snippet){t.Errorf("missing Homepage handoff/expiry behavior: %s",snippet)}
  }
  for _,obsolete:=range []string{
+  "location.replace(homepageOrigin+'/launch/newsgo')",
   "renewSuiteSession", "suiteRenewLink", "suiteRenewStatus",
   "sessionRenewFeedback", "sessionTimeRemaining",
   "showSuiteCountdown", "suite-renew-button",
