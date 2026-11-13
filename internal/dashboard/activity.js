@@ -26,7 +26,11 @@
     interacted=false;
     try {
       fetch('/api/activity/ping',{method:'POST',cache:'no-store',credentials:'same-origin',
-        headers:{'Content-Type':'application/json',...(child?{Authorization:'Bearer '+child}:{})},body,keepalive:true}).catch(()=>{});
+        headers:{'Content-Type':'application/json',...(child?{Authorization:'Bearer '+child}:{})},body,keepalive:true}).then(response=>{
+          if(response.status===401 && child){
+            window.dispatchEvent(new CustomEvent('homepage-heartbeat-rejected',{detail:{token:child}}));
+          }
+        }).catch(()=>{});
     }catch(_){}
   }
   function mark() {interacted=true;send()}
