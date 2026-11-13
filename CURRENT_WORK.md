@@ -1,27 +1,23 @@
 # Current work — NewsGo
 
-## Issue #87 — preserve standalone duplicate-audit CLI (November 11, 2026)
+## Issue #89 — optional Homepage suite activity reporting (draft)
 
-- **Authoritative source:** GitHub `main`; current work is scoped to branch `feat/87-preserve-duplicate-audit`, [Issue #87](https://github.com/richard-mauri/newsgo/issues/87). This issue was reopened at the owner's explicit request to preserve and merge the useful standalone duplicate-analysis tool. It does **not** reopen the ScraperGo extraction-fix issue.
-- **Change:** Add `cmd/duplicateaudit/main.go`, `main_test.go`, and `README.md` from the previously delivered and actively used ZIP. Update the root README alongside the existing `cmd/scrapertrace` export instructions. This tool reads `newsgo.scrapergo-batch.v1` JSON, calls the existing ScraperGo `POST /api/read`, reports exact/overlap duplicate *candidates* in a CSV, and records failed reads separately.
-- **Security/integration:** No NewsGo server, UI, authentication, feed processing, cache, launcher, or settings changes. Defaults to sequential requests with pacing and a local loopback ScraperGo endpoint; the approved public HTTPS hostname requires explicit `-public`. Reports are private local files that can contain URLs and short excerpts. No publisher content or token is committed.
-- **Validation:** Standalone command's Go tests passed locally on Linux Go 1.23.2 before import. GitHub Actions on exact PR head and owner's Mac test/build have not yet been confirmed at the time of this handoff; do not claim a green CI until checked. No NewsGo restart or Safari acceptance is needed for this CLI-only change. The owner explicitly authorized preserving and merging the utility, subject to verification.
-- **Boundary:** [ScraperGo Issue #119](https://github.com/richard-mauri/scrapergo/issues/119) / [PR #120](https://github.com/richard-mauri/scrapergo/pull/120) remain solely responsible for correcting duplicate article text. This NewsGo PR contains no extraction logic or policy changes.
+- Authoritative merged base: GitHub `main`, commit `071505af16a67fd0282ed291e0036ce9df5d451b` (merged duplicate-audit utility on November 11, 2026). Work is scoped to [Issue #89](https://github.com/richard-mauri/newsgo/issues/89), branch `feat/89-suite-activity`, draft [PR #90](https://github.com/richard-mauri/newsgo/pull/90). Prior Issue #87 was merged on `main`; this task does not touch that CLI or ScraperGo.
+- Scope: optional same-origin per-tab anonymous/unverified presence, in-memory rolling visitor windows, in-flight `/api/personal` work counter, and server-to-server aggregate reports to Homepage's Issue #28 / draft PR #30 collector. Requires explicit `NEWSGO_ACTIVITY_URL` and private `HOMEPAGE_ACTIVITY_KEY_NEWSGO` (minimum 32 characters). Without configuration, NewsGo remains unchanged.
+- Security: no browser access to service key; no URLs, publisher content, sessions, accounts or identities in telemetry. Signed-in browser counts are currently **unverified** and included in anonymous; no claim of reliable signed-in visitor classification. Only HTTPS and loopback HTTP collector URLs, no redirects. ScraperGo work detached from `/api/personal` requires an independent reporter.
+- Validation: GitHub Actions Go CI #591 passed on integration-harness head `49b913e`. The owner then tested it on the Mac: NewsGo Go tests passed but Homepage test startup failed because the harness omitted `LISTEN_ADDR` and attempted production's already-bound port 8787; no production process was stopped. The harness now explicitly sets `LISTEN_ADDR=127.0.0.1:8788`, with a regression invariant. New exact-head CI and Mac retry remain pending. New unit tests cover disabled/unsafe configuration, same-origin ping, rolling windows, in-flight work and report shape. Mac/Safari, live Homepage collector and end-to-end telemetry **not tested**. No release, semantic version update or restart. Owner approval required for runtime acceptance.
+- Next: verify exact-head CI, then owner runs the new isolated two-service Safari harness to see NewsGo change to Reporting in the Homepage dashboard. The script uses only disposable test data, ports 8788 and 8085, and a temporary server-only shared key. Later add server-verified signed-in classification and other application instrumentation. Do not merge until approved.
 
-## Previous work
-
-NewsGo Issue #85 / PR #86 concerned avoiding repeated classification of excluded domains and better classification-cache miss diagnostics. Its previous handoff is retained in Git history; it is unrelated to the duplicate-audit CLI. Check live GitHub issue/PR state rather than assuming a historical handoff reflects current status.
-
-## Owner Mac verification (CLI code, no server restart)
+## Owner Mac acceptance (production restart ONLY after separate owner authorization)
 
 ```sh
 cd ~/projects/newsgo
 git fetch origin
-git checkout feat/87-preserve-duplicate-audit
-git pull --ff-only origin feat/87-preserve-duplicate-audit
+git checkout feat/89-suite-activity
+git pull --ff-only origin feat/89-suite-activity
 go test -count=1 ./...
 ./devbuild.sh
-go run ./cmd/duplicateaudit -input ~/Downloads/newsgo-scrapergo-urls.json -limit 10 -output ~/Downloads/duplicate-audit-integrated.csv
+./newsgo.sh
 ```
 
-Review the CSV for duplicate candidates, legitimate repetitions, and explicit `read_failed` records; choose a new output name for each run. `./newsgo.sh` is **not needed** for this tool-only change, and no release or deployment is authorized.
+For pre-merge integration use `TEST_ROOT="$TEST_ROOT" bash scripts/activity-integration-test.sh` from a separate NewsGo worktree, after stopping ONLY the previous isolated Homepage 8788 process. The guarded harness builds NewsGo, confirms 8788/8085 are available, starts the existing test Homepage with preserved disposable admin/history, uses an isolated NewsGo settings directory and one temporary private matching key, and stops its own two processes on Ctrl-C. The owner then checks Safari at 8085 and the Homepage admin panel at 8788 after 75 seconds. Mac integration and Safari acceptance are still unverified.
