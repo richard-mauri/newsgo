@@ -866,8 +866,9 @@ function promptSuiteSignIn(){
   const title=document.createElement('h2');title.textContent='Suite sign-in required';
   const description=document.createElement('p');description.textContent='Visit Homepage to sign in with your personal token or obtain a temporary authenticated guest session valid for one hour. Guests cannot save or restore account settings.';
   const link=document.createElement('a');link.href=homepageOrigin+'/';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Go to Homepage';
-  const close=document.createElement('button');close.type='button';close.textContent='Close';close.addEventListener('click',()=>dialog.close());
-  dialog.append(title,description,link,close);document.body.append(dialog);suiteSignInPrompt=dialog;
+  // Invalid identity cannot dismiss this prompt; Homepage validation closes it.
+  dialog.addEventListener('cancel',event=>event.preventDefault());
+  dialog.append(title,description,link);document.body.append(dialog);suiteSignInPrompt=dialog;
  }
  if(!suiteSignInPrompt.open)suiteSignInPrompt.showModal();
 }
