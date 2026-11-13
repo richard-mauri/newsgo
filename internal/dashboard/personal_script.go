@@ -825,6 +825,12 @@ function readSuiteHandoff(){
  if(!/^[a-f0-9]{64}$/.test(suiteHandoff))suiteHandoff='';
 }
 readSuiteHandoff();
+// The existing activity heartbeat signals a rejected identity to this one
+// account controller; individual NewsGo features need no auth callbacks.
+window.addEventListener('homepage-heartbeat-rejected',event=>{
+ if(!suiteHandoff || event.detail?.token!==suiteHandoff)return;
+ void checkHomepageSession();
+});
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
 // A separately opened NewsGo tab has a fresh sessionStorage. Recover a
 // previously verified child handoff from another NewsGo tab, without a redirect.
