@@ -1,6 +1,6 @@
 # Current work — NewsGo
 
-**Active documentation review:** Issue #95, branch `docs/95-session-markdown-refresh` based on the merged `main` snapshot; documentation-only draft PR, awaiting owner approval. This branch does not change runtime behavior.
+**Active documentation review:** [Issue #95](https://github.com/richard-mauri/newsgo/issues/95), branch `docs/95-session-markdown-refresh` targeting `main`, [draft PR #96](https://github.com/richard-mauri/newsgo/pull/96). This branch changes only Markdown; exact-head CI and owner merge approval are pending.
 
 GitHub `main` at `540c766` includes Homepage-verified guest/named identity and activity, revoked-heartbeat handling, a non-dismissible sign-in-required dialog, and current-tab article navigation to ScraperGo. All prior session PRs/issues were merged or closed; no issues or PRs remain open and no implementation branch is active.
 
