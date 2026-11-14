@@ -65,9 +65,9 @@ Click to save `newsgo-scrapergo-urls.json` (which may contain publisher URL quer
 
 To identify **candidate duplicate text** in ScraperGo's extracted article blocks, use the separate, version-controlled `cmd/duplicateaudit` tool. From `~/projects/newsgo`, run `go run ./cmd/duplicateaudit -input ~/Downloads/newsgo-scrapergo-urls.json -limit 10 -output ~/Downloads/duplicate-audit-sample.csv` against local ScraperGo. For the approved public endpoint, add `-scrapergo https://scrapergo.themauris.org/api/read -public`. Its sequential, paced requests produce a private CSV of exact or substantial overlapping text, article URL, block indices and kind. Failed reads are reported separately; candidates may include legitimate repetition. See [duplicate-audit usage and limitations](cmd/duplicateaudit/README.md). This is development tooling only and does not change the NewsGo service.
 
-## Homepage-only identity and account storage (draft PR #68)
+## Homepage-only identity and account storage (merged PR #68)
 
-Issue #67 / draft PR #68 removes the old Server Sync runtime, the legacy browser subscription format converters, the token authentication and issuing command, and old `/api/sync` route. Homepage handles user identity and per-user account save/load. NewsGo's administrator endpoints verify Homepage administrator credentials server-side. Server settings use the standalone `data/server-settings.json` store, configurable with `-settings-dir` (default `data`). There is no migration or legacy compatibility path.
+Issue #67 / merged PR #68 removed the old Server Sync runtime, the legacy browser subscription format converters, the token authentication and issuing command, and old `/api/sync` route. Homepage handles user identity and per-user account save/load. NewsGo's administrator endpoints verify Homepage administrator credentials server-side. Server settings use the standalone `data/server-settings.json` store, configurable with `-settings-dir` (default `data`). There is no migration or legacy compatibility path.
 
 A zero-minute saved classification TTL disables NewsGo's classification cache, and the Diagnostics panel identifies disabled requests separately from misses. The classification cache is in memory and is cleared when the NewsGo process restarts; restarting just a Safari tab does not clear it.
 

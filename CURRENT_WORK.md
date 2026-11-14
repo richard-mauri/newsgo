@@ -1,27 +1,9 @@
 # Current work — NewsGo
 
-- **Same-tab reader navigation:** NewsGo headline links now open ScraperGo in the current tab (no named `newsgo-scrapergo` target), preserving the existing URL and Homepage handoff. External original-publisher links remain separate. Await exact-head CI and owner Safari acceptance; no merge.
+**Active documentation review:** [Issue #95](https://github.com/richard-mauri/newsgo/issues/95), branch `docs/95-session-markdown-refresh` targeting `main`, [draft PR #96](https://github.com/richard-mauri/newsgo/pull/96). This branch changes only Markdown; exact-head CI and owner merge approval are pending.
 
-- **Heartbeat revocation follow-up:** NewsGo's normal activity ping now returns HTTP 401 on a supplied revoked/expired handoff (never reclassifying it as anonymous); the browser notifies its existing account controller, which revalidates against Homepage and opens the existing sign-in-required dialog. An unavailable Homepage returns 503. CI #606 passed before this note; Mac Safari acceptance pending.
+GitHub `main` at `540c766` includes Homepage-verified guest/named identity and activity, revoked-heartbeat handling, a non-dismissible sign-in-required dialog, and current-tab article navigation to ScraperGo. All prior session PRs/issues were merged or closed; no issues or PRs remain open and no implementation branch is active.
 
-## Issue #93 — Non-dismissible suite sign-in prompt
+Homepage remains the session and renewal authority. NewsGo uses a validated, parent-bound child handoff, treats revoked supplied identity as 401 and temporary Homepage verification outage as 503, and permits no Close/Escape dismissal of the sign-in-required dialog. One-hour guests do not gain named-user account persistence. Feeds, reader, storage and publisher-link behavior are unchanged.
 
-- **Baseline:** GitHub `main`, including merged NewsGo PR #92 (Homepage named/guest identity and activity).
-- **Branch:** `fix/93-block-signin-dismiss` from `main`; focused draft PR pending. Homepage central authorization remains unchanged.
-- **Owner-reproduced UX:** After Homepage admin revokes a one-hour guest, NewsGo recognizes sign-out but the sign-in-required dialog offered **Close**, leaving the app visible as an unidentified reader.
-- **Change:** Remove the sign-in dialog's Close button and prevent native Escape/cancel dismissal. Keep **Go to Homepage** as explicit, user-triggered navigation in a separate tab; a successful Homepage profile verification still closes the dialog programmatically. No automatic redirect.
-- **Boundaries:** No changes to NewsGo feeds, ScraperGo APIs, persistence, browser-only settings, private tokens, activity heartbeat, or user data. Homepage Issue #38 separately tracks a later protected-API authorization audit.
-- **Regression:** Source-contract test in `internal/dashboard/session_countdown_test.go` covers modal blocking and verified dismissal. Exact-head Go CI and owner's Apple Silicon Safari acceptance are required; neither implies the other.
-- **Owner acceptance:** Verify invalid/revoked session shows only **Go to Homepage**; click and Escape cannot dismiss; valid Homepage sign-in and handoff permit normal reader use. Do not merge without explicit owner approval.
-
-Mac commands after draft PR head is confirmed:
-
-```bash
-cd ~/projects/newsgo
-git fetch origin
-git checkout fix/93-block-signin-dismiss
-git pull --ff-only origin fix/93-block-signin-dismiss
-go test -count=1 ./...
-./devbuild.sh
-./newsgo.sh
-```
+**Next:** bring Markdown into line with merged code in a fresh documentation-only draft PR. Verify paths/links and exact-head CI; no restart or Mac/Safari acceptance is needed for docs-only changes. For runtime work, protect unpushed local changes, use an issue-scoped branch, and require owner approval to merge or deploy.
