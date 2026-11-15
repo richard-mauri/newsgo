@@ -16,11 +16,39 @@ import (
 
 type discoverRequest struct {
 	URL string `json:"url"`
+	Existing []string `json:"existing,omitempty"`
 }
 type discoverResponse struct {
 	Feeds  []feeds.Source `json:"feeds,omitempty"`
 	Counts map[string]int `json:"counts,omitempty"`
+	Matches map[string]string `json:"matches,omitempty"`
 	Error  string         `json:"error,omitempty"`
+}
+
+// Feed equality is based on publisher-declared identity or substantial
+// overlap of actual article links, never the common publisher display name.
+func feedIdentity(body []byte) string {
+	var rss struct { Channel struct { Links []struct { Href string `xml:"href,attr"`; Rel string `xml:"rel,attr"` } `xml:"link"` } `xml:"channel"` }
+	if xml.Unmarshal(body, &rss) != nil { return "" }
+	for _, link := range rss.Channel.Links {
+		if strings.EqualFold(link.Rel, "self") && safeURL(link.Href) { return normalizedFeedURL(link.Href) }
+	}
+	return ""
+}
+func normalizedFeedURL(raw string) string {
+	u, err := url.Parse(raw); if err != nil { return "" }
+	u.Fragment="";u.RawQuery="";u.Host=strings.ToLower(u.Host);u.Path=strings.TrimRight(u.Path,"/")
+	return u.String()
+}
+func equivalentFeeds(a, b []feeds.Article, canonicalA, canonicalB string) bool {
+	if canonicalA!="" && canonicalA==canonicalB { return true }
+	if len(a)<5 || len(b)<5 { return false }
+	seen:=map[string]bool{}
+	for _, item:=range a { seen[normalizedFeedURL(item.URL)]=true }
+	common:=0
+	for _, item:=range b { if seen[normalizedFeedURL(item.URL)] { common++ } }
+	minimum:=len(a);if len(b)<minimum { minimum=len(b) }
+	return common>=5 && common*100>=minimum*80
 }
 
 var titleTagRE = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
@@ -192,7 +220,7 @@ func (s *State) serveDiscover(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var req discoverRequest
-	if json.NewDecoder(r.Body).Decode(&req) != nil || len(req.URL) > 2048 || !safeURL(req.URL) {
+	if json.NewDecoder(r.Body).Decode(&req) != nil || len(req.URL) > 2048 || !safeURL(req.URL) || len(req.Existing)>8 {
 		w.WriteHeader(400)
 		_ = json.NewEncoder(w).Encode(discoverResponse{Error: "Enter a public HTTP(S) website URL"})
 		return
@@ -218,6 +246,17 @@ func (s *State) serveDiscover(w http.ResponseWriter, r *http.Request) {
 	seen := map[string]bool{}
 	results := []feeds.Source{}
 	counts := map[string]int{}
+	matches := map[string]string{}
+	type inspectedFeed struct { url string; items []feeds.Article; canonical string }
+	inspected := []inspectedFeed{}
+	// Existing subscriptions are evaluated only for feeds the reader supplies;
+	// invalid addresses are ignored and the safe client retains SSRF limits.
+	existing := []inspectedFeed{}
+	for _, raw := range req.Existing {
+		if !safeURL(raw) { continue }
+		items, body, _, _, err := feeds.FetchArticlesWithRaw(r.Context(), client, feeds.Source{URL:raw,Name:"Existing"})
+		if err==nil && len(items)>0 { existing=append(existing, inspectedFeed{raw,items,feedIdentity(body)}) }
+	}
 	probes := 0
 	for _, raw := range candidates {
 		if seen[raw] || !safeURL(raw) {
@@ -235,11 +274,17 @@ func (s *State) serveDiscover(w http.ResponseWriter, r *http.Request) {
 		}
 		source.Name = discoveryFeedName(pageHTML, body, base, raw)
 		source.Category = discoveryCategory(source.Name, req.URL+" "+raw)
+		canonical:=feedIdentity(body)
+		duplicate:=false
+		for _, prior:=range inspected { if equivalentFeeds(items,prior.items,canonical,prior.canonical) { duplicate=true;break } }
+		if duplicate { continue }
+		for _, prior:=range existing { if equivalentFeeds(items,prior.items,canonical,prior.canonical) { matches[raw]=prior.url;break } }
+		inspected=append(inspected,inspectedFeed{raw,items,canonical})
 		results = append(results, source)
 		counts[source.URL] = len(items)
 		if len(results) >= 8 {
 			break
 		}
 	}
-	_ = json.NewEncoder(w).Encode(discoverResponse{Feeds: results, Counts: counts})
+	_ = json.NewEncoder(w).Encode(discoverResponse{Feeds: results, Counts: counts, Matches: matches})
 }

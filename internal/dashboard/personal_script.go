@@ -279,6 +279,7 @@ function queryEdited(){
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{
+ if(b.dataset.equivalentTo){b.textContent='Already subscribed';b.disabled=true;b.title='Equivalent to your existing subscription: '+b.dataset.equivalentTo;return}
  const following=feeds.some(f=>f.url===b.dataset.feedUrl);
  const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);
  const state=b.dataset.directoryStatus;
@@ -770,7 +771,11 @@ function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTT
  message('Validating feed…');
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
- try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
+ try{
+ const publisherHost=new URL(u).hostname.replace(/^www\./,'');
+ const publisherParts=publisherHost.split('.');const publisherRoot=publisherParts.slice(-2).join('.');
+ const existing=feeds.filter(f=>{try{const host=new URL(f.url).hostname;return host===publisherRoot||host.endsWith('.'+publisherRoot)}catch(_){return false}}).slice(0,8).map(f=>f.url);
+ const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  const groups=new Map();
  data.feeds.forEach(f=>{
   const domain=publisherForFeed(f),key=domain||'(unknown publisher)';
@@ -787,7 +792,9 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
   const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;
   const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;
   info.append(title,small,address);markSite(info,domain);
-  const subscribeButton=button('Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
+  const matchedURL=data.matches&&data.matches[f.url];
+  const subscribeButton=button(matchedURL?'Already subscribed':'Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
+  if(matchedURL){subscribeButton.dataset.equivalentTo=matchedURL;subscribeButton.disabled=true;subscribeButton.title='Equivalent to your existing subscription: '+matchedURL;const notice=document.createElement('small');notice.textContent='Same articles as an existing subscription';info.append(notice)}
   row.append(info,subscribeButton);entry.group.append(row);
  });
  refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found (up to 8 shown per search). Select Subscribe to add one.');
@@ -1004,6 +1011,17 @@ async function homepageReaderRecord(){
 // settings remain available when signed out. Saves use revisioned writes.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
 let accountNotice='';
+let accountDiagnostic={operation:'Not attempted',result:'No account load or save attempted yet',time:''};
+function renderAccountDiagnostic(){
+ const panel=el('diagnostics-panel');if(!panel)return;
+ let details=el('account-diagnostics-panel');
+ if(!details){details=document.createElement('details');details.id='account-diagnostics-panel';details.className='personal-panel';details.open=true;
+  const summary=document.createElement('summary');const title=document.createElement('strong');title.textContent='Homepage account synchronization';summary.append(title);
+  const status=document.createElement('p');status.id='account-diagnostics-summary';status.className='personal-status';status.setAttribute('role','status');
+  details.append(summary,status);panel.querySelector('.panel-heading').insertAdjacentElement('afterend',details)}
+ el('account-diagnostics-summary').textContent=accountDiagnostic.operation+' · '+accountDiagnostic.result+(accountDiagnostic.time?' · '+accountDiagnostic.time:'');
+}
+function recordAccountDiagnostic(operation,result){accountDiagnostic={operation,result,time:new Date().toLocaleString()};renderAccountDiagnostic()}
 const accountStatus=message=>{accountNotice=message||'';if(suiteAccountLine){suiteAccountLine.title=accountNotice;showSuiteSessionStatus()}};
 function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
@@ -1024,8 +1042,9 @@ async function accountSave(){
   const result=await response.json();
   if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
   accountRevision=result.revision;
+  recordAccountDiagnostic('Save','Succeeded (revision '+result.revision+')');
   accountStatus('');
- }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message)}}
+ }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message);recordAccountDiagnostic('Save','Failed: '+e.message)}}
  finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
 }
 function scheduleAccountSave(){
@@ -1058,12 +1077,14 @@ async function initializeHomepageAccount(owner,token){
    accountRevision=0;
   }
   accountOwner=owner;accountReady=true;accountConflict=false;accountDirty=false;
+  recordAccountDiagnostic('Load',record?'Succeeded (revision '+record.revision+')':'No saved record; initializing account');
   try{localStorage.setItem('newsgo.account.last-owner.v1',owner)}catch(_){}
   accountStatus('');
   if(!record)scheduleAccountSave();
  }catch(e){
   accountReady=false;
   accountStatus('Account preferences could not load: '+e.message);
+  recordAccountDiagnostic('Load','Failed: '+e.message+'. Browser subscriptions preserved; automatic account saves paused.');
  }finally{if(accountLoadingUser===owner)accountLoadingUser=null}
 }
 let adminRevision=0;
