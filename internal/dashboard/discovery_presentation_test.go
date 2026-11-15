@@ -24,10 +24,10 @@ func TestReadableDiscoveryPresentation(t *testing.T) {
 	if strings.Contains(personalJS, "summary.textContent='Technical feed address'") {
 		t.Fatal("discovered feed URLs must not be collapsed")
 	}
-	for _, part := range []string{"discovered-feed-row", "subscribeButton.dataset.feedUrl=f.url", "syncFollowButtons();if(trigger){trigger.textContent='Subscribed';trigger.disabled=true", "if(!subscribeRecord(feedRecord(f)))throw Error"} {
+	for _, part := range []string{"discovered-feed-row", "subscribeButton.dataset.feedUrl=f.url", "toggleDiscoveredSubscription(f,subscribeButton)", "toggleDiscoveredSubscription(f,b)", "if(feeds.some(existing=>existing.url===f.url)){catalogSubscriptionClick(f,trigger);return}", "if(!subscribeRecord(feedRecord(f)))throw Error"} {
 		if !strings.Contains(personalJS, part) { t.Fatalf("missing discovery subscribe state handling: %s", part) }
 	}
-	if !strings.Contains(page.Tree.Root.String(), "grid-template-columns:minmax(0,1fr) 175px 265px") {
+	if !strings.Contains(page.Tree.Root.String(), "grid-template-columns:minmax(0,1fr) 128px 205px") {
 		t.Fatal("discovery subscribe and exclude controls must have aligned columns")
 	}
 }
@@ -55,13 +55,14 @@ func TestVersionedDiscoveryScript(t *testing.T) {
 func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
 	style := page.Tree.Root.String()
 	for _, want := range []string{
-		".included-card{display:grid;grid-template-columns:minmax(0,1fr) 112px 145px",
+		".included-card{display:grid;grid-template-columns:minmax(0,1fr) 128px 205px",
 		".included-card>.read-included{grid-column:2;grid-row:1}",
 		".included-card>.exclude-site{grid-column:3;grid-row:1}",
 		".included-card>.exclusion-label{grid-column:1;grid-row:2",
-		".catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 112px 155px",
+		".catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 128px 205px",
 		".included-card strong{grid-column:1/-1;grid-row:1}",
-		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 175px 265px",
+		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 128px 205px",
+		".included-card button{width:100%;min-width:0;cursor:pointer;background:var(--soft)",
 		"button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)",
 		"button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
 		"@media(prefers-reduced-motion:reduce){button:not(:disabled){transition:none}}",

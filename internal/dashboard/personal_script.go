@@ -275,9 +275,8 @@ function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEac
  const following=feeds.some(f=>f.url===b.dataset.feedUrl);
  const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);
  const state=b.dataset.directoryStatus;
- const catalog=b.closest('#catalog-list')!==null;
- b.textContent=following?(catalog?'Unsubscribe':'Subscribed'):b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
- b.disabled=following?!catalog:excludedURL(domain)||state==='unavailable';
+ b.textContent=following?'Unsubscribe':b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
+ b.disabled=!following&&(excludedURL(domain)||state==='unavailable');
  if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title');
 })}
 // Only the last successful, explicit Read All Articles refresh may be exported.
@@ -755,13 +754,17 @@ function subscribeClick(f,trigger){
  if(trigger&&trigger.dataset.subscribeError){showSubscriptionFailure(trigger,f);return}
  add(f,trigger);
 }
+function toggleDiscoveredSubscription(f,trigger){
+ if(feeds.some(existing=>existing.url===f.url)){catalogSubscriptionClick(f,trigger);return}
+ subscribeClick(f,trigger);
+}
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){trigger.textContent='Subscribed';trigger.disabled=true;trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
- data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row discovered-feed-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;info.append(title,document.createElement('br'),small,document.createElement('br'),address);const domain=publisherForFeed(f);markSite(info,domain);const subscribeButton=button('Subscribe',()=>subscribeClick(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;row.append(info,subscribeButton);const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});syncFollowButtons();message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
+ data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row discovered-feed-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;info.append(title,document.createElement('br'),small,document.createElement('br'),address);const domain=publisherForFeed(f);markSite(info,domain);const subscribeButton=button('Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;row.append(info,subscribeButton);const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});syncFollowButtons();message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
  }catch(err){message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
@@ -772,7 +775,7 @@ el('manage-personal').addEventListener('click',()=>showView('discover'));
 function chooseIncluded(name){const f=catalogByName.get(name);if(f)chooseSource(f.url)}
 document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{
  const f=catalogByName.get(b.dataset.includedSource);
- if(f)subscribeClick(f,b);
+ if(f)toggleDiscoveredSubscription(f,b);
 }));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
 el('read-source').addEventListener('change',()=>{const value=el('read-source').value;if(value.startsWith('personal:'))chooseSource(value.slice(9));else chooseAllSubscriptions()});
