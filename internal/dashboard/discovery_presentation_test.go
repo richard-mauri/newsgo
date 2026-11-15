@@ -51,3 +51,19 @@ func TestDiscoveryFeedMetadataAndDistinctFallbacks(t *testing.T) {
 func TestVersionedDiscoveryScript(t *testing.T) {
 	assertVersionedScript(t,page.Tree.Root.String())
 }
+
+func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
+	style := page.Tree.Root.String()
+	for _, want := range []string{
+		".included-card{display:grid;grid-template-columns:minmax(0,1fr) 112px 145px",
+		".catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 112px 155px",
+		".included-card strong{grid-column:1/-1}",
+		"button:not(:disabled):hover{border-color:var(--accent)",
+		"button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
+		"@media(prefers-reduced-motion:reduce){button:not(:disabled){transition:none}}",
+	} {
+		if !strings.Contains(style, want) {
+			t.Errorf("missing aligned or accessible button treatment: %s", want)
+		}
+	}
+}
