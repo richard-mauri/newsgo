@@ -24,6 +24,12 @@ func TestReadableDiscoveryPresentation(t *testing.T) {
 	if strings.Contains(personalJS, "summary.textContent='Technical feed address'") {
 		t.Fatal("discovered feed URLs must not be collapsed")
 	}
+	for _, part := range []string{"discovered-feed-row", "subscribeButton.dataset.feedUrl=f.url", "syncFollowButtons();if(trigger){trigger.textContent='Subscribed';trigger.disabled=true", "if(!subscribeRecord(feedRecord(f)))throw Error"} {
+		if !strings.Contains(personalJS, part) { t.Fatalf("missing discovery subscribe state handling: %s", part) }
+	}
+	if !strings.Contains(page.Tree.Root.String(), "grid-template-columns:minmax(0,1fr) 175px 265px") {
+		t.Fatal("discovery subscribe and exclude controls must have aligned columns")
+	}
 }
 
 func TestDiscoveryFeedMetadataAndDistinctFallbacks(t *testing.T) {
