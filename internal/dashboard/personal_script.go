@@ -2,6 +2,11 @@ package dashboard
 
 const personalJS = `(function(){
 'use strict';
+// Apply one shared button component to server-rendered controls. Dynamically
+// created controls use button() or explicitly add the same class below.
+document.querySelectorAll('button').forEach(b=>b.classList.add('ui-button'));
+document.querySelectorAll('.news-nav button,.panel-close').forEach(b=>b.classList.add('ui-button-large'));
+document.querySelectorAll('.filter-btn,.admin-settings-actions button[type="submit"]').forEach(b=>b.classList.add('ui-button-primary'));
 const catalog=Array.from(document.querySelectorAll('[data-included-source]'),b=>({name:b.dataset.includedSource,url:b.dataset.feedUrl,category:b.dataset.category||'Other'}));
 const catalogByName=new Map(catalog.map(f=>[f.name,f]));
 const feedIdentity=u=>{try{const x=new URL(u);x.hash='';return 'feed:'+x.href}catch(_){return 'feed:'+u}};
@@ -209,7 +214,7 @@ function rememberReadingSelection(value){
 }
 
 function message(t){el('personal-message').textContent=t}
-function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',handler);return b}
+function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.add('ui-button');if(cls)b.classList.add(cls);b.addEventListener('click',handler);return b}
 let searchSeq=0, lastSearchSentAt=0, searchInFlight=false;
 const searchIntervalMs=3200; // Server allows one uncached search per IP every 3 seconds.
 const searchDelay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -515,7 +520,7 @@ function renderFilteredArticles(){
  const views=[];
  const activate=index=>{views.forEach((entry,i)=>{entry.tab.setAttribute('aria-selected',String(i===index));entry.tab.tabIndex=i===index?0:-1;entry.panel.hidden=i!==index;});};
  sorted.forEach(([reason,items],index)=>{
-  const tab=document.createElement('button');tab.type='button';tab.className='filtered-tab';tab.id='filtered-tab-'+index;tab.setAttribute('role','tab');tab.textContent=labelForReason(reason)+' ('+(reason==='unprocessed'?items.reduce((n,x)=>n+x.count,0):items.length)+')';
+  const tab=document.createElement('button');tab.type='button';tab.className='filtered-tab ui-button';tab.id='filtered-tab-'+index;tab.setAttribute('role','tab');tab.textContent=labelForReason(reason)+' ('+(reason==='unprocessed'?items.reduce((n,x)=>n+x.count,0):items.length)+')';
   const section=document.createElement('section');section.className='filtered-classification-group';section.id='filtered-tab-panel-'+index;section.setAttribute('role','tabpanel');section.setAttribute('aria-labelledby',tab.id);
   tab.setAttribute('aria-controls',section.id);tab.addEventListener('click',()=>activate(index));
   tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();let next=event.key==='Home'?0:event.key==='End'?sorted.length-1:(index+(event.key==='ArrowRight'?1:-1)+sorted.length)%sorted.length;activate(next);views[next].tab.focus();});

@@ -78,12 +78,25 @@ func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
 		".included-card strong{grid-column:1/-1;grid-row:1}",
 		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 128px",
 		".included-card button{width:100%;min-width:0;cursor:pointer;background:var(--soft)",
-		"button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)",
-		"button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
-		"@media(prefers-reduced-motion:reduce){button:not(:disabled){transition:none}}",
+		"button.ui-button{appearance:none;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:9px",
+		"button.ui-button.ui-button-primary{background:var(--accent)",
+		"button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)",
+		"button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
+		"@media(prefers-reduced-motion:reduce){button.ui-button{transition:none}}",
 	} {
 		if !strings.Contains(style, want) {
 			t.Errorf("missing aligned or accessible button treatment: %s", want)
 		}
+	}
+}
+
+func TestSharedButtonComponentCoversStaticAndDynamicControls(t *testing.T) {
+	for _, fragment := range []string{
+		"document.querySelectorAll('button').forEach(b=>b.classList.add('ui-button'))",
+		"document.querySelectorAll('.news-nav button,.panel-close')",
+		"b.classList.add('ui-button');if(cls)b.classList.add(cls)",
+		"tab.className='filtered-tab ui-button'",
+	} {
+		if !strings.Contains(personalJS, fragment) { t.Errorf("shared button class missing: %s", fragment) }
 	}
 }
