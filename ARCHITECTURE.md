@@ -9,6 +9,12 @@ See [AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md) for workflow, [R
 - `internal/feeds/`: feed validation and fetching, URL safety, parsing and article normalization.
 - ScraperGo is independent and provides article classifications, clean reading and thumbnails.
 
+## RSS discovery identity and presentation
+
+`POST /api/discover` validates a public HTTP(S) publisher page with the existing SSRF-protected client, probes a maximum of 24 candidate feed addresses, and returns at most eight distinct verified feeds. Feed titles come from each accepted RSS/Atom/JSON feed, with URL-based fallbacks for generic titles. Candidates are deduplicated by matching publisher-declared RSS channel Atom `rel="self"` links when present or by substantial overlap in article URLs (at least five common links and 80% of the smaller sample). Name equality alone never merges feeds. The browser may supply up to eight same-publisher existing feed URLs for comparison; a discovered equivalent offers actionable Unsubscribe for the existing record, with confirmation and re-discovery, rather than storing another duplicate. Actual stored subscription URLs and IDs are never automatically rewritten, migrated or deleted.
+
+The Find Subscriptions browser UI groups discovered feeds by publisher and has one exclusion action per group; subscription controls use the shared button treatment. The browser keeps separate bounded eight-entry histories in `newsgo.recent.searches.v1` and `newsgo.recent.websites.v1`, held in `localStorage` and intentionally excluded from Homepage account profile synchronization. Search entries are saved on valid attempts; website entries only after a successful response with at least one discovered feed. Invalid/unavailable website discovery shows a nearby inline error. Histories survive ordinary browser/process restarts unless Safari website data is cleared; they do not have an automatic TTL.
+
 ## Reading and classification
 
 NewsGo fetches selected RSS/Atom/JSON subscriptions in batches of at most eight. Each eligible article is checked using ScraperGo `POST /api/classify`; only confirmed `article` URLs appear in either normal or RSS metadata-only reading. Homepages, unreadable/unavailable/unknown outcomes, age-filtered articles and entries beyond feed caps are reported in the filtered/unprocessed audit. RSS metadata-only changes the displayed metadata and thumbnail source, not the classifier gate.
@@ -22,6 +28,8 @@ Homepage provides **all live reader identity and account persistence**. The brow
 NewsGo administrator endpoints `GET/PUT /api/admin/settings` and `POST /api/admin/classification-diagnostic` require server-side verification of the supplied Homepage bearer against Homepage's **fixed** HTTPS session-profile endpoint on every privileged request. The browser sends it in the dedicated `X-NewsGo-Homepage-Authorization` header. The Go verifier requires a valid bearer, a current expiry and the server-asserted `admin` role, with three-second timeout, no redirects and no persistent secret logging. An ordinary Homepage reader cannot administer NewsGo, regardless of browser UI manipulation. Reading Diagnostics is not privileged and remains browser-local.
 
 There is no Server Sync token authentication, `/api/sync` route, separate token CLI, or migration path for old browser subscription formats. Current subscriptions are stored in the single `newsgo.subscriptions.unified.v1` browser registry. Homepage stores the optional account copy. Historical token and profile files, if still present on disk, are unused.
+
+The browser's Diagnostics panel includes a **Homepage account synchronization** section reporting the most recent profile load/save operation, result, local timestamp and bounded error message. A failed Homepage load does not initialize an empty account, does not erase the local subscriptions and does not authorize a PUT; this diagnostic is separate from feed fetch and classification diagnostics.
 
 ## Operational server settings
 

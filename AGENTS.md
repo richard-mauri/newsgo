@@ -10,7 +10,9 @@ Before making changes, tell the owner the verified baseline, Issue and branch, a
 
 Never merge a PR, modify `main`, tag or release without the owner's explicit approval. **Normal cleanup of a merged task's short-lived branch follows the safety checks in DEVELOPMENT.md; bulk deletion of historical branches requires separate approval.** No forced deletion or force-pushing.
 
-Before handoff, update the actual PR title and full description and CURRENT_WORK.md, reporting exact final-head CI and what was or wasn't tested on the Mac. For code work, give the complete branch-specific Mac command block prescribed in DEVELOPMENT.md. Documentation-only PRs need documentation checks and CI, not runtime acceptance.
+**Owner command `FINISH`:** When the owner says `FINISH` in the active NewsGo development context, treat it as explicit authorization to perform the *complete closeout* of the currently active, verified PR: merge that PR to `main`, close its associated Issue(s), delete only its merged short-lived remote branch after verifying the merge, and show commands to restore the owner's local repository to `main`. Verify PR identity, exact-head CI and merge state before acting. Stop and report an unsafe or failed gate; do not silently bypass protection, discard local changes, force-delete branches, deploy, tag or release. Follow the detailed procedure in DEVELOPMENT.md.
+
+Before handoff, update the actual PR title and full description and CURRENT_WORK.md, reporting exact final-head CI and what was or wasn't tested on the Mac. Verify that **all project Markdown documents affected by the change are current**; this is an explicit item in the visible development checklist. For code work, give the complete branch-specific Mac command block prescribed in DEVELOPMENT.md. Documentation-only PRs need documentation checks and CI, not runtime acceptance.
 
 ## Security and quality invariants
 - Never print, log, commit, or disclose tokens, cookies, tunnel secrets, personally identifying user data, or private profile contents.
