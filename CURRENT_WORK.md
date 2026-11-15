@@ -1,6 +1,6 @@
 # Current work — NewsGo
 
-**Active:** Homepage [Issue #45](https://github.com/richard-mauri/homepage/issues/45) policy adoption, branch `docs/45-suite-policy-adoption` based on current GitHub `main`; draft PR to be created/verified. This is documentation and validation tooling only. Source policy is Homepage merged commit `502f56de374f094eec2e6d5107c89d2d963f44fd`, policy v1.0.0; a local read-only generated copy and offline/online staleness check are included. No consumer merge is authorized.
+**Active:** Homepage [Issue #45](https://github.com/richard-mauri/homepage/issues/45) policy adoption, branch `docs/45-suite-policy-adoption` based on current GitHub `main`; [draft PR #101](https://github.com/richard-mauri/newsgo/pull/101) open against `main`. This is documentation and validation tooling only. Source policy is Homepage merged commit `502f56de374f094eec2e6d5107c89d2d963f44fd`, policy v1.0.0; a local read-only generated copy and offline/online staleness check are included. No consumer merge is authorized.
 
 **Merged context:** [PR #98](https://github.com/richard-mauri/newsgo/pull/98) integrated feed-discovery changes and introduced the six-item handoff and FINISH instructions now incorporated into Homepage policy. NewsGo continues to depend on Homepage parent-bound handoffs: invalid/revoked identities return 401, verification outage 503, and one-hour guests do not obtain named-user storage. Feed discovery, publisher grouping, subscription/exclusion actions, URL/topic search histories, reading and per-user preferences are unchanged.
 
