@@ -279,7 +279,11 @@ function queryEdited(){
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{
- if(b.dataset.equivalentTo){b.textContent='Already subscribed';b.disabled=true;b.title='Equivalent to your existing subscription: '+b.dataset.equivalentTo;return}
+ if(b.dataset.equivalentTo){
+  const matched=feeds.some(f=>f.url===b.dataset.equivalentTo);
+  b.textContent=matched?'Unsubscribe':'Subscribe';b.disabled=false;
+  b.title=matched?'Unsubscribe from the equivalent existing feed':'Subscribe to this feed';return
+ }
  const following=feeds.some(f=>f.url===b.dataset.feedUrl);
  const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);
  const state=b.dataset.directoryStatus;
@@ -766,6 +770,15 @@ function toggleDiscoveredSubscription(f,trigger){
  if(feeds.some(existing=>existing.url===f.url)){catalogSubscriptionClick(f,trigger);return}
  subscribeClick(f,trigger);
 }
+async function toggleEquivalentDiscoveredSubscription(f,trigger){
+ const existingURL=trigger.dataset.equivalentTo;
+ const existing=feeds.find(item=>item.url===existingURL);
+ if(!existing){delete trigger.dataset.equivalentTo;subscribeClick(f,trigger);return}
+ await catalogSubscriptionClick(existing,trigger);
+ // An unsubscribe confirmation may be canceled. Recheck the directory so
+ // remaining equivalent subscriptions are respected before showing Subscribe.
+ if(!feeds.some(item=>item.url===existingURL))await discoverFeeds();
+}
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow Domain before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
@@ -793,8 +806,8 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
   const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;
   info.append(title,small,address);markSite(info,domain);
   const matchedURL=data.matches&&data.matches[f.url];
-  const subscribeButton=button(matchedURL?'Already subscribed':'Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
-  if(matchedURL){subscribeButton.dataset.equivalentTo=matchedURL;subscribeButton.disabled=true;subscribeButton.title='Equivalent to your existing subscription: '+matchedURL;const notice=document.createElement('small');notice.textContent='Same articles as an existing subscription';info.append(notice)}
+  const subscribeButton=button(matchedURL?'Unsubscribe':'Subscribe',()=>matchedURL?toggleEquivalentDiscoveredSubscription(f,subscribeButton):toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
+  if(matchedURL){subscribeButton.dataset.equivalentTo=matchedURL;subscribeButton.title='Unsubscribe from the equivalent existing feed';const notice=document.createElement('small');notice.textContent='Same articles as an existing subscription';info.append(notice)}
   row.append(info,subscribeButton);entry.group.append(row);
  });
  refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found (up to 8 shown per search). Select Subscribe to add one.');

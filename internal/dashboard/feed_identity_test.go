@@ -28,7 +28,7 @@ func TestFeedIdentityRequiresSameContentNotSamePublisherTitle(t *testing.T) {
 }
 
 func TestFeedIdentityAndAccountDiagnosticsUI(t *testing.T) {
-	for _, part := range []string{"dataset.equivalentTo", "Already subscribed", "recordAccountDiagnostic('Load'", "account-diagnostics-panel", "Browser subscriptions preserved"} {
+	for _, part := range []string{"dataset.equivalentTo", "toggleEquivalentDiscoveredSubscription", "b.textContent=matched?'Unsubscribe':'Subscribe'", "recordAccountDiagnostic('Load'", "account-diagnostics-panel", "Browser subscriptions preserved"} {
 		if !strings.Contains(personalJS,part) { t.Errorf("missing safeguard %q", part) }
 	}
 }
