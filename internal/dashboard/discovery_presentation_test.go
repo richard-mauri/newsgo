@@ -56,9 +56,13 @@ func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
 	style := page.Tree.Root.String()
 	for _, want := range []string{
 		".included-card{display:grid;grid-template-columns:minmax(0,1fr) 112px 145px",
+		".included-card>.read-included{grid-column:2;grid-row:1}",
+		".included-card>.exclude-site{grid-column:3;grid-row:1}",
+		".included-card>.exclusion-label{grid-column:1;grid-row:2",
 		".catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 112px 155px",
 		".included-card strong{grid-column:1/-1}",
-		"button:not(:disabled):hover{border-color:var(--accent)",
+		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 175px 265px",
+		"button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)",
 		"button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
 		"@media(prefers-reduced-motion:reduce){button:not(:disabled){transition:none}}",
 	} {
