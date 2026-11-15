@@ -23,6 +23,10 @@ GitHub `main` is authoritative. For each new work item, check the current `main`
    Owner's Mac Git supports `git checkout` rather than `git switch`. Document-only PRs require Markdown/link/path checking and normal CI; no runtime rebuild or Safari acceptance is necessary.
 6. Owner performs applicable Safari/live acceptance. **Do not merge, tag, release, enable auto-merge or modify `main` without explicit owner approval.** After authorized merge, sync local `main` and verify promoted build when relevant.
 
+## Visible development checklist
+
+For every NewsGo development status or handoff, include a short, factual checklist in the user-facing reply. State (1) the authoritative baseline, Issue, branch and PR, including whether multiple changes must be tested together; (2) whether local and account data, existing subscriptions, settings and tokens are untouched; (3) the exact-head CI result and what remains unverified; (4) the complete branch-specific Mac commands from this document whenever delivering code for acceptance; and (5) the explicit merge/deploy authorization boundary. Do not claim a check passed until observed. A feature requested as part of the same owner acceptance session stays on the active draft PR when the owner directs that integrated testing, even if separately tracked by Issue.
+
 ## Post-merge branch lifecycle
 - **Every merged task finishes with short-lived branch cleanup.** Verify its PR was merged into `main` and that the branch is not `main`, not head of an open PR, and contains no unmerged work. Do not delete a closed-but-unmerged branch just because its PR is closed.
 - Once verified, delete the merged feature branch on GitHub (or use the owner's repository **Automatically delete head branches** setting), then prune remote-tracking refs and delete the local branch safely with `git branch -d` after checking out `main`. Never use force-deletion to conceal an unmerged state.

@@ -215,6 +215,43 @@ function rememberReadingSelection(value){
 
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.add('ui-button');if(cls)b.classList.add(cls);b.addEventListener('click',handler);return b}
+// Browser-local search history survives Safari and NewsGo restarts. It is
+// deliberately not part of the Homepage account preferences or feed registry.
+const recentHistoryLimit=8;
+const recentHistoryFields=[
+ {input:'catalog-search',form:'catalog-form',key:'newsgo.recent.searches.v1',label:'Recent searches',run:()=>searchCatalog()},
+ {input:'discover-url',form:'discover-form',key:'newsgo.recent.websites.v1',label:'Recent websites',run:()=>discoverFeeds()}
+];
+function readRecentHistory(key){
+ try{const entries=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(entries)?entries.filter(v=>typeof v==='string'&&v.length>0&&v.length<=2048).slice(0,recentHistoryLimit):[]}
+ catch(_){return []}
+}
+function renderRecentHistory(field){
+ const root=document.getElementById(field.input+'-recent');if(!root)return;
+ root.replaceChildren();const entries=readRecentHistory(field.key);
+ if(!entries.length){root.style.display='none';return}
+ root.style.display='flex';
+ const label=document.createElement('span');label.textContent=field.label+':';label.style.cssText='color:var(--muted);font-size:.85rem';root.append(label);
+ for(const entry of entries){
+  const choice=button(entry,()=>{el(field.input).value=entry;field.run()});
+  choice.title=entry;choice.setAttribute('aria-label','Repeat '+(field.input==='catalog-search'?'search':'website discovery')+': '+entry);
+  choice.style.cssText='max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 10px;font-size:.82rem';
+  root.append(choice)
+ }
+ const clear=button('Clear history',()=>{try{localStorage.removeItem(field.key)}catch(_){}renderRecentHistory(field)});
+ clear.setAttribute('aria-label','Clear '+field.label.toLowerCase());clear.style.cssText='padding:5px 9px;font-size:.82rem;background:transparent;color:var(--muted)';root.append(clear)
+}
+function rememberRecentHistory(field,value){
+ const entry=value.trim();if(!entry)return;
+ const previous=readRecentHistory(field.key).filter(v=>v!==entry);
+ try{localStorage.setItem(field.key,JSON.stringify([entry,...previous].slice(0,recentHistoryLimit)))}catch(_){}
+ renderRecentHistory(field)
+}
+for(const field of recentHistoryFields){
+ const root=document.createElement('div');root.id=field.input+'-recent';root.setAttribute('aria-label',field.label);
+ root.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:9px 0 16px';
+ el(field.form).insertAdjacentElement('afterend',root);renderRecentHistory(field)
+}
 let searchSeq=0, lastSearchSentAt=0, searchInFlight=false;
 const searchIntervalMs=3200; // Server allows one uncached search per IP every 3 seconds.
 const searchDelay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -223,6 +260,7 @@ async function searchCatalog(){
  if(searchInFlight)return;
  const seq=++searchSeq;
  if(q.length<2){root.replaceChildren();status.textContent='Enter at least two characters to search for news sources.';return}
+ rememberRecentHistory(recentHistoryFields[0],q);
  searchInFlight=true;el('catalog-submit').disabled=true;
  // Keep the previous results visible while waiting, but label them as previous results.
  status.setAttribute('role','status');status.setAttribute('aria-live','polite');
@@ -784,6 +822,7 @@ function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTT
  message('Validating feed…');
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
+ try{const parsed=new URL(u);if((parsed.protocol==='https:'||parsed.protocol==='http:')&&!parsed.username&&!parsed.password)rememberRecentHistory(recentHistoryFields[1],u)}catch(_){}
  try{
  const publisherHost=new URL(u).hostname.replace(/^www\./,'');
  const publisherParts=publisherHost.split('.');const publisherRoot=publisherParts.slice(-2).join('.');
