@@ -54,7 +54,7 @@ func TestCatalogHidesBrokenFeedsAndTogglesSubscriptions(t *testing.T) {
   "if(followed)subscribedCount++",
   "catalogSubscriptionClick(f,b)",
   "button(followed?'Unsubscribe'",
-  "const catalog=b.closest('#catalog-list')!==null;",
+  "b.disabled=!following&&(excludedURL(domain)||state==='unavailable');",
   "following?'Unsubscribe'",
   "if(!await confirmSubscriptionRemoval(record.name))return;",
   "if(!unsubscribeRecord(record.id))return;",
