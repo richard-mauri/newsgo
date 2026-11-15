@@ -821,10 +821,18 @@ function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTT
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
-async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
- try{const parsed=new URL(u);if((parsed.protocol==='https:'||parsed.protocol==='http:')&&!parsed.username&&!parsed.password)rememberRecentHistory(recentHistoryFields[1],u)}catch(_){}
+function discoveryFeedback(text){
+ let status=el('discover-url-feedback');
+ if(!status){status=document.createElement('p');status.id='discover-url-feedback';status.className='personal-status';status.setAttribute('role','alert');status.style.cssText='margin:8px 0 12px;color:var(--accent)';el('discover-form').insertAdjacentElement('afterend',status)}
+ status.textContent=text;status.hidden=!text;
+}
+async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();discoveryFeedback('');
+ let parsed;
+ try{parsed=new URL(u);if(!['http:','https:'].includes(parsed.protocol)||!parsed.hostname||parsed.username||parsed.password)throw Error('Invalid website URL')}
+ catch(_){discoveryFeedback('Enter a valid public http:// or https:// website URL.');message('Discovery: Invalid website URL.');return}
+ message('Searching for RSS or Atom feeds…');
  try{
- const publisherHost=new URL(u).hostname.replace(/^www\./,'');
+ const publisherHost=parsed.hostname.replace(/^www\./,'');
  const publisherParts=publisherHost.split('.');const publisherRoot=publisherParts.slice(-2).join('.');
  const existing=feeds.filter(f=>{try{const host=new URL(f.url).hostname;return host===publisherRoot||host.endsWith('.'+publisherRoot)}catch(_){return false}}).slice(0,8).map(f=>f.url);
  const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
@@ -849,8 +857,9 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
   if(matchedURL){subscribeButton.dataset.equivalentTo=matchedURL;subscribeButton.title='Unsubscribe from the equivalent existing feed';const notice=document.createElement('small');notice.textContent='Same articles as an existing subscription';info.append(notice)}
   row.append(info,subscribeButton);entry.group.append(row);
  });
+ rememberRecentHistory(recentHistoryFields[1],u);
  refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found (up to 8 shown per search). Select Subscribe to add one.');
- }catch(err){message('Discovery: '+err.message)}}
+ }catch(err){discoveryFeedback('Could not find feeds: '+err.message);message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
 el('catalog-search').addEventListener('input',queryEdited);

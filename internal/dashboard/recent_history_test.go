@@ -20,4 +20,12 @@ func TestRecentDiscoveryHistoriesRemainSeparateAndBrowserLocal(t *testing.T) {
 			t.Errorf("missing recent-history behavior %q", part)
 		}
 	}
+	if !strings.Contains(personalJS,"discoveryFeedback('Could not find feeds: '+err.message)") || !strings.Contains(personalJS,"Enter a valid public http:// or https:// website URL.") {
+		t.Fatal("invalid website discovery must show an inline error")
+	}
+	validResult := strings.Index(personalJS,"if(!data.feeds||!data.feeds.length)throw Error")
+	remember := strings.Index(personalJS,"rememberRecentHistory(recentHistoryFields[1],u)")
+	if validResult<0 || remember<=validResult {
+		t.Fatal("website URLs must enter history only after valid feed discovery")
+	}
 }
