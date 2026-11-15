@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"encoding/xml"
 	"encoding/json"
 	"github.com/richard-mauri/newsgo/internal/feeds"
 	"html"
@@ -76,7 +77,50 @@ func discoveryCategory(name, websiteURL string) string {
 			return "Sports"
 		}
 	}
+	for _, word := range []string{"technology", "tech", "software", "computing", "cyber"} {
+		if strings.Contains(text, word) { return "Technology" }
+	}
+	for _, word := range []string{"science", "space", "research", "astronomy"} {
+		if strings.Contains(text, word) { return "Science" }
+	}
+	for _, word := range []string{"stock", "stocks", "forex", "currency", "currencies", "commodity", "commodities", "finance", "financial", "market", "investing", "economy", "economic", "business"} {
+		if strings.Contains(text, word) { return "Business" }
+	}
 	return "Other"
+}
+
+// Feed metadata belongs to each endpoint, unlike the title of the website's
+// directory page. The body has already passed the normal bounded feed parser.
+func discoveredFeedTitle(body []byte) string {
+	var jsonTitle struct { Title string `json:"title"` }
+	if json.Unmarshal(body, &jsonTitle) == nil { return strings.TrimSpace(jsonTitle.Title) }
+	var title struct {
+		XMLName xml.Name
+		Channel struct { Title string `xml:"title"` } `xml:"channel"`
+		Title string `xml:"title"`
+	}
+	if err := xml.Unmarshal(body, &title); err != nil { return "" }
+	if strings.EqualFold(title.XMLName.Local, "rss") { return strings.TrimSpace(title.Channel.Title) }
+	if strings.EqualFold(title.XMLName.Local, "feed") { return strings.TrimSpace(title.Title) }
+	return ""
+}
+
+func discoveryFeedName(pageHTML, feedBody []byte, website *url.URL, feedURL string) string {
+	base := discoveryName(pageHTML, website, feedURL)
+	title := strings.TrimSpace(discoveredFeedTitle(feedBody))
+	// Generic directory names tell readers nothing about the distinct feeds.
+	generic := title == "" || strings.EqualFold(title, "RSS") || strings.EqualFold(title, "RSS Feeds") ||
+		strings.EqualFold(title, "Investing.com RSS Feeds") || strings.EqualFold(title, base)
+	if !generic && len([]rune(title)) <= 90 { return title }
+	u, err := url.Parse(feedURL)
+	if err == nil {
+		section := strings.TrimSuffix(path.Base(u.Path), path.Ext(u.Path))
+		section = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(section, "-", " "), "_", " "))
+		if section != "" && section != "." && section != "rss" && section != "feed" && section != "index" {
+			return base + " · " + strings.Title(section)
+		}
+	}
+	return base
 }
 
 var linkTagRE = regexp.MustCompile(`(?is)<link\s+[^>]*>`)
@@ -184,12 +228,13 @@ func (s *State) serveDiscover(w http.ResponseWriter, r *http.Request) {
 		if probes > 24 {
 			break
 		}
-		name := discoveryName(pageHTML, base, raw)
-		source := feeds.Source{Name: name, Category: discoveryCategory(name, req.URL), URL: raw}
-		items, err := feeds.FetchArticles(r.Context(), client, source)
+		source := feeds.Source{Name: discoveryName(pageHTML, base, raw), URL: raw}
+		items, body, _, _, err := feeds.FetchArticlesWithRaw(r.Context(), client, source)
 		if err != nil || len(items) == 0 {
 			continue
 		}
+		source.Name = discoveryFeedName(pageHTML, body, base, raw)
+		source.Category = discoveryCategory(source.Name, req.URL+" "+raw)
 		results = append(results, source)
 		counts[source.URL] = len(items)
 		if len(results) >= 8 {

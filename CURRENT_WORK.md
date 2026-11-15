@@ -1,9 +1,11 @@
 # Current work — NewsGo
 
-**Active documentation review:** [Issue #95](https://github.com/richard-mauri/newsgo/issues/95), branch `docs/95-session-markdown-refresh` targeting `main`, [draft PR #96](https://github.com/richard-mauri/newsgo/pull/96). This branch changes only Markdown; exact-head CI and owner merge approval are pending.
+**Active runtime fix:** [Issue #97](https://github.com/richard-mauri/newsgo/issues/97), branch `fix/97-discovery-feed-labels` targeting `main`. Draft PR and exact-head CI are pending; Mac/Safari acceptance and owner merge approval are required.
 
-GitHub `main` at `540c766` includes Homepage-verified guest/named identity and activity, revoked-heartbeat handling, a non-dismissible sign-in-required dialog, and current-tab article navigation to ScraperGo. All prior session PRs/issues were merged or closed; no issues or PRs remain open and no implementation branch is active.
+GitHub `main` at `791d4d9` includes merged PR #96 (documentation refresh) and the earlier Homepage session improvements. No other issues or PRs were open when Issue #97 was created.
 
 Homepage remains the session and renewal authority. NewsGo uses a validated, parent-bound child handoff, treats revoked supplied identity as 401 and temporary Homepage verification outage as 503, and permits no Close/Escape dismissal of the sign-in-required dialog. One-hour guests do not gain named-user account persistence. Feeds, reader, storage and publisher-link behavior are unchanged.
 
-**Next:** bring Markdown into line with merged code in a fresh documentation-only draft PR. Verify paths/links and exact-head CI; no restart or Mac/Safari acceptance is needed for docs-only changes. For runtime work, protect unpushed local changes, use an issue-scoped branch, and require owner approval to merge or deploy.
+**Current change:** use each discovered feed's RSS/Atom/JSON title or meaningful URL-based fallback, infer finance and additional topical categories, and display full discovered feed addresses without collapsible disclosures. No changes to accounts, subscriptions, server settings or deployment.
+
+**Next:** run exact-head CI (`go test -count=1 ./...`, `go build ./...`), then owner verifies actual publisher results and Subscribe in Mac/Safari. Do not merge or deploy until explicitly approved.
