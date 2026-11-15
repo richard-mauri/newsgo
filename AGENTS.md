@@ -1,30 +1,9 @@
-# NewsGo — development agent rules
+# NewsGo — agent entry point
 
-This file is the **authoritative instruction set for agents**. Read it before making changes. Do not put feature history, architecture explanations, or active task notes here: see [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md), and [CURRENT_WORK.md](CURRENT_WORK.md).
+**Mandatory:** Read the entire [generated local suite policy](docs/suite-development-policy.md) before any change, including when offline. This is a generated, pinned copy of Homepage's [authoritative policy](https://github.com/richard-mauri/homepage/blob/main/SUITE_DEVELOPMENT_POLICY.md). Run `python3 scripts/suite_policy.py --offline` for local integrity; when online run `python3 scripts/suite_policy.py` for upstream freshness. An absent, edited or stale policy is a blocker for shared-process edits. Do not hand-edit the copy; use `--sync` on a reviewed policy synchronization PR.
 
-## Mandatory development entry point
+Also read [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DEVELOPMENT.md](DEVELOPMENT.md) and [CURRENT_WORK.md](CURRENT_WORK.md). Verify actual GitHub and owner-local states; do not trust an older snapshot. Homepage policy owns six-part visible handoffs, FINISH, approval and branch lifecycle; NewsGo-specific checks and Mac commands are in DEVELOPMENT.
 
-Read [CURRENT_WORK.md](CURRENT_WORK.md), [ARCHITECTURE.md](ARCHITECTURE.md) and [DEVELOPMENT.md](DEVELOPMENT.md) before any development action. **DEVELOPMENT.md is authoritative** for Issues, branch creation, draft PRs, tests, Mac/Safari acceptance, promotion gates and post-merge branch cleanup. GitHub `main` is the authoritative merged baseline; use a fresh issue-scoped branch for every new task, **never the legacy `dev` branch**.
+NewsGo receives Homepage bearer handoffs; preserve user subscriptions, exclusions, feed catalogs, reading preferences, browser search histories, per-user storage, tokens, local counters and private Cloudflare configuration. Keep authorization server-side. Treat publisher URLs and fetched content as untrusted, preserve SSRF/request bounds and article classification. NewsGo sends articles to ScraperGo but never shares ScraperGo extraction code. Do not change another app without a separately approved scoped PR.
 
-Before making changes, tell the owner the verified baseline, Issue and branch, actual PR state, tests and acceptance path, and merge authorization boundary. Work only within the authorized scope. Preserve user data, tokens, subscriptions, exclusions, preferences, local build counter, feeds catalog and Cloudflare settings.
-
-Never merge a PR, modify `main`, tag or release without the owner's explicit approval. **Normal cleanup of a merged task's short-lived branch follows the safety checks in DEVELOPMENT.md; bulk deletion of historical branches requires separate approval.** No forced deletion or force-pushing.
-
-**Owner command `FINISH`:** When the owner says `FINISH` in the active NewsGo development context, treat it as explicit authorization to perform the *complete closeout* of the currently active, verified PR: merge that PR to `main`, close its associated Issue(s), delete only its merged short-lived remote branch after verifying the merge, and show commands to restore the owner's local repository to `main`. Verify PR identity, exact-head CI and merge state before acting. Stop and report an unsafe or failed gate; do not silently bypass protection, discard local changes, force-delete branches, deploy, tag or release. Follow the detailed procedure in DEVELOPMENT.md.
-
-Before handoff, update the actual PR title and full description and CURRENT_WORK.md, reporting exact final-head CI and what was or wasn't tested on the Mac. Verify that **all project Markdown documents affected by the change are current**; this is an explicit item in the visible development checklist. For code work, give the complete branch-specific Mac command block prescribed in DEVELOPMENT.md. Documentation-only PRs need documentation checks and CI, not runtime acceptance.
-
-## Security and quality invariants
-- Never print, log, commit, or disclose tokens, cookies, tunnel secrets, personally identifying user data, or private profile contents.
-- Keep role authorization on the server, not merely in browser presentation. Treat publisher URLs and fetched content as untrusted; preserve SSRF and request bounds. Do not loosen strict article classification to mask upstream errors.
-- Do not modify ScraperGo or other applications during NewsGo work unless separately authorized.
-- If a step or integration cannot be verified, report that fact instead of asserting success.
-
-## Documentation ownership
-- **README.md:** user-facing setup, operation, features and commands.
-- **ARCHITECTURE.md:** implemented technical design, data flow, endpoints, security, persistence.
-- **CURRENT_WORK.md:** live development state, evidence, PR/branch/CI, outstanding checks and next tasks.
-- **DEVELOPMENT.md:** Git workflow, validation and post-merge cleanup.
-- **AGENTS.md:** these mandatory agent rules alone.
-
-Git history is the record of older work. Do not accumulate dated handoff sections or duplicate content across these files.
+No source/runtime changes, forced resets, merges, deployments, tags or restarts are authorized by merely reading this entry point. Report passed/failed/unverified checks factually.
