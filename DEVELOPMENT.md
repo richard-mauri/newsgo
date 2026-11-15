@@ -1,6 +1,6 @@
 # NewsGo — app-specific development and validation
 
-Read [AGENTS.md](AGENTS.md) and the complete [generated suite policy](docs/suite-development-policy.md). The suite policy, not this file, controls Issues, branches, draft PRs, exact-head CI, visible six-item handoff, owner FINISH and merged branch cleanup. Keep this document for NewsGo-specific validation and commands.
+Read [AGENTS.md](AGENTS.md) and [Homepage's authoritative suite development policy](https://github.com/richard-mauri/homepage/blob/main/SUITE_DEVELOPMENT_POLICY.md). The suite policy, not this file, controls Issues, branches, draft PRs, exact-head CI, visible six-item handoff, owner FINISH and merged branch cleanup. Keep this document for NewsGo-specific validation and commands.
 
 ## NewsGo regression and data boundaries
 
