@@ -100,3 +100,19 @@ func TestSharedButtonComponentCoversStaticAndDynamicControls(t *testing.T) {
 		if !strings.Contains(personalJS, fragment) { t.Errorf("shared button class missing: %s", fragment) }
 	}
 }
+
+func TestDomainActionWordingAndWidth(t *testing.T) {
+	style := page.Tree.Root.String()
+	if !strings.Contains(style, ".discovered-feed-group-heading button.ui-button{width:205px;max-width:100%}") {
+		t.Fatal("group exclusion must match the catalog domain-action width")
+	}
+	if !strings.Contains(style, `id="exclude-add">Exclude Domain</button>`) {
+		t.Fatal("diagnostics uses inconsistent domain action label")
+	}
+	for _, word := range []string{"Exclude this site", "Allow this site", "Exclude This Domain"} {
+		if strings.Contains(personalJS, word) { t.Fatalf("obsolete domain label: %s", word) }
+	}
+	for _, word := range []string{"'Exclude Domain'", "'Allow Domain'"} {
+		if !strings.Contains(personalJS, word) { t.Fatalf("missing consistent label: %s", word) }
+	}
+}

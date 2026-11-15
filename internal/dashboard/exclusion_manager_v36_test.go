@@ -12,7 +12,7 @@ func TestExcludedManagerNamesSitesAndPreservesDomainCountV36(t *testing.T) {
         "function excludedURLForDomain(url,domain)",
         "function setUnifiedDomain(domain,allow)",
         "const domains=effectiveExcludedDomains().sort()", 
-        "row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)))", 
+        "row.append(info,button('Allow Domain',()=>setUnifiedDomain(d,true)))",
         "el('excluded-count').textContent='('+domains.length+')'", 
         "function renderExclusionManager()",
     } {

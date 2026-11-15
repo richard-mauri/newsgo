@@ -113,7 +113,7 @@ function excludeDomain(value){const domain=publisherScope(value);if(!domain){mes
 function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
 function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
-function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow domain':'Exclude This Domain',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
+function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow Domain':'Exclude Domain',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
 function markSite(info,domain){if(!domain)return;const badge=document.createElement('small');badge.className='exclusion-label';badge.textContent=statusLabel(domain);info.append(badge)}
 // Compare against the specific excluded entry, not against every exclusion.
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
@@ -125,7 +125,7 @@ function renderExclusionManager(){
  domains.forEach(d=>{
   const row=document.createElement('div');row.className='personal-row';
   const info=document.createElement('strong');info.textContent=d;
-  row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)));root.append(row);
+  row.append(info,button('Allow Domain',()=>setUnifiedDomain(d,true)));root.append(row);
  });
 }
 function selectedPublisherExcluded(){
@@ -154,7 +154,7 @@ function refreshSearchExclusionCards(){
   if(!action)return;
   const domain=action.dataset.publisherDomain;
   const excluded=excludedURL(domain);
-  action.textContent=excluded?'Allow domain':'Exclude This Domain';
+  action.textContent=excluded?'Allow Domain':'Exclude Domain';
   card.dataset.excluded=excluded?'true':'false';
   let badge=card.querySelector('.exclusion-label');
   if(!badge){badge=document.createElement('small');badge.className='exclusion-label';card.querySelector('div')?.append(badge)}
@@ -284,7 +284,7 @@ function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEac
  const state=b.dataset.directoryStatus;
  b.textContent=following?'Unsubscribe':b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
  b.disabled=!following&&(excludedURL(domain)||state==='unavailable');
- if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title');
+ if(!following&&excludedURL(domain))b.title='Allow Domain before subscribing';else b.removeAttribute('title');
 })}
 // Only the last successful, explicit Read All Articles refresh may be exported.
 let scraperTraceBatch=[];
@@ -639,7 +639,7 @@ function renderManager(){
   let badge=box.querySelector('.exclusion-label');if(!badge){badge=document.createElement('small');badge.className='exclusion-label';box.insertBefore(badge,b)}
   badge.textContent=statusLabel(domain);
   let action=box.querySelector('.exclude-site');if(!action){action=excludeButton(domain);if(action)box.append(action)}
-  if(action)action.textContent=excludedURL(domain)?'Allow this site':'Exclude this site';
+  if(action)action.textContent=excludedURL(domain)?'Allow Domain':'Exclude Domain';
  });
  feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);const actions=document.createElement('div');actions.className='subscription-actions';if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseSource(f.url)));actions.append(button('Unsubscribe',()=>{if(!unsubscribeRecord(feedIdentity(f.url)))return;
  if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)});
@@ -765,7 +765,7 @@ function toggleDiscoveredSubscription(f,trigger){
  if(feeds.some(existing=>existing.url===f.url)){catalogSubscriptionClick(f,trigger);return}
  subscribeClick(f,trigger);
 }
-function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
+function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow Domain before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
