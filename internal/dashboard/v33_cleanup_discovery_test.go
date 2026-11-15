@@ -33,7 +33,7 @@ func TestV33NoCachedCatalogHeadlinesOrServerRefresh(t *testing.T) {
 	if !strings.Contains(html, `id="personal-loading"`) {
 		t.Fatal("missing detailed subscribed-feed status")
 	}
-	if !strings.Contains(html, "grid-template-columns:minmax(0,1fr) auto") {
+	if !strings.Contains(html, "grid-template-columns:minmax(0,1fr) 128px 205px") {
 		t.Fatal("missing layout safeguard")
 	}
 }

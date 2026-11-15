@@ -10,7 +10,7 @@ func TestExcludedSubscriptionRetainsActionToAllowPublisher(t *testing.T) {
 	// allow reversal without removing subscription membership.
 	for _, marker := range []string{
 		"function excludeButton(domain)",
-		"excludedURL(d)?'Allow domain':'Exclude This Domain'",
+		"excludedURL(d)?'Allow Domain':'Exclude Domain'",
 		"if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)",
 		"if(!domain||!excludedURL(domain))actions.append(button('Read Articles'",
 	} {

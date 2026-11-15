@@ -2,6 +2,11 @@ package dashboard
 
 const personalJS = `(function(){
 'use strict';
+// Apply one shared button component to server-rendered controls. Dynamically
+// created controls use button() or explicitly add the same class below.
+document.querySelectorAll('button').forEach(b=>b.classList.add('ui-button'));
+document.querySelectorAll('.news-nav button,.panel-close').forEach(b=>b.classList.add('ui-button-large'));
+document.querySelectorAll('.filter-btn,.admin-settings-actions button[type="submit"]').forEach(b=>b.classList.add('ui-button-primary'));
 const catalog=Array.from(document.querySelectorAll('[data-included-source]'),b=>({name:b.dataset.includedSource,url:b.dataset.feedUrl,category:b.dataset.category||'Other'}));
 const catalogByName=new Map(catalog.map(f=>[f.name,f]));
 const feedIdentity=u=>{try{const x=new URL(u);x.hash='';return 'feed:'+x.href}catch(_){return 'feed:'+u}};
@@ -108,7 +113,7 @@ function excludeDomain(value){const domain=publisherScope(value);if(!domain){mes
 function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
 function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
 function statusLabel(domain){return domain&&excludedURL(domain)?' · Excluded':''}
-function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow domain':'Exclude This Domain',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
+function excludeButton(domain){const d=publisherScope(domain);if(!d)return null;const b=button(excludedURL(d)?'Allow Domain':'Exclude Domain',()=>toggleDomain(d),'exclude-site');b.dataset.publisherDomain=d;return b}
 function markSite(info,domain){if(!domain)return;const badge=document.createElement('small');badge.className='exclusion-label';badge.textContent=statusLabel(domain);info.append(badge)}
 // Compare against the specific excluded entry, not against every exclusion.
 function excludedURLForDomain(url,domain){const host=hostOf(url);return !!host&&(host===domain||host.endsWith('.'+domain))}
@@ -120,7 +125,7 @@ function renderExclusionManager(){
  domains.forEach(d=>{
   const row=document.createElement('div');row.className='personal-row';
   const info=document.createElement('strong');info.textContent=d;
-  row.append(info,button('Allow domain',()=>setUnifiedDomain(d,true)));root.append(row);
+  row.append(info,button('Allow Domain',()=>setUnifiedDomain(d,true)));root.append(row);
  });
 }
 function selectedPublisherExcluded(){
@@ -132,7 +137,16 @@ function refreshExclusionViews(){
  // If the user just excluded the publication they are reading, show the
  // remaining subscriptions rather than an empty publisher page.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}
- renderExclusionManager();renderManager();refreshSearchExclusionCards();
+ renderExclusionManager();renderManager();refreshSearchExclusionCards();refreshDiscoveredGroupControls();
+}
+function refreshDiscoveredGroupControls(){
+ document.querySelectorAll('#discover-results .discovered-feed-group').forEach(group=>{
+  const domain=group.dataset.publisherDomain,excluded=excludedURL(domain);
+  group.dataset.excluded=excluded?'true':'false';
+  const action=group.querySelector('.discovered-feed-group-heading .exclude-site');
+  if(action)action.textContent=excluded?'Allow Domain':'Exclude Domain';
+  group.querySelectorAll('.discovered-feed-row .exclusion-label').forEach(b=>b.textContent=statusLabel(domain));
+ });
 }
 function refreshSearchExclusionCards(){
  document.querySelectorAll('#catalog-list .catalog-card').forEach(card=>{
@@ -140,7 +154,7 @@ function refreshSearchExclusionCards(){
   if(!action)return;
   const domain=action.dataset.publisherDomain;
   const excluded=excludedURL(domain);
-  action.textContent=excluded?'Allow domain':'Exclude This Domain';
+  action.textContent=excluded?'Allow Domain':'Exclude Domain';
   card.dataset.excluded=excluded?'true':'false';
   let badge=card.querySelector('.exclusion-label');
   if(!badge){badge=document.createElement('small');badge.className='exclusion-label';card.querySelector('div')?.append(badge)}
@@ -176,13 +190,6 @@ function saveSubscriptions(next){
 function hasSubscription(id){return registry.some(r=>r.id===id)}
 function subscribeRecord(record){if(hasSubscription(record.id))return true;return saveSubscriptions([...registry,record])}
 function unsubscribeRecord(id){return saveSubscriptions(registry.filter(r=>r.id!==id))}
-const suggestions=[
-{name:'NASA News',category:'Science',url:'https://www.nasa.gov/news-release/feed/'},
-{name:'NASA Science',category:'Science',url:'https://science.nasa.gov/feed/'},
-{name:'NASA JPL',category:'Science',url:'https://www.jpl.nasa.gov/feeds/news/'},
-{name:'NOAA News',category:'Science',url:'https://www.noaa.gov/rss.xml'},
-{name:'Ars Technica Science',category:'Science',url:'https://feeds.arstechnica.com/arstechnica/science'}
-];
 const el=id=>document.getElementById(id);
 const valid=f=>f&&typeof f.name==='string'&&f.name.trim().length>0&&f.name.length<=70&&typeof f.category==='string'&&f.category.length<=40&&typeof f.url==='string'&&f.url.length<=2048&&/^https?:\/\/[^\s/]+/i.test(f.url);
 let selectedSource='';
@@ -207,7 +214,44 @@ function rememberReadingSelection(value){
 }
 
 function message(t){el('personal-message').textContent=t}
-function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',handler);return b}
+function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.add('ui-button');if(cls)b.classList.add(cls);b.addEventListener('click',handler);return b}
+// Browser-local search history survives Safari and NewsGo restarts. It is
+// deliberately not part of the Homepage account preferences or feed registry.
+const recentHistoryLimit=8;
+const recentHistoryFields=[
+ {input:'catalog-search',form:'catalog-form',key:'newsgo.recent.searches.v1',label:'Recent searches',run:()=>searchCatalog()},
+ {input:'discover-url',form:'discover-form',key:'newsgo.recent.websites.v1',label:'Recent websites',run:()=>discoverFeeds()}
+];
+function readRecentHistory(key){
+ try{const entries=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(entries)?entries.filter(v=>typeof v==='string'&&v.length>0&&v.length<=2048).slice(0,recentHistoryLimit):[]}
+ catch(_){return []}
+}
+function renderRecentHistory(field){
+ const root=document.getElementById(field.input+'-recent');if(!root)return;
+ root.replaceChildren();const entries=readRecentHistory(field.key);
+ if(!entries.length){root.style.display='none';return}
+ root.style.display='flex';
+ const label=document.createElement('span');label.textContent=field.label+':';label.style.cssText='color:var(--muted);font-size:.85rem';root.append(label);
+ for(const entry of entries){
+  const choice=button(entry,()=>{el(field.input).value=entry;field.run()});
+  choice.title=entry;choice.setAttribute('aria-label','Repeat '+(field.input==='catalog-search'?'search':'website discovery')+': '+entry);
+  choice.style.cssText='max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 10px;font-size:.82rem';
+  root.append(choice)
+ }
+ const clear=button('Clear history',()=>{try{localStorage.removeItem(field.key)}catch(_){}renderRecentHistory(field)});
+ clear.setAttribute('aria-label','Clear '+field.label.toLowerCase());clear.style.cssText='padding:5px 9px;font-size:.82rem;background:transparent;color:var(--muted)';root.append(clear)
+}
+function rememberRecentHistory(field,value){
+ const entry=value.trim();if(!entry)return;
+ const previous=readRecentHistory(field.key).filter(v=>v!==entry);
+ try{localStorage.setItem(field.key,JSON.stringify([entry,...previous].slice(0,recentHistoryLimit)))}catch(_){}
+ renderRecentHistory(field)
+}
+for(const field of recentHistoryFields){
+ const root=document.createElement('div');root.id=field.input+'-recent';root.setAttribute('aria-label',field.label);
+ root.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:9px 0 16px';
+ el(field.form).insertAdjacentElement('afterend',root);renderRecentHistory(field)
+}
 let searchSeq=0, lastSearchSentAt=0, searchInFlight=false;
 const searchIntervalMs=3200; // Server allows one uncached search per IP every 3 seconds.
 const searchDelay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -216,6 +260,7 @@ async function searchCatalog(){
  if(searchInFlight)return;
  const seq=++searchSeq;
  if(q.length<2){root.replaceChildren();status.textContent='Enter at least two characters to search for news sources.';return}
+ rememberRecentHistory(recentHistoryFields[0],q);
  searchInFlight=true;el('catalog-submit').disabled=true;
  // Keep the previous results visible while waiting, but label them as previous results.
  status.setAttribute('role','status');status.setAttribute('aria-live','polite');
@@ -272,13 +317,17 @@ function queryEdited(){
 function submitCatalogSearch(e){if(e)e.preventDefault();searchCatalog()}
 
 function syncFollowButtons(){document.querySelectorAll('[data-feed-url]').forEach(b=>{
+ if(b.dataset.equivalentTo){
+  const matched=feeds.some(f=>f.url===b.dataset.equivalentTo);
+  b.textContent=matched?'Unsubscribe':'Subscribe';b.disabled=false;
+  b.title=matched?'Unsubscribe from the equivalent existing feed':'Subscribe to this feed';return
+ }
  const following=feeds.some(f=>f.url===b.dataset.feedUrl);
  const domain=b.dataset.publisherDomain||exclusionDomain(b.dataset.feedUrl);
  const state=b.dataset.directoryStatus;
- const catalog=b.closest('#catalog-list')!==null;
- b.textContent=following?(catalog?'Unsubscribe':'Subscribed'):b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
- b.disabled=following?!catalog:excludedURL(domain)||state==='unavailable';
- if(!following&&excludedURL(domain))b.title='Allow this site before subscribing';else b.removeAttribute('title');
+ b.textContent=following?'Unsubscribe':b.dataset.subscribeError?'Failure':state==='unavailable'?'Unavailable':state==='unverified'?'Try Subscribe':'Subscribe';
+ b.disabled=!following&&(excludedURL(domain)||state==='unavailable');
+ if(!following&&excludedURL(domain))b.title='Allow Domain before subscribing';else b.removeAttribute('title');
 })}
 // Only the last successful, explicit Read All Articles refresh may be exported.
 let scraperTraceBatch=[];
@@ -514,7 +563,7 @@ function renderFilteredArticles(){
  const views=[];
  const activate=index=>{views.forEach((entry,i)=>{entry.tab.setAttribute('aria-selected',String(i===index));entry.tab.tabIndex=i===index?0:-1;entry.panel.hidden=i!==index;});};
  sorted.forEach(([reason,items],index)=>{
-  const tab=document.createElement('button');tab.type='button';tab.className='filtered-tab';tab.id='filtered-tab-'+index;tab.setAttribute('role','tab');tab.textContent=labelForReason(reason)+' ('+(reason==='unprocessed'?items.reduce((n,x)=>n+x.count,0):items.length)+')';
+  const tab=document.createElement('button');tab.type='button';tab.className='filtered-tab ui-button';tab.id='filtered-tab-'+index;tab.setAttribute('role','tab');tab.textContent=labelForReason(reason)+' ('+(reason==='unprocessed'?items.reduce((n,x)=>n+x.count,0):items.length)+')';
   const section=document.createElement('section');section.className='filtered-classification-group';section.id='filtered-tab-panel-'+index;section.setAttribute('role','tabpanel');section.setAttribute('aria-labelledby',tab.id);
   tab.setAttribute('aria-controls',section.id);tab.addEventListener('click',()=>activate(index));
   tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();let next=event.key==='Home'?0:event.key==='End'?sorted.length-1:(index+(event.key==='ArrowRight'?1:-1)+sorted.length)%sorted.length;activate(next);views[next].tab.focus();});
@@ -633,7 +682,7 @@ function renderManager(){
   let badge=box.querySelector('.exclusion-label');if(!badge){badge=document.createElement('small');badge.className='exclusion-label';box.insertBefore(badge,b)}
   badge.textContent=statusLabel(domain);
   let action=box.querySelector('.exclude-site');if(!action){action=excludeButton(domain);if(action)box.append(action)}
-  if(action)action.textContent=excludedURL(domain)?'Allow this site':'Exclude this site';
+  if(action)action.textContent=excludedURL(domain)?'Allow Domain':'Exclude Domain';
  });
  feeds.forEach((f,i)=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const name=document.createElement('strong');name.textContent=f.name;const detail=document.createElement('small');try{detail.textContent=new URL(f.url).hostname+' · '+f.category}catch(e){detail.textContent=f.category}info.append(name,detail);const domain=publisherForFeed(f);markSite(info,domain);const actions=document.createElement('div');actions.className='subscription-actions';if(!domain||!excludedURL(domain))actions.append(button('Read Articles',()=>chooseSource(f.url)));actions.append(button('Unsubscribe',()=>{if(!unsubscribeRecord(feedIdentity(f.url)))return;
  if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)});
@@ -755,14 +804,62 @@ function subscribeClick(f,trigger){
  if(trigger&&trigger.dataset.subscribeError){showSubscriptionFailure(trigger,f);return}
  add(f,trigger);
 }
-function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow this site before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
+function toggleDiscoveredSubscription(f,trigger){
+ if(feeds.some(existing=>existing.url===f.url)){catalogSubscriptionClick(f,trigger);return}
+ subscribeClick(f,trigger);
+}
+async function toggleEquivalentDiscoveredSubscription(f,trigger){
+ const existingURL=trigger.dataset.equivalentTo;
+ const existing=feeds.find(item=>item.url===existingURL);
+ if(!existing){delete trigger.dataset.equivalentTo;subscribeClick(f,trigger);return}
+ await catalogSubscriptionClick(existing,trigger);
+ // An unsubscribe confirmation may be canceled. Recheck the directory so
+ // remaining equivalent subscriptions are respected before showing Subscribe.
+ if(!feeds.some(item=>item.url===existingURL))await discoverFeeds();
+}
+function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow Domain before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))return;renderManager();message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
-async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
- try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
- data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Technical feed address';const address=document.createElement('small');address.textContent=f.url;details.append(summary,address);info.append(title,document.createElement('br'),small,details);const domain=publisherForFeed(f);markSite(info,domain);const subscribeButton=button('Subscribe',()=>subscribeClick(f,subscribeButton));row.append(info,subscribeButton);const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
- }catch(err){message('Discovery: '+err.message)}}
+ fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
+function discoveryFeedback(text){
+ let status=el('discover-url-feedback');
+ if(!status){status=document.createElement('p');status.id='discover-url-feedback';status.className='personal-status';status.setAttribute('role','alert');status.style.cssText='margin:8px 0 12px;color:var(--accent)';el('discover-form').insertAdjacentElement('afterend',status)}
+ status.textContent=text;status.hidden=!text;
+}
+async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();discoveryFeedback('');
+ let parsed;
+ try{parsed=new URL(u);if(!['http:','https:'].includes(parsed.protocol)||!parsed.hostname||parsed.username||parsed.password)throw Error('Invalid website URL')}
+ catch(_){discoveryFeedback('Enter a valid public http:// or https:// website URL.');message('Discovery: Invalid website URL.');return}
+ message('Searching for RSS or Atom feeds…');
+ try{
+ const publisherHost=parsed.hostname.replace(/^www\./,'');
+ const publisherParts=publisherHost.split('.');const publisherRoot=publisherParts.slice(-2).join('.');
+ const existing=feeds.filter(f=>{try{const host=new URL(f.url).hostname;return host===publisherRoot||host.endsWith('.'+publisherRoot)}catch(_){return false}}).slice(0,8).map(f=>f.url);
+ const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
+ const groups=new Map();
+ data.feeds.forEach(f=>{
+  const domain=publisherForFeed(f),key=domain||'(unknown publisher)';
+  if(!groups.has(key)){
+   const group=document.createElement('section');group.className='discovered-feed-group';group.dataset.publisherDomain=domain;
+   const heading=document.createElement('div');heading.className='discovered-feed-group-heading';
+   const label=document.createElement('strong');heading.append(label);
+   const action=excludeButton(domain);if(action){action.textContent=excludedURL(domain)?'Allow Domain':'Exclude Domain';heading.append(action)}
+   group.append(heading);out.append(group);groups.set(key,{group,label,count:0});
+  }
+  const entry=groups.get(key);entry.count++;entry.label.textContent=key+' · '+entry.count+' feed'+(entry.count===1?'':'s')+' found';
+  const row=document.createElement('div');row.className='personal-row discovered-feed-row';
+  const info=document.createElement('div');info.className='discovered-feed-info';const title=document.createElement('strong');title.textContent=f.name;
+  const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;
+  const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;
+  info.append(title,small,address);markSite(info,domain);
+  const matchedURL=data.matches&&data.matches[f.url];
+  const subscribeButton=button(matchedURL?'Unsubscribe':'Subscribe',()=>matchedURL?toggleEquivalentDiscoveredSubscription(f,subscribeButton):toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
+  if(matchedURL){subscribeButton.dataset.equivalentTo=matchedURL;subscribeButton.title='Unsubscribe from the equivalent existing feed';const notice=document.createElement('small');notice.textContent='Same articles as an existing subscription';info.append(notice)}
+  row.append(info,subscribeButton);entry.group.append(row);
+ });
+ rememberRecentHistory(recentHistoryFields[1],u);
+ refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found (up to 8 shown per search). Select Subscribe to add one.');
+ }catch(err){discoveryFeedback('Could not find feeds: '+err.message);message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
 el('catalog-search').addEventListener('input',queryEdited);
@@ -772,14 +869,13 @@ el('manage-personal').addEventListener('click',()=>showView('discover'));
 function chooseIncluded(name){const f=catalogByName.get(name);if(f)chooseSource(f.url)}
 document.querySelectorAll('.read-included').forEach(b=>b.addEventListener('click',()=>{
  const f=catalogByName.get(b.dataset.includedSource);
- if(f)subscribeClick(f,b);
+ if(f)toggleDiscoveredSubscription(f,b);
 }));
 el('view-subscriptions').addEventListener('click',()=>showView('subscriptions'));
 el('read-source').addEventListener('change',()=>{const value=el('read-source').value;if(value.startsWith('personal:'))chooseSource(value.slice(9));else chooseAllSubscriptions()});
 el('close-discovery').addEventListener('click',()=>showView('news'));
 el('close-subscriptions').addEventListener('click',()=>showView('news'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
-const sug=el('personal-suggestions');suggestions.forEach(s=>sug.append(button('+ '+s.name,()=>add(s),'personal-suggestion')));
 el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({format:'newsgo-preferences-v3',subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-preferences-v3.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 el('personal-import').addEventListener('click',()=>el('personal-file').click());
 el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());const records=Array.isArray(data)?data:data&&data.format==='newsgo-preferences-v3'?data.subscriptions:null;if(!Array.isArray(records))throw Error('Invalid subscription list');
@@ -976,6 +1072,17 @@ async function homepageReaderRecord(){
 // settings remain available when signed out. Saves use revisioned writes.
 let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
 let accountNotice='';
+let accountDiagnostic={operation:'Not attempted',result:'No account load or save attempted yet',time:''};
+function renderAccountDiagnostic(){
+ const panel=el('diagnostics-panel');if(!panel)return;
+ let details=el('account-diagnostics-panel');
+ if(!details){details=document.createElement('details');details.id='account-diagnostics-panel';details.className='personal-panel';details.open=true;
+  const summary=document.createElement('summary');const title=document.createElement('strong');title.textContent='Homepage account synchronization';summary.append(title);
+  const status=document.createElement('p');status.id='account-diagnostics-summary';status.className='personal-status';status.setAttribute('role','status');
+  details.append(summary,status);panel.querySelector('.panel-heading').insertAdjacentElement('afterend',details)}
+ el('account-diagnostics-summary').textContent=accountDiagnostic.operation+' · '+accountDiagnostic.result+(accountDiagnostic.time?' · '+accountDiagnostic.time:'');
+}
+function recordAccountDiagnostic(operation,result){accountDiagnostic={operation,result,time:new Date().toLocaleString()};renderAccountDiagnostic()}
 const accountStatus=message=>{accountNotice=message||'';if(suiteAccountLine){suiteAccountLine.title=accountNotice;showSuiteSessionStatus()}};
 function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
@@ -996,8 +1103,9 @@ async function accountSave(){
   const result=await response.json();
   if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
   accountRevision=result.revision;
+  recordAccountDiagnostic('Save','Succeeded (revision '+result.revision+')');
   accountStatus('');
- }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message)}}
+ }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message);recordAccountDiagnostic('Save','Failed: '+e.message)}}
  finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
 }
 function scheduleAccountSave(){
@@ -1030,12 +1138,14 @@ async function initializeHomepageAccount(owner,token){
    accountRevision=0;
   }
   accountOwner=owner;accountReady=true;accountConflict=false;accountDirty=false;
+  recordAccountDiagnostic('Load',record?'Succeeded (revision '+record.revision+')':'No saved record; initializing account');
   try{localStorage.setItem('newsgo.account.last-owner.v1',owner)}catch(_){}
   accountStatus('');
   if(!record)scheduleAccountSave();
  }catch(e){
   accountReady=false;
   accountStatus('Account preferences could not load: '+e.message);
+  recordAccountDiagnostic('Load','Failed: '+e.message+'. Browser subscriptions preserved; automatic account saves paused.');
  }finally{if(accountLoadingUser===owner)accountLoadingUser=null}
 }
 let adminRevision=0;
