@@ -132,7 +132,16 @@ function refreshExclusionViews(){
  // If the user just excluded the publication they are reading, show the
  // remaining subscriptions rather than an empty publisher page.
  if(selectedPublisherExcluded()){el('read-source').value='';selectedSource='';showView('news')}
- renderExclusionManager();renderManager();refreshSearchExclusionCards();
+ renderExclusionManager();renderManager();refreshSearchExclusionCards();refreshDiscoveredGroupControls();
+}
+function refreshDiscoveredGroupControls(){
+ document.querySelectorAll('#discover-results .discovered-feed-group').forEach(group=>{
+  const domain=group.dataset.publisherDomain,excluded=excludedURL(domain);
+  group.dataset.excluded=excluded?'true':'false';
+  const action=group.querySelector('.discovered-feed-group-heading .exclude-site');
+  if(action)action.textContent=excluded?'Allow Domain':'Exclude Domain';
+  group.querySelectorAll('.discovered-feed-row .exclusion-label').forEach(b=>b.textContent=statusLabel(domain));
+ });
 }
 function refreshSearchExclusionCards(){
  document.querySelectorAll('#catalog-list .catalog-card').forEach(card=>{
@@ -176,13 +185,6 @@ function saveSubscriptions(next){
 function hasSubscription(id){return registry.some(r=>r.id===id)}
 function subscribeRecord(record){if(hasSubscription(record.id))return true;return saveSubscriptions([...registry,record])}
 function unsubscribeRecord(id){return saveSubscriptions(registry.filter(r=>r.id!==id))}
-const suggestions=[
-{name:'NASA News',category:'Science',url:'https://www.nasa.gov/news-release/feed/'},
-{name:'NASA Science',category:'Science',url:'https://science.nasa.gov/feed/'},
-{name:'NASA JPL',category:'Science',url:'https://www.jpl.nasa.gov/feeds/news/'},
-{name:'NOAA News',category:'Science',url:'https://www.noaa.gov/rss.xml'},
-{name:'Ars Technica Science',category:'Science',url:'https://feeds.arstechnica.com/arstechnica/science'}
-];
 const el=id=>document.getElementById(id);
 const valid=f=>f&&typeof f.name==='string'&&f.name.trim().length>0&&f.name.length<=70&&typeof f.category==='string'&&f.category.length<=40&&typeof f.url==='string'&&f.url.length<=2048&&/^https?:\/\/[^\s/]+/i.test(f.url);
 let selectedSource='';
@@ -764,7 +766,26 @@ function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTT
  fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('discover-results');out.replaceChildren();message('Searching for RSS or Atom feeds…');
  try{const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
- data.feeds.forEach(f=>{const row=document.createElement('div');row.className='personal-row discovered-feed-row';const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;info.append(title,document.createElement('br'),small,document.createElement('br'),address);const domain=publisherForFeed(f);markSite(info,domain);const subscribeButton=button('Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;row.append(info,subscribeButton);const exclusion=excludeButton(domain);if(exclusion)row.append(exclusion);out.append(row)});syncFollowButtons();message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
+ const groups=new Map();
+ data.feeds.forEach(f=>{
+  const domain=publisherForFeed(f),key=domain||'(unknown publisher)';
+  if(!groups.has(key)){
+   const group=document.createElement('section');group.className='discovered-feed-group';group.dataset.publisherDomain=domain;
+   const heading=document.createElement('div');heading.className='discovered-feed-group-heading';
+   const label=document.createElement('strong');heading.append(label);
+   const action=excludeButton(domain);if(action){action.textContent=excludedURL(domain)?'Allow Domain':'Exclude Domain';heading.append(action)}
+   group.append(heading);out.append(group);groups.set(key,{group,label,count:0});
+  }
+  const entry=groups.get(key);entry.count++;entry.label.textContent=key+' · '+entry.count+' feed'+(entry.count===1?'':'s');
+  const row=document.createElement('div');row.className='personal-row discovered-feed-row';
+  const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;
+  const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;
+  const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;
+  info.append(title,document.createElement('br'),small,document.createElement('br'),address);markSite(info,domain);
+  const subscribeButton=button('Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
+  row.append(info,subscribeButton);entry.group.append(row);
+ });
+ refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
  }catch(err){message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
@@ -782,7 +803,6 @@ el('read-source').addEventListener('change',()=>{const value=el('read-source').v
 el('close-discovery').addEventListener('click',()=>showView('news'));
 el('close-subscriptions').addEventListener('click',()=>showView('news'));
 el('personal-form').addEventListener('submit',e=>{e.preventDefault();add({name:el('personal-name').value.trim(),url:el('personal-url').value.trim(),category:el('personal-category').value});});
-const sug=el('personal-suggestions');suggestions.forEach(s=>sug.append(button('+ '+s.name,()=>add(s),'personal-suggestion')));
 el('personal-export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({format:'newsgo-preferences-v3',subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='newsgo-preferences-v3.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 el('personal-import').addEventListener('click',()=>el('personal-file').click());
 el('personal-file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>16384)throw Error('File too large');const data=JSON.parse(await f.text());const records=Array.isArray(data)?data:data&&data.format==='newsgo-preferences-v3'?data.subscriptions:null;if(!Array.isArray(records))throw Error('Invalid subscription list');
