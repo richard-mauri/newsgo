@@ -47,6 +47,25 @@ func TestDiscoveredFeedsSharePublisherExclusion(t *testing.T) {
 	}
 }
 
+func TestDiscoverySpacingAndBoundedCountPresentation(t *testing.T) {
+	html := page.Tree.Root.String()
+	for _, fragment := range []string{
+		`class="subscription-transfer-actions"`,
+		".subscription-transfer-actions{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 10px}",
+		".discovered-feed-info{display:flex;flex-direction:column;gap:3px",
+	} {
+		if !strings.Contains(html, fragment) { t.Errorf("missing discovery spacing treatment: %s", fragment) }
+	}
+	for _, fragment := range []string{
+		"info.className='discovered-feed-info'",
+		"info.append(title,small,address)",
+		"+' found'",
+		"up to 8 shown per search",
+	} {
+		if !strings.Contains(personalJS, fragment) { t.Errorf("missing bounded discovery presentation: %s", fragment) }
+	}
+}
+
 func TestDiscoveryFeedMetadataAndDistinctFallbacks(t *testing.T) {
 	u, _ := url.Parse("https://www.investing.com/webmaster-tools/rss")
 	page := []byte(`<html><title>Investing.com RSS Feeds</title></html>`)

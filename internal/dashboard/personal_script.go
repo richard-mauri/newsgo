@@ -781,16 +781,16 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
    const action=excludeButton(domain);if(action){action.textContent=excludedURL(domain)?'Allow Domain':'Exclude Domain';heading.append(action)}
    group.append(heading);out.append(group);groups.set(key,{group,label,count:0});
   }
-  const entry=groups.get(key);entry.count++;entry.label.textContent=key+' · '+entry.count+' feed'+(entry.count===1?'':'s');
+  const entry=groups.get(key);entry.count++;entry.label.textContent=key+' · '+entry.count+' feed'+(entry.count===1?'':'s')+' found';
   const row=document.createElement('div');row.className='personal-row discovered-feed-row';
-  const info=document.createElement('div');const title=document.createElement('strong');title.textContent=f.name;
+  const info=document.createElement('div');info.className='discovered-feed-info';const title=document.createElement('strong');title.textContent=f.name;
   const small=document.createElement('small');small.textContent=(data.counts&&data.counts[f.url]||0)+' articles · '+(f.category||'News')+' · '+(new URL(f.url)).hostname;
   const address=document.createElement('small');address.className='discovered-feed-address';address.textContent=f.url;
-  info.append(title,document.createElement('br'),small,document.createElement('br'),address);markSite(info,domain);
+  info.append(title,small,address);markSite(info,domain);
   const subscribeButton=button('Subscribe',()=>toggleDiscoveredSubscription(f,subscribeButton));subscribeButton.dataset.feedUrl=f.url;subscribeButton.dataset.publisherDomain=domain;
   row.append(info,subscribeButton);entry.group.append(row);
  });
- refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found. Select Subscribe to add one.');
+ refreshDiscoveredGroupControls();syncFollowButtons();message(data.feeds.length+' feed(s) found (up to 8 shown per search). Select Subscribe to add one.');
  }catch(err){message('Discovery: '+err.message)}}
 el('discover-button').addEventListener('click',discoverFeeds);
 el('discover-form').addEventListener('submit',e=>{e.preventDefault();discoverFeeds()});
