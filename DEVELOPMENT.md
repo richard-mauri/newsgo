@@ -4,7 +4,13 @@ Read [AGENTS.md](AGENTS.md) and [Homepage's authoritative suite development poli
 
 ## NewsGo regression and data boundaries
 
-Protect subscriptions, exclusions, feeds catalog, browser search histories, Homepage account storage and tokens, and per-user settings. Preserve existing publisher URL validation, classification, SSRF limits, import/export and regression coverage. Normal code changes require `gofmt`, `go test -count=1 ./...`, `go build ./...`, and exact-head GitHub Go CI. A Go CI pass cannot verify live publisher access, Mac Safari, or the tunnel.
+### Mandatory shared navigation button styling
+
+All top-level NewsGo navigation buttons, including **Settings**, must use the existing shared `ui-button` and `ui-button-large` styling. Their resting backgrounds, text and borders must match whether selected or not: **no persistent accent fill or accent border** from `aria-pressed="true"`. Apply this rule consistently to every navigation destination; do not introduce a one-off visual treatment for Settings or another section. Preserve accessible pressed-state semantics and visible keyboard focus. Transient hover and `:focus-visible` may highlight the border. UI changes must review the shared selectors in `internal/dashboard/dashboard.go` and the button initialization in `internal/dashboard/personal_script.go`, and retain a regression assertion for the selected-state contract.
+
+The same shared resting appearance applies to **all action buttons**, including Save Server Settings, Reload, Download Article URLs, confirmation-dialog actions, discovery/search, subscriptions, and Diagnostics tabs. No always-on accent border or solid accent/cyan fill may be added for a submit, emphasized, pressed or selected action. All server-rendered buttons must receive `ui-button` at startup; buttons created later must use the shared `button()` helper or explicitly add `ui-button`. Preserve meaningful transient hover/focus, disabled-state behavior and accessible selected-state semantics. Remove obsolete panel-specific color overrides rather than adding higher-priority CSS or `!important` exceptions. Whenever adding a button or editing a button rule, audit panel-specific selectors and update the common-style regression checks.
+
+Protect subscriptions, exclusions, feeds catalog, browser search histories, Homepage account storage and tokens, and per-user settings. Preserve existing publisher URL validation, classification, SSRF limits, import/export and regression coverage. For both agents and the owner, **`./devbuild.sh` is the sole ordinary development test-and-build command**: it already runs `go test ./...` before compiling both Mac binaries. Do not run separate `go test` or `go build` commands before or after it. Normal code changes also require `gofmt` and exact-head GitHub Go CI. If the agent's environment cannot run `./devbuild.sh`, report local test/build as unverified rather than substituting another procedure. A Go CI pass cannot verify live publisher access, Mac Safari, or the tunnel.
 
 ## Owner Mac acceptance for runtime PRs
 
@@ -17,7 +23,6 @@ git status --short --branch
 git fetch origin
 git checkout ACTUAL-PR-BRANCH
 git pull --ff-only origin ACTUAL-PR-BRANCH
-go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```

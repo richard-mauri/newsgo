@@ -98,7 +98,6 @@ func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
 		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 128px",
 		".included-card button{width:100%;min-width:0;cursor:pointer;background:var(--soft)",
 		"button.ui-button{appearance:none;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:9px",
-		"button.ui-button.ui-button-primary{background:var(--accent)",
 		"button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)",
 		"button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
 		"@media(prefers-reduced-motion:reduce){button.ui-button{transition:none}}",
