@@ -19,12 +19,11 @@ From the project folder:
 
 ```bash
 cd ~/projects/newsgo
-go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
 
-`devbuild.sh` builds `dist/newsgo-darwin-amd64` and `dist/newsgo-darwin-arm64`; `newsgo.sh` launches the binary for the Mac's architecture on `127.0.0.1:8084` with NewsGo's dedicated Cloudflare tunnel. The launcher expects its established local `.cloudflared/token` and cloudflared executable; do not store tokens in Git. The ScraperGo reader defaults to `https://scrapergo.themauris.org` (override with `-scrapergo` when intentionally developing).
+`devbuild.sh` runs the Go test suite and then builds `dist/newsgo-darwin-amd64` and `dist/newsgo-darwin-arm64`; no separate `go test` or `go build` step is needed for ordinary development. `newsgo.sh` launches the binary for the Mac's architecture on `127.0.0.1:8084` with NewsGo's dedicated Cloudflare tunnel. The launcher expects its established local `.cloudflared/token` and cloudflared executable; do not store tokens in Git. The ScraperGo reader defaults to `https://scrapergo.themauris.org` (override with `-scrapergo` when intentionally developing).
 
 ```bash
 ./dist/newsgo-darwin-amd64 -version

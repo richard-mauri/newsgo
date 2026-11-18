@@ -8,7 +8,7 @@ Read [AGENTS.md](AGENTS.md) and [Homepage's authoritative suite development poli
 
 All top-level NewsGo navigation buttons, including **Settings**, must use the existing shared `ui-button` and `ui-button-large` styling. Their backgrounds remain the same dark `var(--soft)` appearance whether selected or not. The selected `aria-pressed="true"` state may use an accent-colored border to indicate the active section, but **must not switch to a solid accent/cyan background**. Apply this rule consistently to every navigation destination; do not introduce a one-off visual treatment for Settings or another section. Preserve accessible pressed-state semantics and visible keyboard focus. UI changes must review the shared selectors in `internal/dashboard/dashboard.go` and the button initialization in `internal/dashboard/personal_script.go`, and retain a regression assertion for the selected-state contract.
 
-Protect subscriptions, exclusions, feeds catalog, browser search histories, Homepage account storage and tokens, and per-user settings. Preserve existing publisher URL validation, classification, SSRF limits, import/export and regression coverage. For both agents and the owner, **`./devbuild.sh` is the sole ordinary development build command**; do not precede or follow it with a redundant standalone `go build ./...`. Normal code changes also require `gofmt`, `go test -count=1 ./...`, and exact-head GitHub Go CI. If the agent's environment cannot run `./devbuild.sh`, report the build as unverified rather than substituting another build procedure. A Go CI pass cannot verify live publisher access, Mac Safari, or the tunnel.
+Protect subscriptions, exclusions, feeds catalog, browser search histories, Homepage account storage and tokens, and per-user settings. Preserve existing publisher URL validation, classification, SSRF limits, import/export and regression coverage. For both agents and the owner, **`./devbuild.sh` is the sole ordinary development test-and-build command**: it already runs `go test ./...` before compiling both Mac binaries. Do not run separate `go test` or `go build` commands before or after it. Normal code changes also require `gofmt` and exact-head GitHub Go CI. If the agent's environment cannot run `./devbuild.sh`, report local test/build as unverified rather than substituting another procedure. A Go CI pass cannot verify live publisher access, Mac Safari, or the tunnel.
 
 ## Owner Mac acceptance for runtime PRs
 
@@ -21,7 +21,6 @@ git status --short --branch
 git fetch origin
 git checkout ACTUAL-PR-BRANCH
 git pull --ff-only origin ACTUAL-PR-BRANCH
-go test -count=1 ./...
 ./devbuild.sh
 ./newsgo.sh
 ```
