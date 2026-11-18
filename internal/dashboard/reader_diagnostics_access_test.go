@@ -44,3 +44,26 @@ func TestNavigationSelectionKeepsSharedDarkButtonStyle(t *testing.T) {
   t.Fatal("navigation must use shared large button styling")
  }
 }
+
+func TestAllActionButtonsUseSharedDarkAppearance(t *testing.T) {
+ markup := page.Tree.Root.String()
+ for _,needle := range []string{
+  `button.ui-button.ui-button-primary{background:var(--soft);border-color:var(--accent);color:var(--text)}`,
+  `.admin-settings-actions button.ui-button[type=submit]`,
+  `.subscription-actions button.ui-button:first-child`,
+  `.filter-btn.ui-button`,
+  `.filtered-tab.ui-button[aria-selected=true]`,
+  `.exclusion-confirm-action.ui-button`,
+  `background:var(--soft)!important;color:var(--text)!important;border-color:var(--accent)!important`,
+ } {
+  if !strings.Contains(markup,needle) {t.Errorf("shared dark action style missing: %q",needle)}
+ }
+ for _,needle := range []string{
+  "document.querySelectorAll('button').forEach(b=>b.classList.add('ui-button'))",
+  "b.classList.add('ui-button');if(cls)b.classList.add(cls)",
+  "tab.className='filtered-tab ui-button'",
+  "el('close-settings').classList.add('ui-button','ui-button-large')",
+ } {
+  if !strings.Contains(personalJS,needle) {t.Errorf("shared button initialization missing: %q",needle)}
+ }
+}

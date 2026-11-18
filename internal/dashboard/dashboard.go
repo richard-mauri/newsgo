@@ -169,7 +169,7 @@ button.ui-button{appearance:none;background:var(--soft);color:var(--text);border
 button.ui-button.ui-button-large{padding:12px 17px}
 /* All publisher-level domain actions use the same width as the catalog column. */
 .discovered-feed-group-heading button.ui-button{width:205px;max-width:100%}
-button.ui-button.ui-button-primary{background:var(--accent);border-color:var(--accent);color:light-dark(#fff,#082028)}
+button.ui-button.ui-button-primary{background:var(--soft);border-color:var(--accent);color:var(--text)}
 button.ui-button:disabled{opacity:.58;cursor:default}
 button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent);filter:brightness(1.12)}
 button.ui-button.ui-button-primary:not(:disabled):hover,button.ui-button[aria-pressed="true"]:not(:disabled):hover,button.ui-button[aria-selected="true"]:not(:disabled):hover,.subscription-actions button.ui-button:first-child:not(:disabled):hover{color:light-dark(#fff,#082028)}
@@ -178,6 +178,9 @@ button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent);ou
 .settings-subpanel{margin:16px 0;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.settings-subpanel .panel-heading{margin-bottom:8px}.settings-subpanel[hidden]{display:none!important}
 /* Mandatory shared navigation contract: selection changes the border, never the dark fill. */
 .news-nav button.ui-button[aria-pressed="true"]{background:var(--soft);color:var(--text);border-color:var(--accent)}
+/* All emphasized, submitted, and selected actions retain the shared dark button fill. */
+.admin-settings-actions button.ui-button[type=submit],.subscription-actions button.ui-button:first-child,.filter-btn.ui-button,.filtered-tab.ui-button[aria-selected=true],.exclusion-confirm-action.ui-button{background:var(--soft)!important;color:var(--text)!important;border-color:var(--accent)!important}
+button.ui-button.ui-button-primary:not(:disabled):hover,.subscription-actions button.ui-button:first-child:not(:disabled):hover{color:var(--accent)}
 </style><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
