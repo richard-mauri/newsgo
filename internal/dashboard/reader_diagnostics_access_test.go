@@ -47,12 +47,14 @@ func TestNavigationSelectionKeepsSharedDarkButtonStyle(t *testing.T) {
 func TestAllActionButtonsUseSharedDarkAppearance(t *testing.T) {
  markup := page.Tree.Root.String()
  for _,needle := range []string{
-  `button.ui-button{appearance:none;background:var(--soft);color:var(--text);border:1px solid var(--line)`,
-  `button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)`,
-  `button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent)`,
+  `href="/suite-ui/buttons.css"`,
  } {
   if !strings.Contains(markup,needle) {t.Errorf("shared dark action style missing: %q",needle)}
  }
+ for _,needle := range []string{"background: var(--soft)","color: var(--text)","border: 1px solid var(--line)",":hover",":focus-visible",":disabled"} {
+  if !strings.Contains(suiteButtonCSS,needle) {t.Errorf("canonical action style missing %q",needle)}
+ }
+ if strings.Contains(markup,`button.ui-button{appearance:none`) {t.Error("NewsGo must not retain a copied shared-button component")}
  for _,obsolete := range []string{
   `button.ui-button.ui-button-primary{`,
   `.admin-settings-actions button[type=submit]{`,

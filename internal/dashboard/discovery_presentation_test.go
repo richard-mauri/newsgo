@@ -96,15 +96,14 @@ func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
 		".catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 128px 205px",
 		".included-card strong{grid-column:1/-1;grid-row:1}",
 		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 128px",
-		".included-card button{width:100%;min-width:0;cursor:pointer;background:var(--soft)",
-		"button.ui-button{appearance:none;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:9px",
-		"button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)",
-		"button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent)",
-		"@media(prefers-reduced-motion:reduce){button.ui-button{transition:none}}",
+		".included-card button{width:100%;min-width:0}",
 	} {
 		if !strings.Contains(style, want) {
 			t.Errorf("missing aligned or accessible button treatment: %s", want)
 		}
+	}
+	for _, want := range []string{"button.ui-button", "background: var(--soft)", "color: var(--text)", "border: 1px solid var(--line)", ":hover", ":focus-visible", "prefers-reduced-motion"} {
+		if !strings.Contains(suiteButtonCSS,want) {t.Errorf("Homepage canonical stylesheet missing %q",want)}
 	}
 }
 
