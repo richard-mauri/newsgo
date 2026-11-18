@@ -33,3 +33,14 @@ func TestUnifiedSettingsNavigationPreservesRoleSeparation(t *testing.T) {
   if !strings.Contains(personalJS,needle) {t.Errorf("missing unified settings contract %q",needle)}
  }
 }
+
+func TestNavigationSelectionKeepsSharedDarkButtonStyle(t *testing.T) {
+ markup := page.Tree.Root.String()
+ selected := `.news-nav button.ui-button[aria-pressed="true"]{background:var(--soft);color:var(--text);border-color:var(--accent)}`
+ if !strings.Contains(markup, selected) {
+  t.Fatal("selected navigation buttons must retain shared dark fill with accent border")
+ }
+ if !strings.Contains(personalJS, "document.querySelectorAll('.news-nav button,.panel-close').forEach(b=>b.classList.add('ui-button-large'))") {
+  t.Fatal("navigation must use shared large button styling")
+ }
+}

@@ -4,6 +4,10 @@ Read [AGENTS.md](AGENTS.md) and [Homepage's authoritative suite development poli
 
 ## NewsGo regression and data boundaries
 
+### Mandatory shared navigation button styling
+
+All top-level NewsGo navigation buttons, including **Settings**, must use the existing shared `ui-button` and `ui-button-large` styling. Their backgrounds remain the same dark `var(--soft)` appearance whether selected or not. The selected `aria-pressed="true"` state may use an accent-colored border to indicate the active section, but **must not switch to a solid accent/cyan background**. Apply this rule consistently to every navigation destination; do not introduce a one-off visual treatment for Settings or another section. Preserve accessible pressed-state semantics and visible keyboard focus. UI changes must review the shared selectors in `internal/dashboard/dashboard.go` and the button initialization in `internal/dashboard/personal_script.go`, and retain a regression assertion for the selected-state contract.
+
 Protect subscriptions, exclusions, feeds catalog, browser search histories, Homepage account storage and tokens, and per-user settings. Preserve existing publisher URL validation, classification, SSRF limits, import/export and regression coverage. Normal code changes require `gofmt`, `go test -count=1 ./...`, `go build ./...`, and exact-head GitHub Go CI. A Go CI pass cannot verify live publisher access, Mac Safari, or the tunnel.
 
 ## Owner Mac acceptance for runtime PRs

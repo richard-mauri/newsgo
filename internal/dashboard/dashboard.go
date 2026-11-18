@@ -176,6 +176,8 @@ button.ui-button.ui-button-primary:not(:disabled):hover,button.ui-button[aria-pr
 button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent);outline-offset:3px;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 20%,transparent)}
 @media(prefers-reduced-motion:reduce){button.ui-button{transition:none}}
 .settings-subpanel{margin:16px 0;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.settings-subpanel .panel-heading{margin-bottom:8px}.settings-subpanel[hidden]{display:none!important}
+/* Mandatory shared navigation contract: selection changes the border, never the dark fill. */
+.news-nav button.ui-button[aria-pressed="true"]{background:var(--soft);color:var(--text);border-color:var(--accent)}
 </style><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
