@@ -73,7 +73,7 @@ function confirmDomainRemoval(domain,affected){
   function finish(ok){document.removeEventListener('keydown',onKey);shade.remove();if(previous&&previous.isConnected)previous.focus();resolve(ok)}
   function onKey(e){if(e.key==='Escape'){e.preventDefault();finish(false)}}
   const cancel=button('Cancel',()=>finish(false));const confirm=button('Exclude domain and remove subscriptions',()=>finish(true));
-  confirm.className='exclusion-confirm-action';
+  confirm.classList.add('exclusion-confirm-action');
   actions.append(cancel,confirm);dialog.append(title,explanation,list,note,actions);shade.append(dialog);document.body.append(shade);
   document.addEventListener('keydown',onKey);cancel.focus();
  });
@@ -234,11 +234,11 @@ function renderRecentHistory(field){
  for(const entry of entries){
   const choice=button(entry,()=>{el(field.input).value=entry;field.run()});
   choice.title=entry;choice.setAttribute('aria-label','Repeat '+(field.input==='catalog-search'?'search':'website discovery')+': '+entry);
-  choice.style.cssText='max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 10px;font-size:.82rem';
+  choice.style.cssText='max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
   root.append(choice)
  }
  const clear=button('Clear history',()=>{try{localStorage.removeItem(field.key)}catch(_){}renderRecentHistory(field)});
- clear.setAttribute('aria-label','Clear '+field.label.toLowerCase());clear.style.cssText='padding:5px 9px;font-size:.82rem;background:transparent;color:var(--muted)';root.append(clear)
+ clear.setAttribute('aria-label','Clear '+field.label.toLowerCase());root.append(clear)
 }
 function rememberRecentHistory(field,value){
  const entry=value.trim();if(!entry)return;
@@ -532,8 +532,8 @@ function renderFilteredSubscriptionOffer(){
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
   renderManager();renderReading();
  });
- action.className='subscription-unsubscribe-button';
- action.style.cssText='margin-left:0.75rem;background:#18252d;color:#f1f5f9;border:1px solid #354650;border-radius:12px;padding:0.75rem 1.1rem;font-weight:700;font-size:1rem;cursor:pointer';
+ action.classList.add('subscription-unsubscribe-button');
+ action.style.marginLeft='0.75rem';
  panel.append(message,action);panel.hidden=false;
 }
 
@@ -586,7 +586,7 @@ function renderFilteredArticles(){
     const exclude=button('Exclude '+domain,async()=>{
      await setUnifiedDomain(domain,false);
     });
-    exclude.className='filtered-domain-exclude';
+    exclude.classList.add('filtered-domain-exclude');
     exclude.setAttribute('aria-label','Exclude publisher domain '+domain);
     heading.append(exclude);
    }

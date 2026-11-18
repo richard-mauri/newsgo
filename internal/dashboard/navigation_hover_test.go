@@ -10,13 +10,13 @@ func TestMainNavigationHoverAndKeyboardFocusHighlight(t *testing.T) {
 	// Navigation buttons share the same resting appearance; only hover
 	// and keyboard focus add a visible highlight.
 	for _, css := range []string{
-		".news-nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}",
+		"href=\"/suite-ui/buttons.css\"",
 	} {
 		if !strings.Contains(html, css) {
 			t.Errorf("missing main navigation interaction style %q", css)
 		}
 	}
-	if !strings.Contains(suiteButtonCSS,"button:not(:disabled):hover") || !strings.Contains(suiteButtonCSS,"color: var(--accent)") {
+	if !strings.Contains(suiteButtonCSS,"button:not(:disabled):hover") || !strings.Contains(suiteButtonCSS,"color: var(--accent)") || !strings.Contains(suiteButtonCSS,":focus-visible") {
 		t.Error("Homepage canonical button hover must change label color")
 	}
 	if strings.Contains(html, `.news-nav button[aria-pressed="true"]{`) {

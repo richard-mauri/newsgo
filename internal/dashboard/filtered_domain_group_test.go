@@ -39,9 +39,9 @@ func TestFilteredDomainControlAndExistingConfirmation(t *testing.T) {
  for _,want:=range []string{
   ".filtered-domain-group{",
   ".filtered-domain-heading{",
-  ".filtered-domain-exclude{",
+  "exclude.classList.add('filtered-domain-exclude')",
  } {
-  if !strings.Contains(markup,want) {t.Errorf("missing grouped audit CSS %q",want)}
+  if !strings.Contains(markup+personalJS,want) {t.Errorf("missing grouped audit control %q",want)}
  }
  for _,want:=range []string{
   "function publisherScope(value)",

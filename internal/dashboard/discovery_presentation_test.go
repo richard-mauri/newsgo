@@ -96,7 +96,7 @@ func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {
 		".catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 128px 205px",
 		".included-card strong{grid-column:1/-1;grid-row:1}",
 		".personal-row.discovered-feed-row{display:grid;grid-template-columns:minmax(0,1fr) 128px",
-		".included-card button{width:100%;min-width:0;cursor:pointer;background:var(--soft)",
+		".included-card button{width:100%;min-width:0}",
 	} {
 		if !strings.Contains(style, want) {
 			t.Errorf("missing aligned or accessible button treatment: %s", want)
