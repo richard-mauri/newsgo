@@ -6,7 +6,6 @@ const personalJS = `(function(){
 // created controls use button() or explicitly add the same class below.
 document.querySelectorAll('button').forEach(b=>b.classList.add('ui-button'));
 document.querySelectorAll('.news-nav button,.panel-close').forEach(b=>b.classList.add('ui-button-large'));
-document.querySelectorAll('.filter-btn,.admin-settings-actions button[type="submit"]').forEach(b=>b.classList.add('ui-button-primary'));
 const catalog=Array.from(document.querySelectorAll('[data-included-source]'),b=>({name:b.dataset.includedSource,url:b.dataset.feedUrl,category:b.dataset.category||'Other'}));
 const catalogByName=new Map(catalog.map(f=>[f.name,f]));
 const feedIdentity=u=>{try{const x=new URL(u);x.hash='';return 'feed:'+x.href}catch(_){return 'feed:'+u}};

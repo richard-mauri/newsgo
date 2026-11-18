@@ -36,9 +36,8 @@ func TestUnifiedSettingsNavigationPreservesRoleSeparation(t *testing.T) {
 
 func TestNavigationSelectionKeepsSharedDarkButtonStyle(t *testing.T) {
  markup := page.Tree.Root.String()
- selected := `.news-nav button.ui-button[aria-pressed="true"]{background:var(--soft);color:var(--text);border-color:var(--accent)}`
- if !strings.Contains(markup, selected) {
-  t.Fatal("selected navigation buttons must retain shared dark fill with accent border")
+ if strings.Contains(markup, `.news-nav button[aria-pressed="true"]{`) || strings.Contains(markup, `.news-nav button.ui-button[aria-pressed="true"]{`) {
+  t.Fatal("selected navigation buttons must not have persistent border or fill highlights")
  }
  if !strings.Contains(personalJS, "document.querySelectorAll('.news-nav button,.panel-close').forEach(b=>b.classList.add('ui-button-large'))") {
   t.Fatal("navigation must use shared large button styling")
@@ -48,15 +47,24 @@ func TestNavigationSelectionKeepsSharedDarkButtonStyle(t *testing.T) {
 func TestAllActionButtonsUseSharedDarkAppearance(t *testing.T) {
  markup := page.Tree.Root.String()
  for _,needle := range []string{
-  `button.ui-button.ui-button-primary{background:var(--soft);border-color:var(--accent);color:var(--text)}`,
-  `.admin-settings-actions button.ui-button[type=submit]`,
-  `.subscription-actions button.ui-button:first-child`,
-  `.filter-btn.ui-button`,
-  `.filtered-tab.ui-button[aria-selected=true]`,
-  `.exclusion-confirm-action.ui-button`,
-  `background:var(--soft)!important;color:var(--text)!important;border-color:var(--accent)!important`,
+  `button.ui-button{appearance:none;background:var(--soft);color:var(--text);border:1px solid var(--line)`,
+  `button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent)`,
+  `button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent)`,
  } {
   if !strings.Contains(markup,needle) {t.Errorf("shared dark action style missing: %q",needle)}
+ }
+ for _,obsolete := range []string{
+  `button.ui-button.ui-button-primary{`,
+  `.admin-settings-actions button[type=submit]{`,
+  `.subscription-actions button:first-child{`,
+  `.filtered-tab[aria-selected=true]{`,
+  `.exclusion-confirm-action{`,
+  `background:var(--accent);color:light-dark(#fff,#082028);padding:11px`,
+ } {
+  if strings.Contains(markup,obsolete) {t.Errorf("obsolete button override remains: %q",obsolete)}
+ }
+ if strings.Contains(personalJS,"classList.add('ui-button-primary')") {
+  t.Fatal("obsolete primary button class assignment remains")
  }
  for _,needle := range []string{
   "document.querySelectorAll('button').forEach(b=>b.classList.add('ui-button'))",
