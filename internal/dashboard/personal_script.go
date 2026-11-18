@@ -911,6 +911,7 @@ const homepageSessionStatus=document.getElementById('homepage-session-status');
 let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
+const suiteRecoveryKey='newsgo.homepage.recovery-attempt.v1';
 // The local-mode fragment suppresses recovery for this visit only. A later
 // direct visit must recheck Homepage, which may have gained a valid login.
 let explicitBrowserOnly=false;
@@ -925,6 +926,7 @@ function readSuiteHandoff(){
    // during this page visit, preserving browser-local subscriptions.
    explicitBrowserOnly=true;
    try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
   }else if(/^[a-f0-9]{64}$/.test(delivered)){
    try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
   }else {
@@ -946,6 +948,7 @@ const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHand
 // previously verified child handoff from another NewsGo tab, without a redirect.
 const suiteTabChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('newsgo.suite-handoff.v1'):null;
 let suiteTabRecovery=null;
+let recoveryNavigationPending=false;
 if(suiteTabChannel)suiteTabChannel.onmessage=event=>{
  const data=event.data;
  if(!data||typeof data!=='object')return;
@@ -972,6 +975,21 @@ function recoverSuiteHandoffFromTab(){
  suiteTabRecovery=recovery;
  suiteTabChannel.postMessage({type:'request',request});
  return promise;
+}
+// Homepage alone can verify its parent session and mint a new child bearer.
+// Persist the attempt across the redirect so an invalid returned bearer cannot
+// send Safari through an endless NewsGo/Homepage loop. If sessionStorage is
+// unavailable, fail closed to the existing sign-in prompt.
+function attemptHomepageRecovery(){
+ if(explicitBrowserOnly)return false;
+ if(recoveryNavigationPending)return true;
+ try{
+  if(sessionStorage.getItem(suiteRecoveryKey)==='pending')return false;
+  sessionStorage.setItem(suiteRecoveryKey,'pending');
+ }catch(_){return false}
+ recoveryNavigationPending=true;
+ location.replace(homepageOrigin+'/launch/newsgo');
+ return true;
 }
 
 let suiteSignInPrompt=null;
@@ -1034,6 +1052,7 @@ function accountSessionState(){
 }
 async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
+ if(recoveryNavigationPending)return;
  initSuiteAccountHeader();
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
@@ -1041,9 +1060,10 @@ async function checkHomepageSession(){
  }
  if(!suiteHandoff && !explicitBrowserOnly){
   // A live sibling tab may have a verified child bearer; ask it in-place.
-  // Never automatically navigate to Homepage or treat the offer as verified.
+  // If none answers, let Homepage verify the parent session through its bridge.
   const recovered=await recoverSuiteHandoffFromTab();
   if(recovered)return checkHomepageSession();
+  if(attemptHomepageRecovery())return;
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();
   return;
  }
@@ -1058,6 +1078,7 @@ async function checkHomepageSession(){
   if(response.status===401){
    suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+   if(attemptHomepageRecovery())return;
    homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');promptSuiteSignIn();return;
   }
   if(!response.ok)throw Error('HTTP '+response.status);
@@ -1067,6 +1088,7 @@ async function checkHomepageSession(){
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
   homepageIdentity={user:profile.user,role:profile.role==='guest'?'guest':profile.role==='admin'?'admin':'user'};
+  try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
   dismissSuiteSignInPrompt();
   accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteSessionStatus();
   if(homepageIdentity.role!=='guest')void initializeHomepageAccount(profile.user,verifiedToken);
