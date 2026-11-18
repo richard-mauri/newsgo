@@ -4,6 +4,8 @@ See [AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md) for workflow, [R
 
 ## Runtime
 
+The canonical button appearance is supplied by Homepage's nested Go module `github.com/richard-mauri/homepage/shared/ui` at the pinned version in `go.mod` (see [Homepage's UI contract](https://github.com/richard-mauri/homepage/blob/main/SUITE_UI_DESIGN_SYSTEM.md)). `internal/dashboard/dashboard.go` serves the module's embedded `ButtonCSS` at NewsGo's same-origin `/suite-ui/buttons.css` and allows it under `style-src 'self'`. The page keeps NewsGo's `--soft`, `--text`, `--line`, `--accent` tokens and layout rules; it must not maintain a second copy of the button component. This adds no runtime network dependency on Homepage.
+
 - `cmd/newsgo/main.go`: service startup, catalog, server settings, listener, graceful shutdown; default `127.0.0.1:8084`.
 - `internal/dashboard/`: UI, personal reading pipeline, Homepage account integration, administrator routes, diagnostics and operational settings.
 - `internal/feeds/`: feed validation and fetching, URL safety, parsing and article normalization.

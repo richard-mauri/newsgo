@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 
+	suiteui "github.com/richard-mauri/homepage/shared/ui"
 	"github.com/richard-mauri/newsgo/internal/feeds"
 )
 
@@ -45,6 +46,14 @@ type view struct {
 }
 
 func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/suite-ui/buttons.css" {
+		if r.Method != http.MethodGet {w.Header().Set("Allow", "GET");http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_,_=w.Write(suiteui.ButtonCSS)
+		return
+	}
 	if s.activity!=nil && r.URL.Path=="/api/activity/ping" {s.activity.ping(w,r);return}
  if s.activity!=nil && r.URL.Path=="/api/personal" {defer s.activity.working()()}
  if r.URL.Path == "/activity.js" {
@@ -117,7 +126,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel(), ScriptRevision: fmt.Sprintf("%x", scriptDigest[:6]),ActivityEnabled:s.activity!=nil}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self' https://home.themauris.org; img-src 'self' https:")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self' https://home.themauris.org; img-src 'self' https:")
 	if err := page.Execute(w, v); err != nil {
 		return
 	}
@@ -164,17 +173,10 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 .suite-home-link{display:inline-block;margin:4px 0 10px;padding:3px 5px;border-radius:5px;color:var(--accent,#69c6d3);font:500 12px/1.4 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;opacity:.78;transition:background-color .15s,color .15s,opacity .15s}.suite-home-link:hover{background:rgba(96,151,172,.16);color:var(--accent,#69c6d3);text-decoration:underline;opacity:1}.suite-home-link:focus-visible{outline:2px solid var(--accent,#69c6d3);outline-offset:2px;opacity:1}
 .article-url-export-actions{display:flex;justify-content:flex-end;align-items:center;margin:4px 0 16px}.article-url-export-button{font:inherit;font-size:.87rem;font-weight:650;line-height:1.35;padding:9px 14px;cursor:pointer;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:10px;transition:border-color .15s,background-color .15s}.article-url-export-button:hover{border-color:var(--accent);background:var(--soft)}.article-url-export-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.article-url-export-button[hidden]{display:none!important}
 .raw-feed-entry{padding:12px 0;border-top:1px solid var(--line)}.raw-feed-entry summary{cursor:pointer}.raw-feed-controls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.raw-feed-source{display:block;font-size:.85rem;overflow-wrap:anywhere}.raw-feed-body{max-height:420px;overflow:auto;white-space:pre;tab-size:2;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-/* Shared button component: panels own placement, while this rule owns appearance and interaction. */
-button.ui-button{appearance:none;background:var(--soft);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 13px;font:inherit;font-weight:650;line-height:1.35;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,filter .15s ease,color .15s ease}
-button.ui-button.ui-button-large{padding:12px 17px}
 /* All publisher-level domain actions use the same width as the catalog column. */
 .discovered-feed-group-heading button.ui-button{width:205px;max-width:100%}
-button.ui-button:disabled{opacity:.58;cursor:default}
-button.ui-button:not(:disabled):hover{color:var(--accent);border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent);filter:brightness(1.12)}
-button.ui-button:not(:disabled):focus-visible{outline:2px solid var(--accent);outline-offset:3px;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 20%,transparent)}
-@media(prefers-reduced-motion:reduce){button.ui-button{transition:none}}
 .settings-subpanel{margin:16px 0;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.settings-subpanel .panel-heading{margin-bottom:8px}.settings-subpanel[hidden]{display:none!important}
-</style><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
+</style><link rel="stylesheet" href="/suite-ui/buttons.css"><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
 <nav class="news-nav" aria-label="NewsGo sections"><button type="button" id="manage-personal" aria-pressed="false">Find Subscriptions</button><button type="button" id="view-subscriptions" aria-pressed="false">My Subscriptions <span id="personal-count">(0)</span></button><button type="button" id="manage-settings" aria-pressed="false">Settings</button><button type="button" id="manage-diagnostics" hidden>Diagnostics</button></nav>
