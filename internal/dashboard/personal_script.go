@@ -688,14 +688,29 @@ function renderManager(){
  if(selectedSource===f.url)selectedSource='';renderManager();refresh();message('Unsubscribed from '+f.name+'.')}));if(!excludedURL(domain)){const exclude=excludeButton(domain);if(exclude)actions.append(exclude)}row.append(info,actions);root.append(row)});
  syncFollowButtons();renderReading();
 }
+// Keep personal and privileged settings under one navigation destination.
+const settingsPanel=document.createElement('section');
+settingsPanel.id='settings-panel';
+settingsPanel.className='personal-panel personal-hidden';
+settingsPanel.setAttribute('aria-label','Settings');
+settingsPanel.innerHTML='<div class="panel-heading"><h2>Settings</h2><button type="button" id="close-settings" class="panel-close">Close</button></div>';
+el('preferences-panel').before(settingsPanel);
+el('close-settings').classList.add('ui-button','ui-button-large');
+el('admin-panel').hidden=true;
+settingsPanel.append(el('preferences-panel'),el('admin-panel'));
+el('close-preferences').remove();
+el('close-admin').remove();
+el('preferences-panel').classList.remove('personal-hidden');
+el('admin-panel').classList.remove('personal-hidden');
+el('preferences-panel').classList.add('settings-subpanel');
+el('admin-panel').classList.add('settings-subpanel');
 function showView(view){
  el('personal-panel').classList.toggle('personal-hidden',view!=='discover');
  el('subscriptions-panel').classList.toggle('personal-hidden',view!=='subscriptions');
  el('news-content').classList.toggle('personal-hidden',view!=='news');
- el('admin-panel').classList.toggle('personal-hidden',view!=='admin');
+ el('settings-panel').classList.toggle('personal-hidden',view!=='settings');
  el('diagnostics-panel').classList.toggle('personal-hidden',view!=='diagnostics');
- el('preferences-panel').classList.toggle('personal-hidden',view!=='preferences');
- [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-preferences','preferences'],['manage-admin','admin'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
+ [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-settings','settings'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
 async function refresh(){
@@ -1150,9 +1165,9 @@ async function initializeHomepageAccount(owner,token){
 }
 let adminRevision=0;
 function updateAccountControls(){
- el('manage-admin').hidden=!homepageAdminActive();
+ el('admin-panel').hidden=!homepageAdminActive();
  el('manage-diagnostics').hidden=false;
- if(!homepageAdminActive()&&!el('admin-panel').classList.contains('personal-hidden'))showView('news');
+ if(!homepageAdminActive())adminSavedValues=null;
 }
 function applyAccountPreferences(data){
  if(!Array.isArray(data.subscriptions)||!Array.isArray(data.excludedDomains)||!Array.isArray(data.excludedArticleDomains||[]))throw Error('Invalid server profile');
@@ -1241,12 +1256,10 @@ el('use-classification-cache').checked=useClassificationCache;
 el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));scheduleAccountSave();});
 el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
-el('manage-preferences').addEventListener('click',()=>showView('preferences'));
-el('close-preferences').addEventListener('click',()=>showView('news'));
-el('manage-admin').addEventListener('click',()=>{if(mayAdminister()){showView('admin');loadAdmin()}});
+el('manage-settings').addEventListener('click',()=>{showView('settings');if(mayAdminister())loadAdmin()});
+el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
-el('close-admin').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
 window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});

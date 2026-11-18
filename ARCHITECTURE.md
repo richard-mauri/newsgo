@@ -33,6 +33,8 @@ The browser's Diagnostics panel includes a **Homepage account synchronization** 
 
 ## Operational server settings
 
+The dashboard exposes one **Settings** navigation item. Its Reading Preferences subpanel remains available to every reader, while the Admin Settings subpanel is shown only for a verified current Homepage administrator. The privileged server APIs continue to enforce authorization independently of the subpanel's visibility. The existing admin form and dirty-settings confirmation remain in that subpanel; combining navigation does not combine per-user and server-wide persistence.
+
 `internal/dashboard/settings_store.go` implements a dedicated, mutex-protected `SettingsStore` that reads and writes the existing revisioned `data/server-settings.json` atomically with restrictive file permissions. The CLI flag `-settings-dir` selects the directory (default `data`). Classification timeout/concurrency, per-feed cap, feed cache, classification-cache TTL and image settings use the current settings schema. Saving server settings updates active settings and clears both NewsGo's in-memory and on-disk classification cache. An administrator-saved TTL of zero disables NewsGo classification caching.
 
 ## Other diagnostics and safety

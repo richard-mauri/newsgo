@@ -18,6 +18,18 @@ func TestReadingDiagnosticsAvailableWithoutLegacySession(t *testing.T) {
  if !strings.Contains(page.Tree.Root.String(),`aria-label="Reading diagnostics"`){t.Fatal("reader diagnostics label missing")}
  // Admin endpoints and UI must remain privileged until server-verified
  // Homepage authorization replaces the independent legacy guard.
- if !strings.Contains(personalJS,"el('manage-admin').hidden=!homepageAdminActive()"){t.Fatal("administrator UI role gate missing")}
+ if !strings.Contains(personalJS,"el('admin-panel').hidden=!homepageAdminActive()"){t.Fatal("administrator settings panel role gate missing")}
  if !strings.Contains(personalJS,"function homepageAdminActive()"){t.Fatal("Homepage admin handoff gate missing")}
+}
+
+func TestUnifiedSettingsNavigationPreservesRoleSeparation(t *testing.T) {
+ for _,needle:=range []string{
+  "settingsPanel.append(el('preferences-panel'),el('admin-panel'))",
+  "el('manage-settings').addEventListener('click'",
+  "el('settings-panel').classList.toggle('personal-hidden',view!=='settings')",
+  "if(mayAdminister())loadAdmin()",
+  "el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')))",
+ } {
+  if !strings.Contains(personalJS,needle) {t.Errorf("missing unified settings contract %q",needle)}
+ }
 }
