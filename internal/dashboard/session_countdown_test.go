@@ -11,6 +11,7 @@ import (
 func TestHomepageOwnsSessionManagement(t *testing.T) {
  for _,snippet:=range []string{
   "const suiteHandoffKey='newsgo.homepage.handoff.v1'",
+  "const suiteRecoveryKey='newsgo.homepage.recovery-attempt.v1'",
   "const browserOnly=fragment.get('suite_mode')==='local'",
   "sessionStorage.removeItem(suiteHandoffKey)",
   "const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{}",
@@ -20,6 +21,12 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   "suiteTabChannel.postMessage({type:'request',request})",
   "suiteTabChannel.postMessage({type:'offer',request:data.request,token:suiteHandoff})",
   "if(recovered)return checkHomepageSession()",
+  "if(attemptHomepageRecovery())return",
+  "location.replace(homepageOrigin+'/launch/newsgo')",
+  "sessionStorage.setItem(suiteRecoveryKey,'pending')",
+  "sessionStorage.getItem(suiteRecoveryKey)==='pending'",
+  "sessionStorage.removeItem(suiteRecoveryKey)",
+  "if(recoveryNavigationPending)return",
   "sessionStorage.setItem(suiteHandoffKey,suiteHandoff)",
 
   "'/api/session/profile'",
@@ -39,7 +46,6 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   if !strings.Contains(personalJS,snippet){t.Errorf("missing Homepage handoff/expiry behavior: %s",snippet)}
  }
  for _,obsolete:=range []string{
-  "location.replace(homepageOrigin+'/launch/newsgo')",
   "renewSuiteSession", "suiteRenewLink", "suiteRenewStatus",
   "sessionRenewFeedback", "sessionTimeRemaining",
   "showSuiteCountdown", "suite-renew-button",
@@ -48,6 +54,23 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   "Current session: '+sessionTimeRemaining",
  } {
   if strings.Contains(personalJS,obsolete){t.Errorf("NewsGo still owns session renewal: %s",obsolete)}
+ }
+}
+
+func TestHomepageRecoveryIsBoundedAndDoesNotBypassSignOut(t *testing.T) {
+ for _,snippet:=range []string{
+  "if(explicitBrowserOnly)return false",
+  "if(recoveryNavigationPending)return true",
+  "if(sessionStorage.getItem(suiteRecoveryKey)==='pending')return false",
+  "}catch(_){return false}",
+  "if(attemptHomepageRecovery())return;",
+  "if(browserOnly){",
+  "explicitBrowserOnly=true",
+  "sessionStorage.removeItem(suiteRecoveryKey)",
+  "if(response.status===401){",
+  "dismissSuiteSignInPrompt()",
+ } {
+  if !strings.Contains(personalJS,snippet) {t.Errorf("missing bounded Homepage recovery contract: %s",snippet)}
  }
 }
 

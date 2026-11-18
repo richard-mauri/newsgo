@@ -33,6 +33,8 @@ There is no Server Sync token authentication, `/api/sync` route, separate token 
 
 The browser's Diagnostics panel includes a **Homepage account synchronization** section reporting the most recent profile load/save operation, result, local timestamp and bounded error message. A failed Homepage load does not initialize an empty account, does not erase the local subscriptions and does not authorize a PUT; this diagnostic is separate from feed fetch and classification diagnostics.
 
+NewsGo's direct-visit recovery first asks other NewsGo tabs for an already verified child bearer. If none is offered, a tab-scoped `sessionStorage` guard permits one recovery navigation through `/launch/newsgo`. A 401 for an existing child bearer can also use this bounded recovery; a second failed child verification does not start another bridge loop. Successful profile verification or explicit `#suite_mode=local` clears the guard. If session storage is unavailable, recovery fails closed to the sign-in prompt. In-flight focus/visibility checks do not open a competing prompt while navigation is pending. Homepage's own recovery bridge is the sole component allowed to issue a replacement bearer.
+
 ## Operational server settings
 
 The dashboard exposes one **Settings** navigation item. Its Reading Preferences subpanel remains available to every reader, while the Admin Settings subpanel is shown only for a verified current Homepage administrator. The privileged server APIs continue to enforce authorization independently of the subpanel's visibility. The existing admin form and dirty-settings confirmation remain in that subpanel; combining navigation does not combine per-user and server-wide persistence.
