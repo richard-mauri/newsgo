@@ -22,8 +22,6 @@ jobs:
       - name: Report formatting debt (non-blocking)
         run: |
           git ls-files '*.go' | xargs gofmt -l
-      - name: Resolve shared UI module checksum (temporary diagnostic)
-        run: go mod download -json github.com/richard-mauri/homepage/shared/ui
       - name: Run tests
         run: go test -count=1 ./...
       - name: Build
