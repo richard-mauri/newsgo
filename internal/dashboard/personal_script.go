@@ -907,7 +907,7 @@ el('exclude-domain').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preven
 
 // Homepage is the sole NewsGo identity and profile storage provider.
 const homepageOrigin='https://home.themauris.org';
-const homepageSessionStatus=document.getElementById('homepage-session-status');
+const homepageSessionStatus=document.getElementById('suite-auth-status');
 let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
@@ -1024,13 +1024,9 @@ function showSuiteSessionStatus(){
 }
 function initSuiteAccountHeader(){
  if(suiteAccountLine||!homepageSessionStatus)return;
- const container=document.createElement('div');
- container.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:5px 0 8px;color:var(--accent);font-size:.9rem;font-weight:650';
- suiteAccountLine=document.createElement('span');
- suiteAccountLine.setAttribute('aria-live','off');
- container.append(suiteAccountLine);
- homepageSessionStatus.parentNode.insertBefore(container,homepageSessionStatus);
- homepageSessionStatus.hidden=true;
+ // The common banner already owns the account line; update it in place.
+ suiteAccountLine=homepageSessionStatus;
+ suiteAccountLine.setAttribute('aria-live','polite');
  showSuiteSessionStatus();
  // A parent may have been renewed in Homepage while NewsGo was open.
  // Revalidate the child bearer at its cached deadline before discarding it.
@@ -1054,7 +1050,7 @@ async function checkHomepageSession(){
  if(!homepageSessionStatus)return;
  if(recoveryNavigationPending)return;
  initSuiteAccountHeader();
- const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.hidden=true;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
+ const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
   homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();return;
  }
