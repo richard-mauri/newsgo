@@ -1017,7 +1017,7 @@ let suiteAccountLine=null;
 function showSuiteSessionStatus(){
  if(!suiteAccountLine)return;
  if(homepageIdentity){
-  suiteAccountLine.textContent='Signed in as '+homepageIdentity.user+' (Homepage)'+(accountNotice?' · '+accountNotice:'');
+  SuiteBannerStatus.signedIn(homepageIdentity.user);
  }else{
   suiteAccountLine.textContent=suiteExpiresAt>0&&suiteExpiresAt<=Date.now()?'Homepage session expired':'Not signed in';
  }
@@ -1086,7 +1086,7 @@ async function checkHomepageSession(){
   homepageIdentity={user:profile.user,role:profile.role==='guest'?'guest':profile.role==='admin'?'admin':'user'};
   try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
   dismissSuiteSignInPrompt();
-  accountSessionState();show('Signed in as '+homepageIdentity.user+' (Homepage)');showSuiteSessionStatus();
+  accountSessionState();show(SuiteBannerStatus.signedInText(homepageIdentity.user));showSuiteSessionStatus();
   if(homepageIdentity.role!=='guest')void initializeHomepageAccount(profile.user,verifiedToken);
  }catch(e){
   homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteSessionStatus();

@@ -58,7 +58,7 @@ func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
 
 func TestHomepageAccountHeaderDefersSessionManagement(t *testing.T) {
  script := personalJS
- if !strings.Contains(script,"'Signed in as '+homepageIdentity.user+' (Homepage)'") {
+ if !strings.Contains(script,"SuiteBannerStatus.signedIn(homepageIdentity.user)") {
   t.Fatal("NewsGo must show server-verified Homepage identity")
  }
  if !strings.Contains(script,"suiteExpiresAt>Date.now()") ||
