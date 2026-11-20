@@ -24,8 +24,8 @@ func TestBackToHomepageNativeLink(t *testing.T) {
   if !strings.Contains(markup,want) {t.Errorf("shared banner missing %q",want)}
  }
  if strings.Contains(markup,`class="topbar"`) {t.Fatal("obsolete topbar retained")}
- if !strings.Contains(markup,`<main><header class="suite-ui suite-banner"`) {t.Fatal("NewsGo banner must align with the inset main content")}
- if !strings.Contains(markup,"main>.suite-banner{margin-top:24px}") {t.Fatal("missing NewsGo-specific top spacing")}
+ if !strings.Contains(markup,`</div><header class="suite-ui suite-banner"`) || !strings.Contains(markup,"</header>\n<main>") {t.Fatal("NewsGo banner must mount outside its article-specific main container")}
+ if !strings.Contains(markup,".suite-banner{margin-top:24px}") {t.Fatal("missing NewsGo-specific top spacing")}
 
 }
 
@@ -39,7 +39,7 @@ func TestSuiteBannerStylesheetUsesExactHomepageAmbient(t *testing.T) {
   if !strings.Contains(w.Body.String(),want) {t.Errorf("missing shared stylesheet style %q",want)}
  }
  if strings.Contains(w.Body.String(),"radial-gradient(") {t.Fatal("Homepage ambient must not be approximated by gradients")}
- for _,want:=range []string{"width:calc(100% - 32px)","margin-inline:auto","border:0"} {if !strings.Contains(w.Body.String(),want) {t.Errorf("shared banner must own its gutters: %s",want)}}
+ for _,want:=range []string{"width:min(1180px,calc(100vw - 96px))","width:min(720px,calc(100vw - 48px))","width:calc(100vw - 36px)","margin-inline:auto","border:0"} {if !strings.Contains(w.Body.String(),want) {t.Errorf("shared banner must own its gutters: %s",want)}}
  if strings.Contains(w.Body.String(),"border:1px solid var(--suite-line)") {t.Fatal("shared banner must not draw an outline")}
 }
 
