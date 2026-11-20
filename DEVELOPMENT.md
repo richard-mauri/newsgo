@@ -4,6 +4,8 @@ Read [AGENTS.md](AGENTS.md) and [Homepage's authoritative suite development poli
 
 ## NewsGo regression and data boundaries
 
+When validating banner spacing after a module update, verify that `/suite-ui/banner.css?v=` changes with the embedded shared stylesheet content. The banner CSS response is cacheable, and a URL revision derived only from `personal.js` can leave Safari displaying a stale layout for up to an hour despite a new executable. The `TestBannerStylesheetURLTracksEmbeddedCSS` regression protects this contract.
+
 For Issue #108, review the shared masthead's NewsGo version/build, small teal **The Mauris** portrait caption, return link and verified Homepage status in desktop/narrow Safari, both themes. Confirm the **original Homepage** ambient shapes (660×530 and 530×500, 70px blur) are visible without changing NewsGo's editorial hero, feed controls, reader, or print. Keep `suite-auth-status` synchronized with the existing profile-verification and recovery flow; do not create a second status line. The stylesheet is same-origin and versioned in the dashboard HTML.
 
 ### Mandatory shared navigation button styling
