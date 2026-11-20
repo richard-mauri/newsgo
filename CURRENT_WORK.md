@@ -1,5 +1,7 @@
 # Current work — NewsGo
 
+**Safari asset-cache correction:** The shared banner stylesheet URL now fingerprints the actual embedded CSS bytes, not `personal.js`. Previously Safari could retain an hour-old edge-to-edge banner despite a new NewsGo build because its stylesheet URL did not change. A regression test checks the CSS-derived revision. Owner Safari confirmation is pending.
+
 **Banner correction:** NewsGo mounts the banner outside its dashboard `<main>` and consumes pinned UI module commit `80deb3b13f6a`, whose viewport-based CSS controls all horizontal geometry without decorative borders. Owner Safari review is pending.
 
 **Active:** [Issue #108](https://github.com/richard-mauri/newsgo/issues/108), branch `ui/108-shared-banner`, [draft PR #109](https://github.com/richard-mauri/newsgo/pull/109) targeting `main` at `81b71ada1b0fc7fca9fe4dc1627afc6b30df0181`. Homepage shared UI foundation PR #55 remains open; this consumer pins module commit `80deb3b13f6a`. Prior Homepage session recovery PR #107 is merged and preserved.
