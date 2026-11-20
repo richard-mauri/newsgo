@@ -1,8 +1,9 @@
 package dashboard
 
 import (
-	"embed"
+	"bytes"
 	"crypto/sha256"
+	"embed"
 	"fmt"
 	"html/template"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	suiteui "github.com/richard-mauri/homepage/shared/ui"
+	"github.com/richard-mauri/homepage/shared/ui/banner"
 	"github.com/richard-mauri/newsgo/internal/feeds"
 )
 
@@ -43,9 +45,14 @@ type view struct {
  BuildLabel string
  ScriptRevision string
  ActivityEnabled bool
+ BannerHTML template.HTML // produced only by the escaped, trusted shared renderer
 }
 
 func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/suite-ui/banner.css" {
+		banner.Stylesheet(suiteui.DesignCSS).ServeHTTP(w, r)
+		return
+	}
 	if r.URL.Path == "/suite-ui/buttons.css" {
 		if r.Method != http.MethodGet {w.Header().Set("Allow", "GET");http.Error(w,"method not allowed",http.StatusMethodNotAllowed);return}
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -124,6 +131,11 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	scriptDigest := sha256.Sum256([]byte(personalJS))
 	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel(), ScriptRevision: fmt.Sprintf("%x", scriptDigest[:6]),ActivityEnabled:s.activity!=nil}
+	var masthead bytes.Buffer
+	if err:=banner.Render(&masthead,banner.Config{AppName:"NewsGo",Version:"0.2.58",Build:v.BuildLabel,Description:"News reading without page clutter using ScraperGo",HomeURL:"https://home.themauris.org/",TannerURL:"/tanner.jpg",AccountState:banner.BrowserOnly});err!=nil {
+		http.Error(w,"Header unavailable",http.StatusInternalServerError);return
+	}
+	v.BannerHTML=template.HTML(masthead.String())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self' https://home.themauris.org; img-src 'self' https:")
@@ -137,16 +149,13 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 <style>
 :root{color-scheme:light dark;--bg:light-dark(#f5f5f0,#0e141a);--panel:light-dark(#fff,#19232b);--text:light-dark(#182631,#eef2f4);--muted:light-dark(#60707b,#a5b3bb);--line:light-dark(#dce2e1,#34434a);--accent:light-dark(#126877,#69c6d3);--soft:light-dark(#e6f3f3,#203c43);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit}main{max-width:1200px;margin:0 auto;padding:0 24px 72px}
-.topbar{border-bottom:1px solid var(--line);background:var(--panel)}.topbar-inner{max-width:1200px;margin:auto;padding:19px 24px;display:flex;justify-content:space-between;align-items:center;gap:14px}.brand{font-weight:850;font-size:1.75rem;letter-spacing:-.075rem}.brand span{color:var(--accent)}.tagline{font-size:.82rem;color:var(--muted);letter-spacing:.03em}
-#homepage-session-status{display:inline-block;margin-top:5px;font-size:.9rem;color:var(--muted);font-weight:650;letter-spacing:normal}#homepage-session-status.signed-in{color:var(--accent)}#homepage-session-status[hidden]{display:none!important}
-.header-right{display:flex;align-items:center;gap:22px}.tanner{display:flex;flex-direction:column;align-items:center;gap:5px;flex:none;color:var(--accent);font-size:.85rem;font-weight:700;text-align:center}.tanner img{width:64px;height:64px;object-fit:cover;object-position:center 35%;border-radius:12px;border:1px solid var(--line)}@media(max-width:540px){.header-right{gap:6px}.tanner img{width:49px;height:49px}}
 .eyebrow{font-size:.73rem;font-weight:780;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}.intro{padding:38px 0 25px;display:flex;justify-content:space-between;align-items:end;gap:18px}.intro h1{font-family:Georgia,serif;font-size:clamp(2.6rem,5vw,4.6rem);line-height:1;margin:9px 0 8px;font-weight:700;letter-spacing:-.035em}.intro p{margin:0;color:var(--muted);font-size:.93rem}.time{color:var(--muted);font-size:.85rem;text-align:right}
 .filters{padding:17px 19px;background:var(--panel);border:1px solid var(--line);border-radius:15px;display:flex;align-items:end;gap:15px;flex-wrap:wrap;margin-bottom:31px}.filters label{display:flex;flex-direction:column;gap:6px;font-size:.74rem;font-weight:720;color:var(--muted);text-transform:uppercase;letter-spacing:.065em}.filters select{min-width:175px;max-width:100%;font:inherit;font-size:.92rem;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px}.filter-btn{padding:11px 20px;font-size:.89rem}.clear{font-size:.88rem;color:var(--muted);padding-bottom:10px;text-decoration:underline;text-underline-offset:3px}
 .section-label{display:flex;align-items:center;gap:14px;font-weight:770;font-size:.77rem;letter-spacing:.13em;text-transform:uppercase;margin:25px 0 17px}.section-label:after{content:"";height:1px;flex:1;background:var(--line)}
 .feature-grid{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:16px}.feature{min-width:0;min-height:282px;display:flex;flex-direction:column;justify-content:space-between;gap:28px;background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:23px;box-shadow:0 10px 24px #00000008}.feature:first-child{background:linear-gradient(130deg,light-dark(#d7eeeb,#16434a),var(--panel) 85%);border-color:light-dark(#c5dddd,#31585f)}.story-meta{color:var(--muted);font-size:.77rem;line-height:1.6}.source{font-weight:800;text-transform:uppercase;letter-spacing:.075em;color:var(--accent);font-size:.72rem}.feature .story-title{font-family:Georgia,serif;font-size:clamp(1.15rem,1.65vw,1.57rem);line-height:1.22;font-weight:700;letter-spacing:-.015em;text-decoration:none;display:block;margin:10px 0 12px}.feature:first-child .story-title{font-size:clamp(1.5rem,2.3vw,2.2rem)}.story-title:hover{text-decoration:underline;text-underline-offset:3px}.original{color:var(--muted);font-size:.79rem;text-decoration:underline;text-underline-offset:3px}.feature .original{display:inline-block;margin-top:7px}
 .latest{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 28px}.item{display:flex;gap:17px;padding:21px 0;border-bottom:1px solid var(--line);min-width:0}.item-num{font-family:Georgia,serif;font-size:1.6rem;color:var(--muted);opacity:.55;min-width:30px}.item-body{min-width:0}.item .story-title{display:block;font-family:Georgia,serif;font-size:1.23rem;font-weight:700;line-height:1.32;margin:7px 0 7px;text-decoration:none}.item .story-title:hover{text-decoration:underline}.item .original{margin-left:8px}.notice{border:1px solid var(--line);border-radius:9px;padding:12px;margin:12px 0;color:var(--muted)}footer{margin-top:35px;padding-top:17px;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)}
 @media(max-width:820px){.feature-grid{grid-template-columns:1fr 1fr}.feature:first-child{grid-column:1/-1;min-height:260px}.feature{min-height:235px}.latest{grid-template-columns:1fr}.intro{padding-top:28px}}
-@media(max-width:540px){main{padding:0 16px 50px}.topbar-inner{padding:15px 16px}.tagline{display:none}.intro{display:block}.time{text-align:left;margin-top:12px}.filters{gap:12px}.filters label{flex:1;min-width:130px}.filters select{width:100%;min-width:0}.feature-grid{grid-template-columns:1fr}.feature:first-child{grid-column:auto}.feature{min-height:200px}.item{padding:18px 0}}
+@media(max-width:540px){main{padding:0 16px 50px}.intro{display:block}.time{text-align:left;margin-top:12px}.filters{gap:12px}.filters label{flex:1;min-width:130px}.filters select{width:100%;min-width:0}.feature-grid{grid-template-columns:1fr}.feature:first-child{grid-column:auto}.feature{min-height:200px}.item{padding:18px 0}}
 
 .catalog-search-form{display:flex;align-items:stretch;gap:9px}.catalog-search-form .catalog-search{flex:1;min-width:0}.catalog-search{width:100%;padding:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;font:inherit}.catalog-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 15px;margin:14px 0}.catalog-card{padding:13px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px}/* Keep long publisher names and controls in their own grid tracks. */
 .catalog-card{display:grid;grid-template-columns:minmax(0,1fr) 128px 205px;align-items:center}
@@ -170,13 +179,12 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 .filtered-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0;padding-bottom:10px;border-bottom:1px solid var(--line)}.filtered-classification-group[hidden]{display:none}.filtered-domain-group{border-top:1px solid var(--line);padding:12px 0 4px}.filtered-domain-heading{display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;align-items:center;margin:0 0 8px}.filtered-domain-heading strong{font-size:.95rem;overflow-wrap:anywhere}
 .admin-unsaved-dialog{width:min(520px,calc(100% - 32px));border:1px solid var(--line);border-radius:14px;padding:22px;color:var(--text);background:var(--panel);box-shadow:0 20px 55px #0008}.admin-unsaved-dialog::backdrop{background:#000a}.admin-unsaved-dialog h3{margin:0 0 12px}.admin-unsaved-dialog p{line-height:1.5;color:var(--muted)}
 .homepage-sync-note{color:var(--muted);line-height:1.5;margin:6px 0}
-.suite-home-link{display:inline-block;margin:4px 0 10px;padding:3px 5px;border-radius:5px;color:var(--accent,#69c6d3);font:500 12px/1.4 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;opacity:.78;transition:background-color .15s,color .15s,opacity .15s}.suite-home-link:hover{background:rgba(96,151,172,.16);color:var(--accent,#69c6d3);text-decoration:underline;opacity:1}.suite-home-link:focus-visible{outline:2px solid var(--accent,#69c6d3);outline-offset:2px;opacity:1}
 .article-url-export-actions{display:flex;justify-content:flex-end;align-items:center;margin:4px 0 16px}.article-url-export-button[hidden]{display:none!important}
 .raw-feed-entry{padding:12px 0;border-top:1px solid var(--line)}.raw-feed-entry summary{cursor:pointer}.raw-feed-controls{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.raw-feed-source{display:block;font-size:.85rem;overflow-wrap:anywhere}.raw-feed-body{max-height:420px;overflow:auto;white-space:pre;tab-size:2;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 /* All publisher-level domain actions use the same width as the catalog column. */
 .discovered-feed-group-heading button.ui-button{width:205px;max-width:100%}
 .settings-subpanel{margin:16px 0;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.settings-subpanel .panel-heading{margin-bottom:8px}.settings-subpanel[hidden]{display:none!important}
-</style><link rel="stylesheet" href="/suite-ui/buttons.css"><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="topbar"><div class="topbar-inner"><div class="brand">News<span>Go</span><div><a class="suite-home-link" href="https://home.themauris.org/">← Back to Homepage</a></div></div><div class="header-right"><div><div class="tagline">NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V0.2.58 · {{.BuildLabel}}</div><div id="homepage-session-status" class="tagline" role="status" aria-live="polite" hidden></div></div><div class="tanner"><img src="/tanner.jpg" width="64" height="64" alt="Tanner, the puppy"><span>Tanner</span></div></div></div></div><main>
+</style><link rel="stylesheet" href="/suite-ui/buttons.css"><link rel="stylesheet" href="/suite-ui/banner.css?v=0.2.58-{{.ScriptRevision}}"><script defer src="/personal.js?v=0.2.58-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="suite-ambient suite-ambient-one" aria-hidden="true"></div><div class="suite-ambient suite-ambient-two" aria-hidden="true"></div>{{.BannerHTML}}<main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
 <nav class="news-nav" aria-label="NewsGo sections"><button type="button" id="manage-personal" aria-pressed="false">Find Subscriptions</button><button type="button" id="view-subscriptions" aria-pressed="false">My Subscriptions <span id="personal-count">(0)</span></button><button type="button" id="manage-settings" aria-pressed="false">Settings</button><button type="button" id="manage-diagnostics" hidden>Diagnostics</button></nav>
