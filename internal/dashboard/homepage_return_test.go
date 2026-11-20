@@ -24,6 +24,8 @@ func TestBackToHomepageNativeLink(t *testing.T) {
   if !strings.Contains(markup,want) {t.Errorf("shared banner missing %q",want)}
  }
  if strings.Contains(markup,`class="topbar"`) {t.Fatal("obsolete topbar retained")}
+ if !strings.Contains(markup,`<main><header class="suite-ui suite-banner"`) {t.Fatal("NewsGo banner must align with the inset main content")}
+ if !strings.Contains(markup,"main>.suite-banner{margin-top:24px}") {t.Fatal("missing NewsGo-specific top spacing")}
 
 }
 
@@ -37,6 +39,7 @@ func TestSuiteBannerStylesheetUsesExactHomepageAmbient(t *testing.T) {
   if !strings.Contains(w.Body.String(),want) {t.Errorf("missing shared stylesheet style %q",want)}
  }
  if strings.Contains(w.Body.String(),"radial-gradient(") {t.Fatal("Homepage ambient must not be approximated by gradients")}
+ if !strings.Contains(w.Body.String(),"border:1px solid var(--suite-line);border-radius:var(--suite-radius)") {t.Fatal("shared banner must have a complete four-sided outline")}
 }
 
 func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
