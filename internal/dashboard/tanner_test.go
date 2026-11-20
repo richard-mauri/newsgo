@@ -15,7 +15,7 @@ func TestTannerHeaderAndImage(t *testing.T) {
 	}
 	r := httptest.NewRecorder()
 	s.ServeHTTP(r, httptest.NewRequest("GET", "/", nil))
-	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `alt="Tanner, the puppy"`) {
+ if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `alt="Tanner"`) {
 		t.Fatalf("header unavailable: %d", r.Code)
 	}
 	r = httptest.NewRecorder()
