@@ -57,3 +57,9 @@ func TestBannerStylesheetURLTracksEmbeddedCSS(t *testing.T) {
  if !strings.Contains(html, expected) {t.Fatalf("banner stylesheet URL must fingerprint its CSS, expected %q", expected)}
  if bannerCSSRevision([]byte("original")) == bannerCSSRevision([]byte("revised")) {t.Fatal("changing banner CSS must invalidate Safari's cached URL")}
 }
+
+func TestBannerGeometryCannotDriftInDashboardStyles(t *testing.T) {
+ html:=renderedVersionPage(t)
+ if !strings.Contains(string(banner.CSS(suiteui.DesignCSS)),"margin:24px auto 0") {t.Fatal("shared banner must own viewport-top spacing")}
+ if strings.Contains(html,".suite-banner{margin-top:") {t.Fatal("NewsGo must not override the common banner offset")}
+}
