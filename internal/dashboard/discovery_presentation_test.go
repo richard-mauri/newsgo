@@ -83,7 +83,7 @@ func TestDiscoveryFeedMetadataAndDistinctFallbacks(t *testing.T) {
 	if json != "Technology Briefing" { t.Fatalf("JSON title: %q", json) }
 }
 func TestVersionedDiscoveryScript(t *testing.T) {
-	assertVersionedScript(t,page.Tree.Root.String())
+	assertVersionedScript(t,renderedVersionPage(t))
 }
 
 func TestAlignedCatalogActionsAndSharedButtonFeedback(t *testing.T) {

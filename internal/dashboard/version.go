@@ -1,20 +1,10 @@
 package dashboard
 
-import (
-	"regexp"
-)
+// One semantic version feeds the banner, CLI and cache-busting URLs.
+// Increment only for an approved release, not each development build.
+const appVersion = "0.2.58"
 
-// Version returns the dashboard's displayed semantic version. The dashboard
-// header is the authoritative version until its existing template is refactored.
-// Keeping the CLI coupled to the displayed header avoids another hardcoded
-// release number and protects the existing cache-buster contract.
-func Version() string {
-	match := regexp.MustCompile(`NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V([0-9]+\.[0-9]+\.[0-9]+)`).FindStringSubmatch(page.Tree.Root.String())
-	if len(match) != 2 {
-		panic("NewsGo: dashboard semantic version missing")
-	}
-	return match[1]
-}
+func Version() string { return appVersion }
 
 // BuildNumber is injected by devbuild.sh and never committed as a local count.
 var BuildNumber = "000000"

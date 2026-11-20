@@ -1,21 +1,46 @@
 package dashboard
 
 import (
+ "net/http/httptest"
  "strings"
  "testing"
+
+ "github.com/richard-mauri/newsgo/internal/feeds"
 )
 
 func TestBackToHomepageNativeLink(t *testing.T) {
- markup := page.Tree.Root.String()
- if !strings.Contains(markup, `class="suite-home-link" href="https://home.themauris.org/"`) {
+ s,err:=New([]feeds.Source{{Name:"Example",URL:"https://example.org/feed"}},"http://127.0.0.1:8083",nil)
+ if err!=nil {t.Fatal(err)}
+ w:=httptest.NewRecorder()
+ s.ServeHTTP(w,httptest.NewRequest("GET","/",nil))
+ markup:=w.Body.String()
+ if !strings.Contains(markup, `href="https://home.themauris.org/"`) {
   t.Fatal("NewsGo must offer a same-tab Homepage return in its header")
  }
- if strings.Contains(markup, `class="suite-home-link" target="_blank"`) {
+ if strings.Contains(markup, `class="suite-banner__home suite-type-control" target="_blank"`) {
   t.Fatal("Homepage return must not open a new tab")
  }
- if !strings.Contains(markup,`<div class="brand">News<span>Go</span><div><a class="suite-home-link"`) {t.Fatal("return link must follow NewsGo heading")}
- if !strings.Contains(markup,".suite-home-link:hover{background:rgba(96,151,172,.16);color:var(--accent,#69c6d3);text-decoration:underline;opacity:1}") {t.Fatal("standardized hover border style missing")}
+ for _,want:=range []string{`class="suite-type-title">NewsGo`, `suite-banner__portrait-caption">The Mauris`, `class="suite-ambient suite-ambient-one"`, `class="suite-ambient suite-ambient-two"`, `id="suite-auth-status"`, `/suite-ui/banner.css?v=`} {
+  if !strings.Contains(markup,want) {t.Errorf("shared banner missing %q",want)}
+ }
+ if strings.Contains(markup,`class="topbar"`) {t.Fatal("obsolete topbar retained")}
+ if !strings.Contains(markup,`</div><header class="suite-ui suite-banner"`) || !strings.Contains(markup,"</header>\n<main class=\"suite-content\">") {t.Fatal("NewsGo content must use the shared banner alignment container")}
+ if strings.Contains(markup,".suite-banner{margin-top:") {t.Fatal("NewsGo must not override the shared banner top offset")}
 
+}
+
+func TestSuiteBannerStylesheetUsesExactHomepageAmbient(t *testing.T) {
+ s,err:=New([]feeds.Source{{Name:"Example",URL:"https://example.org/feed"}},"http://127.0.0.1:8083",nil)
+ if err!=nil {t.Fatal(err)}
+ w:=httptest.NewRecorder()
+ s.ServeHTTP(w,httptest.NewRequest("GET","/suite-ui/banner.css",nil))
+ if w.Code!=200 {t.Fatalf("stylesheet HTTP %d",w.Code)}
+ for _,want:=range []string{".suite-ambient-one", ".suite-ambient-two", "blur(70px)", "top: -300px", "bottom: 0", ".suite-banner"} {
+  if !strings.Contains(w.Body.String(),want) {t.Errorf("missing shared stylesheet style %q",want)}
+ }
+ if strings.Contains(w.Body.String(),"radial-gradient(") {t.Fatal("Homepage ambient must not be approximated by gradients")}
+ for _,want:=range []string{"width:min(1180px,calc(100vw - 96px))","width:min(720px,calc(100vw - 48px))","width:calc(100vw - 36px)","margin:24px auto 0","border:0"} {if !strings.Contains(w.Body.String(),want) {t.Errorf("shared banner must own its gutters: %s",want)}}
+ if strings.Contains(w.Body.String(),"border:1px solid var(--suite-line)") {t.Fatal("shared banner must not draw an outline")}
 }
 
 func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
@@ -33,7 +58,7 @@ func TestNoRedundantHomepagePromptInNewsGo(t *testing.T) {
 
 func TestHomepageAccountHeaderDefersSessionManagement(t *testing.T) {
  script := personalJS
- if !strings.Contains(script,"'Signed in as '+homepageIdentity.user+' (Homepage)'") {
+ if !strings.Contains(script,"SuiteBannerStatus.signedIn(homepageIdentity.user)") {
   t.Fatal("NewsGo must show server-verified Homepage identity")
  }
  if !strings.Contains(script,"suiteExpiresAt>Date.now()") ||

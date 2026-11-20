@@ -4,6 +4,8 @@ See [AGENTS.md](AGENTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md) for workflow, [R
 
 ## Runtime
 
+The top masthead is rendered by the Homepage-owned `shared/ui/banner` package and its stylesheet served from NewsGo's own `/suite-ui/banner.css` endpoint. The dashboard opts into the **original Homepage two-shape teal ambient effect**, not radial gradients; all shapes are hidden for print. `suite-auth-status` is the existing verified Homepage account display hook, updated in place by NewsGo's browser logic. The module is pinned at build time; no browser dependency on a running Homepage CSS service is added. NewsGo's editorial hero, reader content and control layouts remain local.
+
 The canonical button appearance is supplied by Homepage's nested Go module `github.com/richard-mauri/homepage/shared/ui` at the pinned version in `go.mod` (see [Homepage's UI contract](https://github.com/richard-mauri/homepage/blob/main/SUITE_UI_DESIGN_SYSTEM.md)). `internal/dashboard/dashboard.go` serves the module's embedded `ButtonCSS` at NewsGo's same-origin `/suite-ui/buttons.css` and allows it under `style-src 'self'`. The page keeps NewsGo's `--soft`, `--text`, `--line`, `--accent` tokens and layout rules; it must not maintain a second copy of the button component. This adds no runtime network dependency on Homepage.
 
 - `cmd/newsgo/main.go`: service startup, catalog, server settings, listener, graceful shutdown; default `127.0.0.1:8084`.

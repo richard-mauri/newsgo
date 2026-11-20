@@ -31,7 +31,7 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
 
   "'/api/session/profile'",
   "suiteExpiresAt=Date.parse(profile.expiresAt)",
-  "Signed in as '+homepageIdentity.user+' (Homepage)",
+  "SuiteBannerStatus.signedIn(homepageIdentity.user)",
   "Homepage session expired",
   "deadlineCheckPending=true",
   "checkHomepageSession().finally",
