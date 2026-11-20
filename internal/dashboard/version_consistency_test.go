@@ -14,7 +14,7 @@ import (
 // reference advertise the same runtime version. No historical version encoded.
 func assertVersionedScript(t *testing.T, html string) {
 	t.Helper()
-	header := regexp.MustCompile(`NEWS READING WITHOUT PAGE CLUTTER USING SCRAPERGO · V([0-9]+\.[0-9]+\.[0-9]+)`)
+	header := regexp.MustCompile(`class="suite-type-meta">v([0-9]+\.[0-9]+\.[0-9]+)`)
 	match := header.FindStringSubmatch(html)
 	if len(match) != 2 {
 		t.Fatal("dashboard header missing semantic version")
@@ -24,7 +24,17 @@ func assertVersionedScript(t *testing.T, html string) {
 	}
 }
 
-func TestDashboardVersionConsistent(t *testing.T) { assertVersionedScript(t, page.Tree.Root.String()) }
+func renderedVersionPage(t *testing.T) string {
+ t.Helper()
+ s,err:=New([]feeds.Source{{Name:"Test",URL:"https://example.org/rss"}},"http://127.0.0.1:8083",nil)
+ if err!=nil {t.Fatal(err)}
+ w:=httptest.NewRecorder()
+ s.ServeHTTP(w,httptest.NewRequest("GET","/",nil))
+ if w.Code!=200 {t.Fatalf("dashboard HTTP %d",w.Code)}
+ return w.Body.String()
+}
+
+func TestDashboardVersionConsistent(t *testing.T) { assertVersionedScript(t, renderedVersionPage(t)) }
 
 func TestPersonalScriptURLTracksContent(t *testing.T) {
 	s, err := New([]feeds.Source{{Name:"Test",URL:"https://example.org/rss"}}, "https://scrapergo.themauris.org", nil)
