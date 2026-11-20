@@ -45,8 +45,16 @@ type view struct {
  BuildLabel string
  Version string
  ScriptRevision string
+ BannerRevision string
  ActivityEnabled bool
  BannerHTML template.HTML // produced only by the escaped, trusted shared renderer
+}
+
+// The banner stylesheet is cached by browsers, so its URL must change whenever
+// the embedded CSS changes, independently of the personal.js revision.
+func bannerCSSRevision(css []byte) string {
+ digest := sha256.Sum256(css)
+ return fmt.Sprintf("%x", digest[:6])
 }
 
 func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +139,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	scriptDigest := sha256.Sum256([]byte(personalJS))
-	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel(), Version: Version(), ScriptRevision: fmt.Sprintf("%x", scriptDigest[:6]),ActivityEnabled:s.activity!=nil}
+	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel(), Version: Version(), ScriptRevision: fmt.Sprintf("%x", scriptDigest[:6]), BannerRevision: bannerCSSRevision(banner.CSS(suiteui.DesignCSS)),ActivityEnabled:s.activity!=nil}
 	var masthead bytes.Buffer
 	if err:=banner.Render(&masthead,banner.Config{AppName:"NewsGo",Version:v.Version,Build:v.BuildLabel,Description:"News reading without page clutter using ScraperGo",HomeURL:"https://home.themauris.org/",TannerURL:"/tanner.jpg",AccountState:banner.BrowserOnly});err!=nil {
 		http.Error(w,"Header unavailable",http.StatusInternalServerError);return
@@ -186,7 +194,7 @@ var page = template.Must(template.New("index").Parse(`<!doctype html>
 .discovered-feed-group-heading button.ui-button{width:205px;max-width:100%}
 .settings-subpanel{margin:16px 0;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}.settings-subpanel .panel-heading{margin-bottom:8px}.settings-subpanel[hidden]{display:none!important}
 .suite-banner{margin-top:24px}
-</style><link rel="stylesheet" href="/suite-ui/buttons.css"><link rel="stylesheet" href="/suite-ui/banner.css?v={{.Version}}-{{.ScriptRevision}}"><script defer src="/personal.js?v={{.Version}}-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="suite-ambient suite-ambient-one" aria-hidden="true"></div><div class="suite-ambient suite-ambient-two" aria-hidden="true"></div>{{.BannerHTML}}<main>
+</style><link rel="stylesheet" href="/suite-ui/buttons.css"><link rel="stylesheet" href="/suite-ui/banner.css?v={{.Version}}-{{.BannerRevision}}"><script defer src="/personal.js?v={{.Version}}-{{.ScriptRevision}}"></script>{{if .ActivityEnabled}}<script defer src="/activity.js?v={{.ScriptRevision}}"></script>{{end}}</head><body><div class="suite-ambient suite-ambient-one" aria-hidden="true"></div><div class="suite-ambient suite-ambient-two" aria-hidden="true"></div>{{.BannerHTML}}<main>
 <div class="intro"><div><div class="eyebrow">Your news, without the noise</div><h1>Today's briefing.</h1><p id="briefing-summary">Headlines from your subscriptions only.</p></div></div>
 
 <nav class="news-nav" aria-label="NewsGo sections"><button type="button" id="manage-personal" aria-pressed="false">Find Subscriptions</button><button type="button" id="view-subscriptions" aria-pressed="false">My Subscriptions <span id="personal-count">(0)</span></button><button type="button" id="manage-settings" aria-pressed="false">Settings</button><button type="button" id="manage-diagnostics" hidden>Diagnostics</button></nav>
