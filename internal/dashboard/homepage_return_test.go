@@ -24,7 +24,7 @@ func TestBackToHomepageNativeLink(t *testing.T) {
   if !strings.Contains(markup,want) {t.Errorf("shared banner missing %q",want)}
  }
  if strings.Contains(markup,`class="topbar"`) {t.Fatal("obsolete topbar retained")}
- if !strings.Contains(markup,`</div><header class="suite-ui suite-banner"`) || !strings.Contains(markup,"</header>\n<main>") {t.Fatal("NewsGo banner must mount outside its article-specific main container")}
+ if !strings.Contains(markup,`</div><header class="suite-ui suite-banner"`) || !strings.Contains(markup,"</header>\n<main class=\"suite-content\">") {t.Fatal("NewsGo content must use the shared banner alignment container")}
  if strings.Contains(markup,".suite-banner{margin-top:") {t.Fatal("NewsGo must not override the shared banner top offset")}
 
 }
