@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"github.com/richard-mauri/newsgo/internal/feeds"
+	suiteui "github.com/richard-mauri/homepage/shared/ui"
+	"github.com/richard-mauri/homepage/shared/ui/banner"
 )
 
 // AssertVersionedScript checks that the actual header and cache-busting script
@@ -46,4 +48,12 @@ func TestPersonalScriptURLTracksContent(t *testing.T) {
 	if !strings.Contains(w.Body.String(), expected) {
 		t.Fatalf("rendered script URL must contain its content fingerprint %q", expected)
 	}
+}
+
+func TestBannerStylesheetURLTracksEmbeddedCSS(t *testing.T) {
+ html := renderedVersionPage(t)
+ contents := banner.CSS(suiteui.DesignCSS)
+ expected := "/suite-ui/banner.css?v=" + Version() + "-" + bannerCSSRevision(contents)
+ if !strings.Contains(html, expected) {t.Fatalf("banner stylesheet URL must fingerprint its CSS, expected %q", expected)}
+ if bannerCSSRevision([]byte("original")) == bannerCSSRevision([]byte("revised")) {t.Fatal("changing banner CSS must invalidate Safari's cached URL")}
 }
