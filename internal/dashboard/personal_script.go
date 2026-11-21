@@ -271,7 +271,7 @@ async function searchCatalog(){
    if(wait>0){status.textContent='⏳ Waiting to continue search for “'+q+'”…';await searchDelay(wait)}
    if(seq!==searchSeq)return;
    lastSearchSentAt=Date.now();
-   res=await fetch('/api/search-feeds?q='+encodeURIComponent(q),{cache:'no-store'});
+   res=await authorizedNewsgoFetch('/api/search-feeds?q='+encodeURIComponent(q),{cache:'no-store'});
    if(seq!==searchSeq)return;
    data=await res.json();
    if(res.status!==429)break;
@@ -601,7 +601,7 @@ function renderFilteredArticles(){
    if(!details.open)return;
    output.textContent='Checking…';
    try{
-    const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{...adminAuthHeader(),'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
+    const response=await authorizedNewsgoFetch('/api/admin/classification-diagnostic',{method:'POST',headers:{...adminAuthHeader(),'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
     const lines=['Classification: '+(result.classification||'unknown')];
@@ -731,7 +731,7 @@ async function refresh(){
   for(let offset=0;offset<snapshot.length;offset+=8){
    const batch=snapshot.slice(offset,offset+8);
    const batchStart=performance.now();
-   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})});
+   const res=await authorizedNewsgoFetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})});
    if(sequence!==refreshSequence)return;
    if(!res.ok)throw new Error('HTTP '+res.status);
    data.push(...await res.json());batchDuration+=performance.now()-batchStart;
@@ -834,7 +834,7 @@ async function toggleEquivalentDiscoveredSubscription(f,trigger){
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow Domain before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
+ authorizedNewsgoFetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 function discoveryFeedback(text){
  let status=el('discover-url-feedback');
  if(!status){status=document.createElement('p');status.id='discover-url-feedback';status.className='personal-status';status.setAttribute('role','alert');status.style.cssText='margin:8px 0 12px;color:var(--accent)';el('discover-form').insertAdjacentElement('afterend',status)}
@@ -849,7 +849,7 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
  const publisherHost=parsed.hostname.replace(/^www\./,'');
  const publisherParts=publisherHost.split('.');const publisherRoot=publisherParts.slice(-2).join('.');
  const existing=feeds.filter(f=>{try{const host=new URL(f.url).hostname;return host===publisherRoot||host.endsWith('.'+publisherRoot)}catch(_){return false}}).slice(0,8).map(f=>f.url);
- const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
+ const r=await authorizedNewsgoFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  const groups=new Map();
  data.feeds.forEach(f=>{
   const domain=publisherForFeed(f),key=domain||'(unknown publisher)';
@@ -912,9 +912,10 @@ let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
 const suiteRecoveryKey='newsgo.homepage.recovery-attempt.v1';
-// The local-mode fragment suppresses recovery for this visit only. A later
-// direct visit must recheck Homepage, which may have gained a valid login.
-let explicitBrowserOnly=false;
+// Require a Homepage-verified personal user or Guest on every visit.
+let rejectedLegacyLocalMode=false;
+function allowVerifiedNewsgo(){document.documentElement.classList.add('suite-auth-ready')}
+function denyUnverifiedNewsgo(){document.documentElement.classList.remove('suite-auth-ready')}
 function readSuiteHandoff(){
  const fragment=new URLSearchParams(location.hash.slice(1));
  const delivered=fragment.get('suite_token');
@@ -922,11 +923,11 @@ function readSuiteHandoff(){
  if(delivered!==null || browserOnly){
   history.replaceState(null,'',location.pathname+location.search);
   if(browserOnly){
-   // Homepage explicitly said there is no live account. Suppress redirect
-   // during this page visit, preserving browser-local subscriptions.
-   explicitBrowserOnly=true;
+   rejectedLegacyLocalMode=true;
    try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
+   denyUnverifiedNewsgo();
+   location.replace(homepageOrigin+'/#suite_signin=required');
   }else if(/^[a-f0-9]{64}$/.test(delivered)){
    try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
   }else {
@@ -944,6 +945,23 @@ window.addEventListener('homepage-heartbeat-rejected',event=>{
  void checkHomepageSession();
 });
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+// No browser-supplied identity flags are trusted by the API authorization gate.
+async function authorizedNewsgoFetch(path,options={}){
+ if(!homepageIdentity||!suiteHandoff||suiteExpiresAt<=Date.now()||rejectedLegacyLocalMode)
+  throw Error('Homepage sign-in or Guest access required');
+ const response=await fetch(path,{...options,headers:{...(options.headers||{}),Authorization:'Bearer '+suiteHandoff}});
+ if(response.status===401||response.status===403){
+  denyUnverifiedNewsgo();homepageIdentity=null;suiteExpiresAt=0;suiteHandoff='';
+  try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+  accountSessionState();promptSuiteSignIn();
+  throw Error('Homepage session expired or revoked');
+ }
+ if(response.status===503){
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();
+  promptSuiteSignIn();throw Error('Homepage verification unavailable');
+ }
+ return response;
+}
 // A separately opened NewsGo tab has a fresh sessionStorage. Recover a
 // previously verified child handoff from another NewsGo tab, without a redirect.
 const suiteTabChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('newsgo.suite-handoff.v1'):null;
@@ -957,7 +975,7 @@ if(suiteTabChannel)suiteTabChannel.onmessage=event=>{
    suiteTabChannel.postMessage({type:'offer',request:data.request,token:suiteHandoff});
   }
  }else if(data.type==='offer'&&suiteTabRecovery&&data.request===suiteTabRecovery.request&&
-  !suiteHandoff&&!explicitBrowserOnly&&typeof data.token==='string'&&/^[a-f0-9]{64}$/.test(data.token)){
+  !suiteHandoff&&!rejectedLegacyLocalMode&&typeof data.token==='string'&&/^[a-f0-9]{64}$/.test(data.token)){
   const recovery=suiteTabRecovery;suiteTabRecovery=null;
   suiteHandoff=data.token;
   try{sessionStorage.setItem(suiteHandoffKey,suiteHandoff)}catch(_){}
@@ -965,7 +983,7 @@ if(suiteTabChannel)suiteTabChannel.onmessage=event=>{
  }
 };
 function recoverSuiteHandoffFromTab(){
- if(!suiteTabChannel||explicitBrowserOnly||suiteHandoff)return Promise.resolve(false);
+ if(!suiteTabChannel||rejectedLegacyLocalMode||suiteHandoff)return Promise.resolve(false);
  if(suiteTabRecovery)return suiteTabRecovery.promise;
  const request=Math.random().toString(36).slice(2)+Date.now().toString(36);
  let resolveRecovery;
@@ -981,7 +999,7 @@ function recoverSuiteHandoffFromTab(){
 // send Safari through an endless NewsGo/Homepage loop. If sessionStorage is
 // unavailable, fail closed to the existing sign-in prompt.
 function attemptHomepageRecovery(){
- if(explicitBrowserOnly)return false;
+ if(rejectedLegacyLocalMode)return false;
  if(recoveryNavigationPending)return true;
  try{
   if(sessionStorage.getItem(suiteRecoveryKey)==='pending')return false;
@@ -1052,9 +1070,9 @@ async function checkHomepageSession(){
  initSuiteAccountHeader();
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();return;
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage sign-in or Guest required');promptSuiteSignIn();return;
  }
- if(!suiteHandoff && !explicitBrowserOnly){
+ if(!suiteHandoff && !rejectedLegacyLocalMode){
   // A live sibling tab may have a verified child bearer; ask it in-place.
   // If none answers, let Homepage verify the parent session through its bridge.
   const recovered=await recoverSuiteHandoffFromTab();
@@ -1064,15 +1082,15 @@ async function checkHomepageSession(){
   return;
  }
  if(!suiteHandoff){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');promptSuiteSignIn();return;
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage sign-in or Guest required');promptSuiteSignIn();return;
  }
  try{
   const verifiedToken=suiteHandoff;
   const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:{Authorization:'Bearer '+verifiedToken}});
   // Ignore stale verification completing after a successful bearer rotation.
   if(verifiedToken!==suiteHandoff)return;
-  if(response.status===401){
-   suiteExpiresAt=0;
+  if(response.status===401||response.status===403){
+   denyUnverifiedNewsgo();suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    if(attemptHomepageRecovery())return;
    homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');promptSuiteSignIn();return;
@@ -1083,13 +1101,15 @@ async function checkHomepageSession(){
   if(!Number.isFinite(suiteExpiresAt)||suiteExpiresAt<=Date.now())throw Error('Expired profile');
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
-  homepageIdentity={user:profile.user,role:profile.role==='guest'?'guest':profile.role==='admin'?'admin':'user'};
+  if(!['guest','user','admin'].includes(profile.role))throw Error('Unrecognized Homepage role');
+  homepageIdentity={user:profile.user,role:profile.role};
+  allowVerifiedNewsgo();
   try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
   dismissSuiteSignInPrompt();
   accountSessionState();show(SuiteBannerStatus.signedInText(homepageIdentity.user));showSuiteSessionStatus();
   if(homepageIdentity.role!=='guest')void initializeHomepageAccount(profile.user,verifiedToken);
  }catch(e){
-  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteSessionStatus();
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage verification unavailable');showSuiteSessionStatus();promptSuiteSignIn();
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
@@ -1223,7 +1243,7 @@ const adminStatus=message=>{el('admin-status').textContent=message};
 const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
 const adminDirty=()=>adminSavedValues!==null&&Object.keys(articleAdminFields).some(key=>adminValues()[key]!==adminSavedValues[key]);
 async function adminRequest(method,payload){
- const response=await fetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
+ const response=await authorizedNewsgoFetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
  if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
 }
 async function loadAdmin(){
