@@ -145,7 +145,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	scriptDigest := sha256.Sum256([]byte(personalJS))
 	v := view{Catalog: append([]feeds.Source(nil), s.sources...), BuildLabel: BuildLabel(), Version: Version(), ScriptRevision: fmt.Sprintf("%x", scriptDigest[:6]), BannerRevision: bannerCSSRevision(banner.CSS(suiteui.DesignCSS)),ActivityEnabled:s.activity!=nil}
 	var masthead bytes.Buffer
-	if err:=banner.Render(&masthead,banner.Config{AppName:"NewsGo",Version:v.Version,Build:v.BuildLabel,Description:"News reading without page clutter using ScraperGo",HomeURL:"https://home.themauris.org/",TannerURL:"/tanner.jpg",AccountState:banner.BrowserOnly});err!=nil {
+	if err:=banner.Render(&masthead,banner.Config{AppName:"NewsGo",Version:v.Version,Build:v.BuildLabel,Description:"News reading without page clutter using ScraperGo",HomeURL:"https://home.themauris.org/",TannerURL:"/tanner.jpg",AccountState:banner.Unavailable});err!=nil {
 		http.Error(w,"Header unavailable",http.StatusInternalServerError);return
 	}
 	v.BannerHTML=template.HTML(masthead.String())
@@ -160,6 +160,9 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 var page = template.Must(template.New("index").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>NewsGo — Your daily briefing</title>
 <style>
+/* The public handoff shell cannot expose an interactive reader until Homepage verifies identity. */
+html:not(.suite-auth-ready) .suite-content{visibility:hidden}
+
 :root{color-scheme:light dark;--bg:light-dark(#f5f5f0,#0e141a);--panel:light-dark(#fff,#19232b);--text:light-dark(#182631,#eef2f4);--muted:light-dark(#60707b,#a5b3bb);--line:light-dark(#dce2e1,#34434a);--accent:light-dark(#126877,#69c6d3);--soft:light-dark(#e6f3f3,#203c43);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit}main{padding-bottom:72px}
 .eyebrow{font-size:.73rem;font-weight:780;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}.intro{padding:38px 0 25px;display:flex;justify-content:space-between;align-items:end;gap:18px}.intro h1{font-family:Georgia,serif;font-size:clamp(2.6rem,5vw,4.6rem);line-height:1;margin:9px 0 8px;font-weight:700;letter-spacing:-.035em}.intro p{margin:0;color:var(--muted);font-size:.93rem}.time{color:var(--muted);font-size:.85rem;text-align:right}
