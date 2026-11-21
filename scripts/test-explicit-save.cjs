@@ -116,8 +116,8 @@ async function run(){
  assert.equal(navigationStages.length,0,'clearing a removed reading selection never stages edits');
  navigationContext.localStorage.setItem=()=>{throw Error('storage unavailable')};
  assert.doesNotThrow(()=>navigationContext.rememberReadingSelection('all'),'failed storage must not block reading');
- assert.match(script,/function chooseSource\\(url\\)[\\s\\S]*?rememberReadingSelection\\(url\\)/,'source selection uses non-staging path');
- assert.match(script,/function chooseAllSubscriptions\\(leadOnly=false\\)[\\s\\S]*?rememberReadingSelection\\('all'\\)/,'all subscriptions uses non-staging path');
+ assert.ok(script.includes('activeReadingSelection=url;rememberReadingSelection(url)'), 'source selection uses non-staging path');
+ assert.ok(script.includes("activeReadingSelection='all';rememberReadingSelection('all')"), 'all subscriptions uses non-staging path');
  assert.ok(!script.includes('stageReaderSetting(readingSelectionKey'),'no other reading navigation stage calls');
  assert.ok(script.includes("if(adminDirty()||hasUnsavedReaderSettings())"),'Safari unload safeguard');
  assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
