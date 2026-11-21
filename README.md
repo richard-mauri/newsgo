@@ -49,7 +49,7 @@ The CLI, launcher, server log, and dashboard display `NewsGo v0.2.58 · Build NN
 
 ## Reading diagnostics
 
-The **Homepage account synchronization** section shows the latest account load or save result, local timestamp, and any error. A failed account read does not authorize an empty-profile overwrite; browser subscriptions are preserved and automatic account saves pause. These account diagnostics are distinct from article-feed fetch diagnostics.
+The **Homepage account synchronization** section shows the latest account load or save result, local timestamp, and any error. A failed account read does not authorize an empty-profile overwrite; browser subscriptions are preserved and any Save Changes attempt reports that account persistence is unavailable until the connection is restored. These account diagnostics are distinct from article-feed fetch diagnostics.
 
 All readers can open **Diagnostics** after reading one feed or All Subscriptions. Expand the collapsed **Latest read** panel to inspect the latest completed browser read: fetched feed entries, accepted articles, filtered entries, entries beyond the processing cap, feed errors and actual thumbnail load outcomes (loaded, failed, pending or not requested). Thumbnail counts update as image events occur. These browser-local observations do not require additional publisher requests. The existing **Filtered / unprocessed articles** section groups rejected items by classification or exclusion reason; entries beyond the cap remain separately labeled as unprocessed.
 
