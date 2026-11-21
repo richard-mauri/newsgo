@@ -47,7 +47,7 @@ func TestFilteredDomainControlAndExistingConfirmation(t *testing.T) {
   "function publisherScope(value)",
   "function confirmDomainRemoval(domain,affected)",
   "if(!allow&&!(await confirmDomainRemoval(domain,affected)))return false",
-  "scheduleAccountSave();refresh()",
+  "refreshExclusionViews();renderPersonalArticles();refresh()",
   "if(domain&&!domainIsExcluded(domain))",
  } {
   if !strings.Contains(personalJS,want) {t.Errorf("lost safe exclusion behavior %q",want)}
