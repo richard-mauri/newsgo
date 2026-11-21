@@ -59,7 +59,7 @@ func main() {
 	if activity!=nil && activityErr==nil {go activity.Run(ctx)}
 	defer stop()
 	// Feed catalog is for discovery only. Browser requests subscribed feeds via /api/personal.
-	srv := &http.Server{Addr: *addr, Handler: app, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Addr: *addr, Handler: dashboard.NewNewsGoAuthGate().Protect(app), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
