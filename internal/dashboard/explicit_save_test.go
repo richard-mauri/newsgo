@@ -24,7 +24,7 @@ func TestReaderSettingsOnlyCommitOnSaveChanges(t *testing.T) {
   "if(adminDirty()||hasUnsavedReaderSettings())",
   "accountSyncNeeded=true",
   "async function accountSave(snapshot)",
-  "if(!record)",
+  "No saved record; awaiting Save Changes",
   "readerUnsyncedKey(owner)",
   "if(unsyncedSnapshot&&!staged)applyAccountPreferences(unsyncedSnapshot)",
  } {
