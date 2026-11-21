@@ -214,7 +214,15 @@ function restoreReadingSelection(value){
  if(selection!==null){showView('news');refresh()}
  else{allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];renderPersonalArticles()}
 }
-function rememberReadingSelection(value){stageReaderSetting(readingSelectionKey,value)}
+// Reading navigation is browser-local operational state, not an unsaved
+// preference edit. A later explicit Save Changes can still include the
+// current selection in the Homepage account snapshot.
+function rememberReadingSelection(value){
+ try{
+  if(value===null)localStorage.removeItem(readingSelectionKey);
+  else localStorage.setItem(readingSelectionKey,String(value));
+ }catch(_){/* Navigation remains usable if Safari storage is unavailable. */}
+}
 
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.add('ui-button');if(cls)b.classList.add(cls);b.addEventListener('click',handler);return b}
@@ -529,7 +537,7 @@ function renderFilteredSubscriptionOffer(){
   // Keep the reading view unselected after removal; never load all feeds implicitly.
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  stageReaderSetting(readingSelectionKey,null);
+  rememberReadingSelection(null);
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
@@ -806,7 +814,7 @@ async function catalogSubscriptionClick(candidate,trigger){
  if(selectedSource===candidate.url||activeReadingSelection===candidate.url){
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  stageReaderSetting(readingSelectionKey,null);
+  rememberReadingSelection(null);
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
