@@ -3,7 +3,6 @@ package dashboard
 import (
  "errors"
  "net/http"
- "net/url"
  "os"
  "regexp"
  "strings"
