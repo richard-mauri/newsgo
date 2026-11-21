@@ -32,7 +32,7 @@ func TestArticleDomainExclusionsPersistWithHomepage(t *testing.T){
   "excludedArticleDomains:articleDomains",
   "async function initializeHomepageAccount(owner,token)",
   "applyAccountPreferences(record.data)",
-  "async function accountSave()",
+  "async function accountSave(snapshot)",
   "const owner=accountOwner,token=suiteHandoff,revision=accountRevision",
   "articleDomains=[...new Set(data.excludedArticleDomains||[])]",
  }{

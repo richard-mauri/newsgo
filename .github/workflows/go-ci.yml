@@ -22,6 +22,8 @@ jobs:
       - name: Report formatting debt (non-blocking)
         run: |
           git ls-files '*.go' | xargs gofmt -l
+      - name: Test explicit Save Changes in browser JavaScript (CI only)
+        run: node scripts/test-explicit-save.cjs
       - name: Run tests
         run: go test -count=1 ./...
       - name: Build
