@@ -140,6 +140,7 @@ async function run(){
   rejectedLegacyLocalMode:false,
   refreshPendingAfterAuth:false,
   renderReading(){renderCalls++},
+  renderPersonalArticles(){},
   feeds:[],
   Date,Promise,
   authorizedNewsgoFetch(){fetchCalls++;throw Error('should not fetch before verification')}
@@ -160,7 +161,7 @@ async function run(){
  assert.ok(script.includes('if(refreshPendingAfterAuth){refreshPendingAfterAuth=false;void refresh()}'),
    'successful Homepage profile verification retries a queued feed refresh');
  assert.ok(script.indexOf('if(refreshPendingAfterAuth){refreshPendingAfterAuth=false;void refresh()}')>
-   script.indexOf('allowVerifiedNewsgo()','async function checkHomepageSession'),
+   script.indexOf('  allowVerifiedNewsgo();',script.indexOf('async function checkHomepageSession')),
    'resume occurs only after the browser is marked verified');
  assert.ok(script.includes("if(adminDirty()||hasUnsavedReaderSettings())"),'Safari unload safeguard');
  assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
