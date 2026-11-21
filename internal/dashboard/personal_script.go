@@ -21,6 +21,23 @@ const rssOnlyPreferenceKey='newsgo.rssMetadataOnly.v1';
 const classificationCachePreferenceKey='newsgo.useClassificationCache.v1';
 const leadCountKey='newsgo.maximumLeadStories.v1';
 const leadOnlyKey='newsgo.leadOnlyAllSubscriptions.v1';
+const readerUnsyncedOwnerKey='newsgo.account.unsynced-owner.v1';
+const pendingReaderSettings=new Map();
+let accountSyncNeeded=false,readerSaveBusy=false;
+function hasUnsavedReaderSettings(){return pendingReaderSettings.size>0||accountSyncNeeded}
+function readerSaveFeedback(text){
+ const status=document.getElementById('reader-save-status');
+ const control=document.getElementById('reader-save-changes');
+ if(status&&text!==undefined)status.textContent=text;
+ if(control)control.disabled=readerSaveBusy||!hasUnsavedReaderSettings();
+}
+function stageReaderSetting(key,value){
+ const desired=value===null?null:String(value);
+ if(localStorage.getItem(key)===desired)pendingReaderSettings.delete(key);
+ else pendingReaderSettings.set(key,desired);
+ readerSaveFeedback(hasUnsavedReaderSettings()?'Unsaved changes · Click Save Changes.':'');
+}
+
 function normalizedLeadCount(v){const n=Number(v);return Number.isInteger(n)&&n>=1&&n<=20?n:3}
 let maximumLeadStories=normalizedLeadCount(localStorage.getItem(leadCountKey));
 let leadOnlyAllSubscriptions=localStorage.getItem(leadOnlyKey)==='true';
@@ -29,7 +46,7 @@ let useClassificationCache=localStorage.getItem(classificationCachePreferenceKey
 const allowedAges=[0,1,3,7,14,30,60];
 function normalizedAge(v){const n=Number(v);return allowedAges.includes(n)?n:0}
 let maxArticleAgeDays=normalizedAge(localStorage.getItem(agePreferenceKey)||0);
-function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);scheduleAccountSave();refresh();}
+function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);stageReaderSetting(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);refresh();}
 
 function hostOf(value){
  try{const u=new URL(value.includes('://')?value:'https://'+value);if(!/^https?:$/.test(u.protocol)||u.username||u.password)return '';return u.hostname.toLowerCase().replace(/\.$/,'').replace(/^www\./,'')}
@@ -84,30 +101,21 @@ async function setUnifiedDomain(domain,allow){
  const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&(publisherScope(r.url)===domain||publisherScope(r.url).endsWith('.'+domain)));
  if(!allow&&!(await confirmDomainRemoval(domain,affected)))return false;
  const nextRegistry=allow?registry:registry.filter(r=>!affected.includes(r));
- const prev=[localStorage.getItem(exclusionKey),localStorage.getItem(articleExclusionKey),localStorage.getItem(unifiedKey)];
- try{
-  localStorage.setItem(exclusionKey,JSON.stringify(allow?nextPublishers:[...nextPublishers,domain]));
-  localStorage.setItem(articleExclusionKey,JSON.stringify(allow?nextArticles:[...nextArticles,domain]));
-  localStorage.setItem(unifiedKey,JSON.stringify(nextRegistry));
- }catch(e){
-  [exclusionKey,articleExclusionKey,unifiedKey].forEach((k,i)=>{try{if(prev[i]===null)localStorage.removeItem(k);else localStorage.setItem(k,prev[i])}catch(_){}});
-  message('Exclusion not saved; preferences left unchanged: '+e.message);return false;
- }
  excludedDomains=allow?nextPublishers:[...nextPublishers,domain];articleDomains=allow?nextArticles:[...nextArticles,domain];
  registry=nextRegistry;syncDerived();
- refreshExclusionViews();renderPersonalArticles();scheduleAccountSave();refresh();
+ stageReaderSetting(exclusionKey,JSON.stringify(excludedDomains));
+ stageReaderSetting(articleExclusionKey,JSON.stringify(articleDomains));
+ stageReaderSetting(unifiedKey,JSON.stringify(registry));
+ refreshExclusionViews();renderPersonalArticles();refresh();
  message(allow?'Allowed '+domain:'Excluded '+domain+(affected.length?' and removed '+affected.length+' subscription(s)':''));
  return true;
 }
 function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
-function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleAccountSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
+function saveArticleExclusions(next){const domains=[...new Set(next)];articleDomains=domains;stageReaderSetting(articleExclusionKey,JSON.stringify(domains));renderExclusionManager();renderPersonalArticles();return true}
 function toggleArticleDomain(value){toggleDomain(value)}
 function excludedURL(value){return domainIsExcluded(value)}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
-function saveExclusions(list){
- try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleAccountSave();return true}
- catch(e){message('Could not save exclusions: '+e.message);return false}
-}
+function saveExclusions(list){const unique=[...new Set(list)];excludedDomains=unique;stageReaderSetting(exclusionKey,JSON.stringify(unique));refreshExclusionViews();return true}
 function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedURL(domain))setUnifiedDomain(domain,false);else message(domain+' is already excluded.')}
 function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
 function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
@@ -180,11 +188,8 @@ function syncDerived(){
 }
 syncDerived();
 function saveSubscriptions(next){
- try{
-  const serialized=JSON.stringify(next);
-  localStorage.setItem(unifiedKey,serialized);
-  registry=next;syncDerived();scheduleAccountSave();return true;
- }catch(e){message('Could not save subscriptions. No changes were applied: '+e.message);return false}
+ if(!Array.isArray(next)||next.some(r=>!recordValid(r)))return false;
+ registry=next;syncDerived();stageReaderSetting(unifiedKey,JSON.stringify(next));return true;
 }
 function hasSubscription(id){return registry.some(r=>r.id===id)}
 function subscribeRecord(record){if(hasSubscription(record.id))return true;return saveSubscriptions([...registry,record])}
@@ -207,10 +212,7 @@ function restoreReadingSelection(value){
  if(selection!==null){showView('news');refresh()}
  else{allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];renderPersonalArticles()}
 }
-function rememberReadingSelection(value){
- localStorage.setItem(readingSelectionKey,value);
- scheduleAccountSave();
-}
+function rememberReadingSelection(value){stageReaderSetting(readingSelectionKey,value)}
 
 function message(t){el('personal-message').textContent=t}
 function button(label,handler,cls){const b=document.createElement('button');b.type='button';b.textContent=label;b.classList.add('ui-button');if(cls)b.classList.add(cls);b.addEventListener('click',handler);return b}
@@ -369,8 +371,7 @@ function updateScraperTraceExportVisibility(){
 function chooseAllSubscriptions(leadOnly=false){
  const modeChanged=leadOnlyAllSubscriptions!==leadOnly;
  leadOnlyAllSubscriptions=leadOnly;
- localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
- if(modeChanged)scheduleAccountSave();
+ if(modeChanged)stageReaderSetting(leadOnlyKey,String(leadOnlyAllSubscriptions));
  activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -526,7 +527,7 @@ function renderFilteredSubscriptionOffer(){
   // Keep the reading view unselected after removal; never load all feeds implicitly.
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  localStorage.removeItem(readingSelectionKey);scheduleAccountSave();
+  stageReaderSetting(readingSelectionKey,null);
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
@@ -803,7 +804,7 @@ async function catalogSubscriptionClick(candidate,trigger){
  if(selectedSource===candidate.url||activeReadingSelection===candidate.url){
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  localStorage.removeItem(readingSelectionKey);scheduleAccountSave();
+  stageReaderSetting(readingSelectionKey,null);
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
