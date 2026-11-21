@@ -6,8 +6,8 @@ import (
 )
 
 // Homepage alone exposes session renewal and countdown. NewsGo consumes
-// the parent-bound handoff, verifies account identity, and remains local-only
-// without one.
+// the parent-bound handoff and verifies personal/Guest identity.
+// Reader access is denied without one.
 func TestHomepageOwnsSessionManagement(t *testing.T) {
  for _,snippet:=range []string{
   "const suiteHandoffKey='newsgo.homepage.handoff.v1'",
@@ -39,13 +39,16 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
   "temporary authenticated guest session valid for one hour",
   "homepageIdentity.role==='guest'",
   "if(homepageIdentity.role!=='guest')void initializeHomepageAccount",
-  "explicitBrowserOnly=true",
+  "rejectedLegacyLocalMode=true",
   "if(browserOnly)",
-  "if(!suiteHandoff && !explicitBrowserOnly)",
+  "if(!suiteHandoff && !rejectedLegacyLocalMode)",
  } {
   if !strings.Contains(personalJS,snippet){t.Errorf("missing Homepage handoff/expiry behavior: %s",snippet)}
  }
  for _,obsolete:=range []string{
+  "explicitBrowserOnly=true",
+  "Not signed in · Browser settings only",
+  "Account connection unavailable · Browser settings only",
   "renewSuiteSession", "suiteRenewLink", "suiteRenewStatus",
   "sessionRenewFeedback", "sessionTimeRemaining",
   "showSuiteCountdown", "suite-renew-button",
@@ -59,7 +62,7 @@ func TestHomepageOwnsSessionManagement(t *testing.T) {
 
 func TestHomepageRecoveryIsBoundedAndDoesNotBypassSignOut(t *testing.T) {
  for _,snippet:=range []string{
-  "if(explicitBrowserOnly)return false",
+  "if(rejectedLegacyLocalMode)return false",
   "if(recoveryNavigationPending)return true",
   "if(sessionStorage.getItem(suiteRecoveryKey)==='pending')return false",
   "}catch(_){return false}",
@@ -67,7 +70,7 @@ func TestHomepageRecoveryIsBoundedAndDoesNotBypassSignOut(t *testing.T) {
   "if(browserOnly){",
   "explicitBrowserOnly=true",
   "sessionStorage.removeItem(suiteRecoveryKey)",
-  "if(response.status===401){",
+  "if(response.status===401||response.status===403){",
   "dismissSuiteSignInPrompt()",
  } {
   if !strings.Contains(personalJS,snippet) {t.Errorf("missing bounded Homepage recovery contract: %s",snippet)}
