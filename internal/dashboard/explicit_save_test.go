@@ -50,3 +50,19 @@ func TestReaderSettingsOnlyCommitOnSaveChanges(t *testing.T) {
   t.Fatal("administrator server-settings save must remain independent")
  }
 }
+
+func TestReaderSaveSharesMainNavigationRow(t *testing.T) {
+ markup:=page.Tree.Root.String()
+ navStart:=strings.Index(markup,`<nav class="news-nav"`)
+ if navStart<0 {t.Fatal("NewsGo navigation missing")}
+ navEnd:=strings.Index(markup[navStart:],"</nav>")
+ if navEnd<0 {t.Fatal("NewsGo navigation closing tag missing")}
+ nav:=markup[navStart:navStart+navEnd]
+ for _,id:=range []string{`id="manage-personal"`,`id="view-subscriptions"`,`id="manage-settings"`,`id="manage-diagnostics"`,`id="reader-save-changes"`,`id="reader-save-status"`} {
+  if !strings.Contains(nav,id){t.Errorf("navigation row missing %s",id)}
+ }
+ if strings.Contains(markup,`class="reader-save-bar"`){t.Fatal("Save Changes must not render in a separate toolbar row")}
+ if !strings.Contains(markup,`.news-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;`){
+  t.Fatal("navigation alignment and narrow-screen wrapping missing")
+ }
+}
