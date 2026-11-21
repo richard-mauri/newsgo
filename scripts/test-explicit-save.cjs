@@ -119,6 +119,49 @@ async function run(){
  assert.ok(script.includes('activeReadingSelection=url;rememberReadingSelection(url)'), 'source selection uses non-staging path');
  assert.ok(script.includes("activeReadingSelection='all';rememberReadingSelection('all')"), 'all subscriptions uses non-staging path');
  assert.ok(!script.includes('stageReaderSetting(readingSelectionKey'),'no other reading navigation stage calls');
+ // A restored reading selection must wait for the Homepage verifier.
+ // Execute the real refresh() with no verified identity; no API call is allowed.
+ const refreshBegin=script.indexOf('async function refresh(){');
+ const refreshEnd=script.indexOf('// Only show safe, identifying feed URL components',refreshBegin);
+ assert.ok(refreshBegin>=0&&refreshEnd>refreshBegin,'feed refresh function found');
+ const refreshText=script.slice(refreshBegin,refreshEnd);
+ let fetchCalls=0,renderCalls=0;
+ const loading={textContent:'',classList:{remove(){},add(){}}};
+ const refreshContext={
+  performance:{now:()=>0},
+  refreshSequence:0,
+  scraperTraceBatch:[],
+  updateScraperTraceExportVisibility(){},
+  el:id=>id==='personal-loading'?loading:null,
+  activeReadingSelection:'all',
+  homepageIdentity:null,
+  suiteHandoff:'a'.repeat(64),
+  suiteExpiresAt:Date.now()+60000,
+  rejectedLegacyLocalMode:false,
+  refreshPendingAfterAuth:false,
+  renderReading(){renderCalls++},
+  feeds:[],
+  Date,Promise,
+  authorizedNewsgoFetch(){fetchCalls++;throw Error('should not fetch before verification')}
+ };
+ vm.createContext(refreshContext);
+ vm.runInContext(refreshText,refreshContext);
+ await refreshContext.refresh();
+ assert.equal(refreshContext.refreshPendingAfterAuth,true,'initial refresh queued until verified');
+ assert.match(loading.textContent,/Waiting for Homepage/);
+ assert.equal(fetchCalls,0,'no pre-auth API calls');
+ assert.equal(renderCalls,0,'no feed rendering required before auth');
+ refreshContext.homepageIdentity={role:'guest',user:'guest-001'};
+ await refreshContext.refresh();
+ assert.equal(refreshContext.refreshPendingAfterAuth,false,'pending refresh clears on authenticated attempt');
+ assert.equal(fetchCalls,0,'no feeds means no network request');
+ assert.equal(renderCalls,1,'verified refresh resumes normal reading flow');
+ // Verify the real session-success branch consumes the pending request.
+ assert.ok(script.includes('if(refreshPendingAfterAuth){refreshPendingAfterAuth=false;void refresh()}'),
+   'successful Homepage profile verification retries a queued feed refresh');
+ assert.ok(script.indexOf('if(refreshPendingAfterAuth){refreshPendingAfterAuth=false;void refresh()}')>
+   script.indexOf('allowVerifiedNewsgo()','async function checkHomepageSession'),
+   'resume occurs only after the browser is marked verified');
  assert.ok(script.includes("if(adminDirty()||hasUnsavedReaderSettings())"),'Safari unload safeguard');
  assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
  assert.ok(script.includes('localStorage.setItem(field.key'),'recent searches remain browser operational history');
