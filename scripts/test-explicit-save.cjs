@@ -90,6 +90,35 @@ async function run(){
  assert.equal(quota.calls.length,0,'failed browser save must not PUT');
  assert.equal(quota.controls['reader-save-changes'].disabled,false);
  assert.match(quota.controls['reader-save-status'].textContent,/Save failed/);
+ // Reading source selection is navigation history, not a staged preference.
+ // Execute the shipped function to check set/remove and storage-error behavior.
+ const navigationStart=script.indexOf('function rememberReadingSelection(value)');
+ const navigationEnd=script.indexOf('function message(t)',navigationStart);
+ assert.ok(navigationStart>=0&&navigationEnd>navigationStart,'navigation function exists');
+ const navigationSource=script.slice(navigationStart,navigationEnd);
+ const navigationWrites=new Map(),navigationStages=[];
+ const navigationContext={
+  readingSelectionKey:'newsgo.lastReadingSelection.v1',
+  localStorage:{
+   setItem:(key,value)=>navigationWrites.set(key,value),
+   removeItem:key=>navigationWrites.delete(key)
+  },
+  stageReaderSetting:(...args)=>navigationStages.push(args),
+  String
+ };
+ vm.createContext(navigationContext);
+ vm.runInContext(navigationSource,navigationContext);
+ navigationContext.rememberReadingSelection('https://example.org/feed');
+ assert.equal(navigationWrites.get(navigationContext.readingSelectionKey),'https://example.org/feed');
+ assert.equal(navigationStages.length,0,'selecting Read Articles never stages unsaved edits');
+ navigationContext.rememberReadingSelection(null);
+ assert.equal(navigationWrites.has(navigationContext.readingSelectionKey),false);
+ assert.equal(navigationStages.length,0,'clearing a removed reading selection never stages edits');
+ navigationContext.localStorage.setItem=()=>{throw Error('storage unavailable')};
+ assert.doesNotThrow(()=>navigationContext.rememberReadingSelection('all'),'failed storage must not block reading');
+ assert.match(script,/function chooseSource\\(url\\)[\\s\\S]*?rememberReadingSelection\\(url\\)/,'source selection uses non-staging path');
+ assert.match(script,/function chooseAllSubscriptions\\(leadOnly=false\\)[\\s\\S]*?rememberReadingSelection\\('all'\\)/,'all subscriptions uses non-staging path');
+ assert.ok(!script.includes('stageReaderSetting(readingSelectionKey'),'no other reading navigation stage calls');
  assert.ok(script.includes("if(adminDirty()||hasUnsavedReaderSettings())"),'Safari unload safeguard');
  assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
  assert.ok(script.includes('localStorage.setItem(field.key'),'recent searches remain browser operational history');
