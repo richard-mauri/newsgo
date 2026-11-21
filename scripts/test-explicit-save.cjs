@@ -1,0 +1,99 @@
+'use strict';
+// CI-only execution tests; no Node.js is required by the owner Mac build.
+const fs=require('node:fs');
+const vm=require('node:vm');
+const assert=require('node:assert/strict');
+const full=fs.readFileSync('internal/dashboard/personal_script.go','utf8');
+const prefix='const personalJS = `';
+const begin=full.indexOf(prefix),end=full.lastIndexOf('`');
+assert.ok(begin>=0&&end>begin,'embedded NewsGo dashboard JS found');
+const script=full.slice(begin+prefix.length,end);
+new vm.Script(script,{filename:'newsgo-personal.js'});
+const stageStart=script.indexOf("const readerUnsyncedKey=");
+const stageEnd=script.indexOf('function normalizedLeadCount',stageStart);
+const commitStart=script.indexOf('// Save is invoked only by the user-triggered Save Changes button.');
+const commitEnd=script.indexOf('// Homepage account profile is loaded automatically',commitStart);
+assert.ok(stageStart>0&&stageEnd>stageStart&&commitStart>0&&commitEnd>commitStart);
+const functions=script.slice(stageStart,stageEnd)+'\n'+script.slice(commitStart,commitEnd);
+function fixture({role='user',networkStatus=200,failStorage=false}={}){
+ const writes=new Map(),calls=[],controls={
+  'reader-save-changes':{disabled:true},
+  'reader-save-status':{textContent:''}
+ };
+ const storage={
+  getItem:k=>writes.has(k)?writes.get(k):null,
+  setItem(k,v){if(failStorage&&k==='newsgo.maximumLeadStories.v1')throw Error('quota failure');writes.set(k,String(v))},
+  removeItem:k=>writes.delete(k)
+ };
+ const snapshot={
+  subscriptions:[],excludedDomains:[],excludedArticleDomains:[],
+  maxArticleAgeDays:0,maximumLeadStories:4,leadOnlyAllSubscriptions:false,
+  useClassificationCache:true,lastReadingSelection:''
+ };
+ const ctx={
+  document:{getElementById:id=>controls[id]||null},
+  localStorage:storage,
+  homepageIdentity:role?{user:role==='guest'?'guest-001':'reader',role}:null,
+  suiteHandoff:'a'.repeat(64),
+  accountReady:true,accountPending:false,accountConflict:false,
+  accountOwner:role==='guest'?'':role?'reader':null,accountRevision:1,
+  accountNotice:'',homepageOrigin:'https://home.themauris.org',
+  accountSnapshot:()=>snapshot,validAccountData:()=>true,
+  accountStatus(v){ctx.accountNotice=v},
+  recordAccountDiagnostic(){},
+  fetch:async(url,options)=>{
+   calls.push({url,options});
+   return {ok:networkStatus===200,status:networkStatus,
+    json:async()=>({revision:2})};
+  },
+  Map,JSON,Error,String,encodeURIComponent
+ };
+ vm.createContext(ctx);
+ vm.runInContext(functions,ctx);
+ return {ctx,writes,calls,controls,storage};
+}
+async function run(){
+ let x=fixture();
+ x.ctx.stageReaderSetting('newsgo.maximumLeadStories.v1','4');
+ assert.equal(x.writes.size,0,'editing must not immediately persist locally');
+ assert.equal(x.calls.length,0,'editing must not issue Homepage PUT');
+ assert.equal(x.controls['reader-save-changes'].disabled,false);
+ assert.match(x.controls['reader-save-status'].textContent,/Unsaved changes/);
+ await x.ctx.commitReaderSettings();
+ assert.equal(x.writes.get('newsgo.maximumLeadStories.v1'),'4');
+ assert.equal(x.calls.length,1,'exactly one user-triggered Homepage PUT');
+ assert.equal(x.calls[0].options.method,'PUT');
+ assert.equal(x.controls['reader-save-status'].textContent,'Settings saved.');
+ assert.equal(x.controls['reader-save-changes'].disabled,true);
+ assert.equal(x.writes.has('newsgo.account.unsynced.v1.reader'),false);
+ let g=fixture({role:'guest'});
+ g.ctx.stageReaderSetting('newsgo.maximumLeadStories.v1','4');
+ await g.ctx.commitReaderSettings();
+ assert.equal(g.writes.get('newsgo.maximumLeadStories.v1'),'4');
+ assert.equal(g.calls.length,0,'Guest must never save to Homepage account');
+ assert.equal(g.controls['reader-save-status'].textContent,'Settings saved.');
+ let failed=fixture({role:'user',networkStatus:503});
+ failed.ctx.stageReaderSetting('newsgo.maximumLeadStories.v1','4');
+ await failed.ctx.commitReaderSettings();
+ assert.equal(failed.calls.length,1);
+ assert.equal(failed.controls['reader-save-changes'].disabled,false,'failed PUT enables manual retry');
+ assert.match(failed.controls['reader-save-status'].textContent,/retry/i);
+ assert.ok(failed.writes.has('newsgo.account.unsynced.v1.reader'),'per-user retry payload persisted');
+ failed.ctx.fetch=async()=>({ok:true,status:200,json:async()=>({revision:2})});
+ await failed.ctx.commitReaderSettings();
+ assert.equal(failed.writes.has('newsgo.account.unsynced.v1.reader'),false,'retry marker cleared after success');
+ assert.equal(failed.controls['reader-save-changes'].disabled,true);
+ let quota=fixture({role:'user',failStorage:true});
+ quota.ctx.stageReaderSetting('newsgo.maximumLeadStories.v1','4');
+ await quota.ctx.commitReaderSettings();
+ assert.equal(quota.writes.has('newsgo.maximumLeadStories.v1'),false,'failed browser save rolled back');
+ assert.equal(quota.calls.length,0,'failed browser save must not PUT');
+ assert.equal(quota.controls['reader-save-changes'].disabled,false);
+ assert.match(quota.controls['reader-save-status'].textContent,/Save failed/);
+ assert.ok(script.includes("if(adminDirty()||hasUnsavedReaderSettings())"),'Safari unload safeguard');
+ assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
+ assert.ok(script.includes('localStorage.setItem(field.key'),'recent searches remain browser operational history');
+ assert.ok(script.includes('localStorage.removeItem(field.key'),'history clearing remains immediate');
+ console.log('NewsGo Save Changes: staged, personal, Guest, retry, rollback and unload checks passed.');
+}
+run().catch(e=>{console.error(e);process.exitCode=1});
