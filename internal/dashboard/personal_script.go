@@ -1042,8 +1042,8 @@ function accountSessionState(){
  updateScraperTraceExportVisibility();
  updateAccountControls();
  if(!homepageIdentity||homepageIdentity.role==='guest'){
-  clearTimeout(accountTimer);accountTimer=null;
-  accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
+  accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;accountSyncNeeded=false;
+  readerSaveFeedback();
   accountStatus('');
  }
 }
@@ -1103,7 +1103,7 @@ async function homepageReaderRecord(){
 }
 // Homepage-verified NewsGo preferences hydrate automatically; local browser
 // settings remain available when signed out. Saves use revisioned writes.
-let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
+let accountRevision=null,accountReady=false,accountPending=false,accountConflict=false,accountOwner=null;
 let accountNotice='';
 let accountDiagnostic={operation:'Not attempted',result:'No account load or save attempted yet',time:''};
 function renderAccountDiagnostic(){
@@ -1119,31 +1119,78 @@ function recordAccountDiagnostic(operation,result){accountDiagnostic={operation,
 const accountStatus=message=>{accountNotice=message||'';if(suiteAccountLine){suiteAccountLine.title=accountNotice;showSuiteSessionStatus()}};
 function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
-async function accountSave(){
- await checkHomepageSession();
- if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
- accountPending=true;accountDirty=false;
+// Save is invoked only by the user-triggered Save Changes button.
+async function accountSave(snapshot){
+ if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountPending||
+    accountConflict||accountOwner!==homepageIdentity.user){
+  accountStatus('Account is unavailable. Click Save Changes to retry.');
+  return false;
+ }
+ accountPending=true;
  const owner=accountOwner,token=suiteHandoff,revision=accountRevision;
  try{
-  const data=accountSnapshot();
-  if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision,data})});
-  // An older in-flight write must never update a newly signed-in user's
-  // revision or account status.
-  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
-  if(response.status===409){accountConflict=true;throw Error('Account settings changed elsewhere. Local changes were not saved; reload to use the latest account record.')}
+  if(!validAccountData(snapshot))throw Error('Saved profile failed validation');
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{
+   method:'PUT',credentials:'omit',cache:'no-store',
+   headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+   body:JSON.stringify({revision,data:snapshot})
+  });
+  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)
+   throw Error('Account changed while saving; please sign in again and retry');
+  if(response.status===409){accountConflict=true;throw Error('Account settings changed elsewhere. Reload to reconcile before retrying.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
   const result=await response.json();
-  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
+  if(!Number.isSafeInteger(result.revision)||result.revision<=revision)throw Error('Invalid account-save response');
   accountRevision=result.revision;
+  try{if(localStorage.getItem(readerUnsyncedOwnerKey)===owner)localStorage.removeItem(readerUnsyncedOwnerKey)}catch(_){}
+  accountSyncNeeded=false;
   recordAccountDiagnostic('Save','Succeeded (revision '+result.revision+')');
   accountStatus('');
- }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message);recordAccountDiagnostic('Save','Failed: '+e.message)}}
- finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
+  return true;
+ }catch(e){
+  accountSyncNeeded=true;
+  accountStatus(e.message);
+  recordAccountDiagnostic('Save','Failed: '+e.message);
+  return false;
+ }finally{accountPending=false;readerSaveFeedback()}
 }
-function scheduleAccountSave(){
- if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountConflict)return;
- accountDirty=true;clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,650);
+
+async function commitReaderSettings(){
+ if(readerSaveBusy||!hasUnsavedReaderSettings())return;
+ const snapshot=accountSnapshot();
+ if(!validAccountData(snapshot)){readerSaveFeedback('Save failed: invalid settings.');return}
+ readerSaveBusy=true;readerSaveFeedback('Saving…');
+ const staged=new Map(pendingReaderSettings);
+ const personal=!!(homepageIdentity&&homepageIdentity.role!=='guest');
+ const owner=personal?homepageIdentity.user:'';
+ const writes=[...staged];
+ if(personal)writes.push([readerUnsyncedOwnerKey,owner]);
+ const before=new Map(writes.map(([key])=>[key,localStorage.getItem(key)]));
+ try{
+  for(const [key,value] of writes){
+   if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value);
+  }
+ }catch(e){
+  for(const [key,value] of before){
+   try{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value)}catch(_){}
+  }
+  readerSaveBusy=false;readerSaveFeedback('Save failed: '+e.message+'. Click Save Changes to retry.');
+  return;
+ }
+ for(const [key,value] of staged){
+  if(pendingReaderSettings.get(key)===value)pendingReaderSettings.delete(key);
+ }
+ if(personal){
+  accountSyncNeeded=true;
+  const success=await accountSave(snapshot);
+  readerSaveBusy=false;
+  readerSaveFeedback(success?
+   (pendingReaderSettings.size?'Settings saved; newer edits are still unsaved.':'Settings saved.') :
+   ((accountNotice||'Account save unavailable')+' · Click Save Changes to retry.'));
+ }else{
+  readerSaveBusy=false;
+  readerSaveFeedback(pendingReaderSettings.size?'Settings saved; newer edits are still unsaved.':'Settings saved.');
+ }
 }
 // Homepage account profile is loaded automatically after verified sign-in.
 // Never treat a failed GET as an empty account; do not overwrite on 409.
