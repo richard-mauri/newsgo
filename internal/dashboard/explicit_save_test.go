@@ -66,3 +66,31 @@ func TestReaderSaveSharesMainNavigationRow(t *testing.T) {
   t.Fatal("navigation alignment and narrow-screen wrapping missing")
  }
 }
+
+func TestHomepageAuthAndExplicitSaveRemainIntegrated(t *testing.T) {
+ // Both owner-accepted development scopes must remain in one executable.
+ for _,want:=range []string{
+  "function allowVerifiedNewsgo()",
+  "function denyUnverifiedNewsgo()",
+  "async function authorizedNewsgoFetch(path,options={})",
+  "Authorization:'Bearer '+suiteHandoff",
+  "location.replace(homepageOrigin+'/#suite_signin=required')",
+  "if(!homepageIdentity||!suiteHandoff||suiteExpiresAt<=Date.now()||rejectedLegacyLocalMode)",
+  "async function commitReaderSettings()",
+  "async function accountSave(snapshot)",
+  "if(personal)writes.push([readerUnsyncedKey(owner),JSON.stringify(snapshot)])",
+  "if(personal){",
+  "if(adminDirty()||hasUnsavedReaderSettings())",
+ } {
+  if !strings.Contains(personalJS,want){t.Errorf("combined auth + Save Changes contract missing %q",want)}
+ }
+ for _,path:=range []string{"/api/personal","/api/discover","/api/search-feeds?","/api/admin/settings"} {
+  if !strings.Contains(personalJS,"authorizedNewsgoFetch('"+path){
+   t.Errorf("combined candidate has unguarded application fetch %s",path)
+  }
+ }
+ html:=page.Tree.Root.String()
+ if !strings.Contains(html,"html:not(.suite-auth-ready) .suite-content{visibility:hidden}") {
+  t.Fatal("unauthenticated reader must remain hidden during handoff")
+ }
+}
