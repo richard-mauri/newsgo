@@ -1204,28 +1204,34 @@ async function initializeHomepageAccount(owner,token){
   if(!homepageIdentity||homepageIdentity.user!==owner||suiteHandoff!==token)return;
   if(record&&(!validAccountData(record.data)||!Number.isSafeInteger(record.revision)||record.revision<0))
    throw Error('Invalid saved account settings; local preferences retained');
-  clearTimeout(accountTimer);accountTimer=null;
-  let prior='';
-  try{prior=localStorage.getItem('newsgo.account.last-owner.v1')||''}catch(_){}
+  let prior='',unsyncedOwner='';
+  try{
+   prior=localStorage.getItem('newsgo.account.last-owner.v1')||'';
+   unsyncedOwner=localStorage.getItem(readerUnsyncedOwnerKey)||'';
+  }catch(_){}
+  // A delayed GET may not replace user edits already staged in this tab.
+  // A failed explicit account save also survives a browser reload.
+  const preserveLocalEdits=pendingReaderSettings.size>0||unsyncedOwner===owner;
   if(record){
-   applyAccountPreferences(record.data);
+   if(!preserveLocalEdits)applyAccountPreferences(record.data);
    accountRevision=record.revision;
   }else{
-   // A new account must not inherit a different verified user's local data.
-   if(prior&&prior!==owner){
+   // Never silently copy a different account's saved browser preferences.
+   if(!preserveLocalEdits&&prior&&prior!==owner){
     applyAccountPreferences({subscriptions:[],excludedDomains:[],excludedArticleDomains:[],maxArticleAgeDays:0,maximumLeadStories:3,leadOnlyAllSubscriptions:false,useClassificationCache:true,lastReadingSelection:''});
    }
    accountRevision=0;
   }
-  accountOwner=owner;accountReady=true;accountConflict=false;accountDirty=false;
-  recordAccountDiagnostic('Load',record?'Succeeded (revision '+record.revision+')':'No saved record; initializing account');
+  accountOwner=owner;accountReady=true;accountConflict=false;
+  accountSyncNeeded=unsyncedOwner===owner;
+  recordAccountDiagnostic('Load',preserveLocalEdits?'Unsaved browser edits preserved for Save Changes':record?'Succeeded (revision '+record.revision+')':'No saved record; awaiting Save Changes');
   try{localStorage.setItem('newsgo.account.last-owner.v1',owner)}catch(_){}
-  accountStatus('');
-  if(!record)scheduleAccountSave();
+  accountStatus(preserveLocalEdits?'Unsaved changes retained; click Save Changes to save.':'');
+  readerSaveFeedback(hasUnsavedReaderSettings()?'Unsaved changes · Click Save Changes.':'');
  }catch(e){
   accountReady=false;
   accountStatus('Account preferences could not load: '+e.message);
-  recordAccountDiagnostic('Load','Failed: '+e.message+'. Browser subscriptions preserved; automatic account saves paused.');
+  recordAccountDiagnostic('Load','Failed: '+e.message+'. Browser preferences preserved; no account write attempted.');
  }finally{if(accountLoadingUser===owner)accountLoadingUser=null}
 }
 let adminRevision=0;
@@ -1316,20 +1322,21 @@ async function confirmAdminLeave(action){
 el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('maximum-lead-stories').value=String(maximumLeadStories);
-el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleAccountSave();renderPersonalArticles()});
+el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);stageReaderSetting(leadCountKey,String(maximumLeadStories));renderPersonalArticles()});
 el('use-classification-cache').checked=useClassificationCache;
-el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));scheduleAccountSave();});
+el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;stageReaderSetting(classificationCachePreferenceKey,String(useClassificationCache));});
 el('rss-metadata-only').checked=rssMetadataOnly;
-el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
+el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;stageReaderSetting(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-settings').addEventListener('click',()=>{showView('settings');if(mayAdminister())loadAdmin()});
 el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
-window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
+window.addEventListener('beforeunload',event=>{if(adminDirty()||hasUnsavedReaderSettings()){event.preventDefault();event.returnValue=''}});
+el('reader-save-changes').addEventListener('click',()=>{void commitReaderSettings()});
 el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
-updateAccountControls();
+updateAccountControls();readerSaveFeedback('');
 restoreReadingSelection(localStorage.getItem(readingSelectionKey));
 void checkHomepageSession();
 window.addEventListener('focus',()=>{void checkHomepageSession()});
