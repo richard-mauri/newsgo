@@ -35,7 +35,8 @@ func classifyDiagnostic(ctx context.Context, reader, article string) adminClassi
  request,err:=http.NewRequestWithContext(contextWithTimeout,http.MethodPost,strings.TrimRight(reader,"/")+"/api/classify",bytes.NewReader(body))
  if err!=nil {result.Failure="request_creation";return result}
  request.Header.Set("Content-Type","application/json")
- response,err:=(&http.Client{Timeout:time.Duration(timeout)*time.Second}).Do(request)
+ if authorizeScraperGoClassification(request)!=nil {result.Failure="service_auth_configuration";return result}
+ response,err:=classificationHTTPClient(timeout).Do(request)
  if err!=nil {
   if errors.Is(err,context.DeadlineExceeded)||errors.Is(contextWithTimeout.Err(),context.DeadlineExceeded) {result.Failure="timeout"} else if ctx.Err()!=nil {result.Failure="canceled"} else {result.Failure="transport_error"}
   result.ElapsedMs=time.Since(started).Milliseconds();return result
