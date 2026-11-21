@@ -62,7 +62,7 @@ func TestPersonalReaderSendsExcludedDomainsBeforeClassification(t *testing.T) {
  if !strings.Contains(personalJS, "excludedDomains:effectiveExcludedDomains()") {
   t.Fatal("NewsGo browser must send its normalized exclusion list to /api/personal")
  }
- if !strings.Contains(personalJS, "const res=await fetch('/api/personal'") {
+ if !strings.Contains(personalJS, "const res=await authorizedNewsgoFetch('/api/personal'") {
   t.Fatal("missing bounded personal feed read request")
  }
 }
