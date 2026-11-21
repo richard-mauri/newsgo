@@ -27,6 +27,8 @@ jobs:
           node -e 'const fs=require("fs");const src=fs.readFileSync("internal/dashboard/personal_script.go","utf8");const prefix="const personalJS = `";const start=src.indexOf(prefix);const end=src.lastIndexOf("`");if(start<0||end<=start)process.exit(1);fs.writeFileSync("/tmp/newsgo-personal.js",src.slice(start+prefix.length,end));'
           node --check /tmp/newsgo-personal.js
           node --check internal/dashboard/activity.js
+      - name: Verify user-triggered Save Changes in browser JavaScript (CI only)
+        run: node scripts/test-explicit-save.cjs
       - name: Run tests
         run: go test -count=1 ./...
       - name: Build
