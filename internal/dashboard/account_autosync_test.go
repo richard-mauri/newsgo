@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestNewsGoAutomaticAccountPreferences(t *testing.T) {
+func TestNewsGoExplicitAccountPreferences(t *testing.T) {
 	markup := page.Tree.Root.String()
 	for _, obsolete := range []string{
 		`id="manage-sync"`, `id="sync-panel"`, "Account Sync",
@@ -15,7 +15,7 @@ func TestNewsGoAutomaticAccountPreferences(t *testing.T) {
 		}
 	}
 	for _, obsolete := range []string{
-		"account-save-button", "account-load-button",
+		"account-load-button",
 		"accountEstablish()", "accountLoad()", "mountAccountActions()",
 		"Save to account", "Load from account",
 	} {
@@ -27,9 +27,10 @@ func TestNewsGoAutomaticAccountPreferences(t *testing.T) {
 		"initializeHomepageAccount(profile.user,verifiedToken)",
 		"const record=await homepageReaderRecord()",
 		"applyAccountPreferences(record.data)",
-		"accountRevision=record.revision",
-		"accountRevision=0",
-		"if(!record)scheduleAccountSave()",
+		"accountRevision=record?record.revision:0",
+        "No saved record; awaiting Save Changes",
+        "async function commitReaderSettings()",
+        "async function accountSave(snapshot)",
 		"response.status===409",
 		"accountOwner!==homepageIdentity.user",
 		"newsgo.account.last-owner.v1",
@@ -37,7 +38,7 @@ func TestNewsGoAutomaticAccountPreferences(t *testing.T) {
 		"accountStatus('Account preferences could not load:",
 	} {
 		if !strings.Contains(personalJS, required) {
-			t.Errorf("missing automatic account persistence invariant: %q", required)
+			t.Errorf("missing explicit user-triggered persistence invariant: %q", required)
 		}
 	}
 }

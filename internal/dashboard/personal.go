@@ -427,7 +427,8 @@ func newsClassifyWithCacheStats(ctx context.Context, reader, article string, use
 		return "unknown"
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: time.Duration(currentArticleSettings().ClassificationTimeoutSeconds)*time.Second}
+ if authorizeScraperGoClassification(req)!=nil {return "unknown"}
+ client := classificationHTTPClient(currentArticleSettings().ClassificationTimeoutSeconds)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "unknown"

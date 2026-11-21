@@ -21,6 +21,25 @@ const rssOnlyPreferenceKey='newsgo.rssMetadataOnly.v1';
 const classificationCachePreferenceKey='newsgo.useClassificationCache.v1';
 const leadCountKey='newsgo.maximumLeadStories.v1';
 const leadOnlyKey='newsgo.leadOnlyAllSubscriptions.v1';
+// Per-user pending snapshots prevent a failed account save from being
+// overwritten when another authenticated identity uses this browser.
+const readerUnsyncedKey=owner=>'newsgo.account.unsynced.v1.'+encodeURIComponent(owner);
+const pendingReaderSettings=new Map();
+let accountSyncNeeded=false,readerSaveBusy=false;
+function hasUnsavedReaderSettings(){return pendingReaderSettings.size>0||accountSyncNeeded}
+function readerSaveFeedback(text){
+ const status=document.getElementById('reader-save-status');
+ const control=document.getElementById('reader-save-changes');
+ if(status&&text!==undefined)status.textContent=text;
+ if(control)control.disabled=readerSaveBusy||!hasUnsavedReaderSettings();
+}
+function stageReaderSetting(key,value){
+ const desired=value===null?null:String(value);
+ if(localStorage.getItem(key)===desired)pendingReaderSettings.delete(key);
+ else pendingReaderSettings.set(key,desired);
+ readerSaveFeedback(hasUnsavedReaderSettings()?'Unsaved changes · Click Save Changes.':'');
+}
+
 function normalizedLeadCount(v){const n=Number(v);return Number.isInteger(n)&&n>=1&&n<=20?n:3}
 let maximumLeadStories=normalizedLeadCount(localStorage.getItem(leadCountKey));
 let leadOnlyAllSubscriptions=localStorage.getItem(leadOnlyKey)==='true';
@@ -29,7 +48,7 @@ let useClassificationCache=localStorage.getItem(classificationCachePreferenceKey
 const allowedAges=[0,1,3,7,14,30,60];
 function normalizedAge(v){const n=Number(v);return allowedAges.includes(n)?n:0}
 let maxArticleAgeDays=normalizedAge(localStorage.getItem(agePreferenceKey)||0);
-function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);localStorage.setItem(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);scheduleAccountSave();refresh();}
+function setArticleAge(days){maxArticleAgeDays=normalizedAge(days);stageReaderSetting(agePreferenceKey,String(maxArticleAgeDays));el('maximum-article-age').value=String(maxArticleAgeDays);refresh();}
 
 function hostOf(value){
  try{const u=new URL(value.includes('://')?value:'https://'+value);if(!/^https?:$/.test(u.protocol)||u.username||u.password)return '';return u.hostname.toLowerCase().replace(/\.$/,'').replace(/^www\./,'')}
@@ -84,30 +103,21 @@ async function setUnifiedDomain(domain,allow){
  const affected=allow?[]:registry.filter(r=>r.kind==='feed'&&(publisherScope(r.url)===domain||publisherScope(r.url).endsWith('.'+domain)));
  if(!allow&&!(await confirmDomainRemoval(domain,affected)))return false;
  const nextRegistry=allow?registry:registry.filter(r=>!affected.includes(r));
- const prev=[localStorage.getItem(exclusionKey),localStorage.getItem(articleExclusionKey),localStorage.getItem(unifiedKey)];
- try{
-  localStorage.setItem(exclusionKey,JSON.stringify(allow?nextPublishers:[...nextPublishers,domain]));
-  localStorage.setItem(articleExclusionKey,JSON.stringify(allow?nextArticles:[...nextArticles,domain]));
-  localStorage.setItem(unifiedKey,JSON.stringify(nextRegistry));
- }catch(e){
-  [exclusionKey,articleExclusionKey,unifiedKey].forEach((k,i)=>{try{if(prev[i]===null)localStorage.removeItem(k);else localStorage.setItem(k,prev[i])}catch(_){}});
-  message('Exclusion not saved; preferences left unchanged: '+e.message);return false;
- }
  excludedDomains=allow?nextPublishers:[...nextPublishers,domain];articleDomains=allow?nextArticles:[...nextArticles,domain];
  registry=nextRegistry;syncDerived();
- refreshExclusionViews();renderPersonalArticles();scheduleAccountSave();refresh();
+ stageReaderSetting(exclusionKey,JSON.stringify(excludedDomains));
+ stageReaderSetting(articleExclusionKey,JSON.stringify(articleDomains));
+ stageReaderSetting(unifiedKey,JSON.stringify(registry));
+ refreshExclusionViews();renderPersonalArticles();refresh();
  message(allow?'Allowed '+domain:'Excluded '+domain+(affected.length?' and removed '+affected.length+' subscription(s)':''));
  return true;
 }
 function readArticleExclusions(){try{const v=JSON.parse(localStorage.getItem(articleExclusionKey)||'[]');if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||articleDomain(x)!==x))throw Error('Invalid article-domain list');articleDomains=[...new Set(v)]}catch(e){exclusionError='Article exclusions were not changed: '+e.message}}
-function saveArticleExclusions(next){try{const domains=[...new Set(next)];localStorage.setItem(articleExclusionKey,JSON.stringify(domains));articleDomains=domains;renderExclusionManager();renderPersonalArticles();scheduleAccountSave();return true}catch(e){message('Could not save article exclusions: '+e.message);return false}}
+function saveArticleExclusions(next){const domains=[...new Set(next)];articleDomains=domains;stageReaderSetting(articleExclusionKey,JSON.stringify(domains));renderExclusionManager();renderPersonalArticles();return true}
 function toggleArticleDomain(value){toggleDomain(value)}
 function excludedURL(value){return domainIsExcluded(value)}
 function readExclusions(){try{const data=JSON.parse(localStorage.getItem(exclusionKey)||'[]');if(!Array.isArray(data)||data.some(x=>typeof x!=='string'||exclusionDomain(x)!==x))throw Error('Invalid excluded-domain list');excludedDomains=[...new Set(data)]}catch(e){exclusionError='Exclusions were not changed: '+e.message}}
-function saveExclusions(list){
- try{const unique=[...new Set(list)];localStorage.setItem(exclusionKey,JSON.stringify(unique));excludedDomains=unique;refreshExclusionViews();scheduleAccountSave();return true}
- catch(e){message('Could not save exclusions: '+e.message);return false}
-}
+function saveExclusions(list){const unique=[...new Set(list)];excludedDomains=unique;stageReaderSetting(exclusionKey,JSON.stringify(unique));refreshExclusionViews();return true}
 function excludeDomain(value){const domain=publisherScope(value);if(!domain){message('Enter a valid website domain.');return}if(!excludedURL(domain))setUnifiedDomain(domain,false);else message(domain+' is already excluded.')}
 function toggleDomain(value){const domain=publisherScope(value);if(!domain){message('Could not identify a website domain.');return}setUnifiedDomain(domain,excludedURL(domain))}
 function publisherForFeed(feed){return publisherScope(feed.website||feed.url||'')}
@@ -180,11 +190,8 @@ function syncDerived(){
 }
 syncDerived();
 function saveSubscriptions(next){
- try{
-  const serialized=JSON.stringify(next);
-  localStorage.setItem(unifiedKey,serialized);
-  registry=next;syncDerived();scheduleAccountSave();return true;
- }catch(e){message('Could not save subscriptions. No changes were applied: '+e.message);return false}
+ if(!Array.isArray(next)||next.some(r=>!recordValid(r)))return false;
+ registry=next;syncDerived();stageReaderSetting(unifiedKey,JSON.stringify(next));return true;
 }
 function hasSubscription(id){return registry.some(r=>r.id===id)}
 function subscribeRecord(record){if(hasSubscription(record.id))return true;return saveSubscriptions([...registry,record])}
@@ -207,9 +214,14 @@ function restoreReadingSelection(value){
  if(selection!==null){showView('news');refresh()}
  else{allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];renderPersonalArticles()}
 }
+// Reading navigation is browser-local operational state, not an unsaved
+// preference edit. A later explicit Save Changes can still include the
+// current selection in the Homepage account snapshot.
 function rememberReadingSelection(value){
- localStorage.setItem(readingSelectionKey,value);
- scheduleAccountSave();
+ try{
+  if(value===null)localStorage.removeItem(readingSelectionKey);
+  else localStorage.setItem(readingSelectionKey,String(value));
+ }catch(_){/* Navigation remains usable if Safari storage is unavailable. */}
 }
 
 function message(t){el('personal-message').textContent=t}
@@ -271,7 +283,7 @@ async function searchCatalog(){
    if(wait>0){status.textContent='⏳ Waiting to continue search for “'+q+'”…';await searchDelay(wait)}
    if(seq!==searchSeq)return;
    lastSearchSentAt=Date.now();
-   res=await fetch('/api/search-feeds?q='+encodeURIComponent(q),{cache:'no-store'});
+   res=await authorizedNewsgoFetch('/api/search-feeds?q='+encodeURIComponent(q),{cache:'no-store'});
    if(seq!==searchSeq)return;
    data=await res.json();
    if(res.status!==429)break;
@@ -369,8 +381,7 @@ function updateScraperTraceExportVisibility(){
 function chooseAllSubscriptions(leadOnly=false){
  const modeChanged=leadOnlyAllSubscriptions!==leadOnly;
  leadOnlyAllSubscriptions=leadOnly;
- localStorage.setItem(leadOnlyKey,String(leadOnlyAllSubscriptions));
- if(modeChanged)scheduleAccountSave();
+ if(modeChanged)stageReaderSetting(leadOnlyKey,String(leadOnlyAllSubscriptions));
  activeReadingSelection='all';rememberReadingSelection('all');el('read-source').value='';selectedSource='';renderReading();showView('news');refresh();
  el('news-content').scrollIntoView({block:'start',behavior:'smooth'});
 }
@@ -526,7 +537,7 @@ function renderFilteredSubscriptionOffer(){
   // Keep the reading view unselected after removal; never load all feeds implicitly.
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  localStorage.removeItem(readingSelectionKey);scheduleAccountSave();
+  rememberReadingSelection(null);
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
@@ -601,7 +612,7 @@ function renderFilteredArticles(){
    if(!details.open)return;
    output.textContent='Checking…';
    try{
-    const response=await fetch('/api/admin/classification-diagnostic',{method:'POST',headers:{...adminAuthHeader(),'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
+    const response=await authorizedNewsgoFetch('/api/admin/classification-diagnostic',{method:'POST',headers:{...adminAuthHeader(),'Content-Type':'application/json'},body:JSON.stringify({url:a.url}),cache:'no-store'});
     if(!response.ok)throw Error('HTTP '+response.status);
     const result=await response.json();
     const lines=['Classification: '+(result.classification||'unknown')];
@@ -712,6 +723,9 @@ function showView(view){
  [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-settings','settings'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
+// A restored reading selection may request headlines before the Homepage
+// child bearer has been verified. Resume that request once verification passes.
+let refreshPendingAfterAuth=false;
 async function refresh(){
  const refreshStart=performance.now();let batchDuration=0;
  const sequence=++refreshSequence;
@@ -719,6 +733,13 @@ async function refresh(){
  updateScraperTraceExportVisibility();
  const loading=el('personal-loading');
  if(activeReadingSelection===null)return;
+ if(!homepageIdentity||!suiteHandoff||suiteExpiresAt<=Date.now()||rejectedLegacyLocalMode){
+  refreshPendingAfterAuth=true;
+  loading.classList.remove('is-refreshing');
+  loading.textContent='Waiting for Homepage sign-in or Guest verification…';
+  return;
+ }
+ refreshPendingAfterAuth=false;
  renderReading();
  if(!feeds.length){loading.classList.remove('is-refreshing');allPersonalArticles=[];personalErrors=[];renderPersonalArticles();return}
  const snapshot=activeReadingSelection==='all'?feeds.slice():feeds.filter(f=>f.url===activeReadingSelection);
@@ -731,7 +752,7 @@ async function refresh(){
   for(let offset=0;offset<snapshot.length;offset+=8){
    const batch=snapshot.slice(offset,offset+8);
    const batchStart=performance.now();
-   const res=await fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})});
+   const res=await authorizedNewsgoFetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:batch,maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})});
    if(sequence!==refreshSequence)return;
    if(!res.ok)throw new Error('HTTP '+res.status);
    data.push(...await res.json());batchDuration+=performance.now()-batchStart;
@@ -803,7 +824,7 @@ async function catalogSubscriptionClick(candidate,trigger){
  if(selectedSource===candidate.url||activeReadingSelection===candidate.url){
   ++refreshSequence;
   activeReadingSelection=null;selectedSource='';
-  localStorage.removeItem(readingSelectionKey);scheduleAccountSave();
+  rememberReadingSelection(null);
   el('read-source').value='';
   allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];
   el('personal-loading').textContent='Subscription removed. Choose another subscription to read.';
@@ -834,7 +855,7 @@ async function toggleEquivalentDiscoveredSubscription(f,trigger){
 function add(f,trigger){if(!valid(f)){message('Enter a source name and valid HTTP(S) feed URL.');return}if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f))){message('Allow Domain before subscribing.');syncFollowButtons();return}if(feeds.some(x=>x.url===f.url)){message('That feed is already in your personal list.');return}
  if(trigger){delete trigger.dataset.subscribeError;trigger.disabled=true;trigger.textContent='Checking…'}
  message('Validating feed…');
- fetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
+ authorizedNewsgoFetch('/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feeds:[f],maxArticleAgeDays,rssMetadataOnly,useClassificationCache,excludedDomains:effectiveExcludedDomains()})}).then(async res=>{if(!res.ok){const detail=await res.text();throw Error('NewsGo validation returned HTTP '+res.status+(detail?': '+detail.slice(0,160):''))}const data=await res.json();if(data[0].error)throw Error(/HTTP 5\d\d/.test(data[0].error)?'The publisher feed server failed ('+data[0].error+'). Try another feed result or use Add a website.':data[0].error);if(excludedURL(trigger?.dataset.publisherDomain||publisherForFeed(f)))throw Error('This site was excluded while the subscription was being checked. Allow the site before subscribing.');if(!subscribeRecord(feedRecord(f)))throw Error('Could not save the subscription');renderManager();syncFollowButtons();if(trigger){if(!trigger.dataset.feedUrl){trigger.textContent='Subscribed';trigger.disabled=true}trigger.removeAttribute('aria-label')}message('Added '+f.name+' — '+(data[0].articles||[]).length+' articles found.');refresh()}).catch(err=>{const error='Feed not added: '+err.message;message(error);syncFollowButtons();if(trigger){trigger.disabled=false;trigger.dataset.subscribeError=error;trigger.textContent='Failure';trigger.title='Click to see why the subscription failed';trigger.setAttribute('aria-label','Subscription failed for '+f.name+'. Click for details.')}})}
 function discoveryFeedback(text){
  let status=el('discover-url-feedback');
  if(!status){status=document.createElement('p');status.id='discover-url-feedback';status.className='personal-status';status.setAttribute('role','alert');status.style.cssText='margin:8px 0 12px;color:var(--accent)';el('discover-form').insertAdjacentElement('afterend',status)}
@@ -849,7 +870,7 @@ async function discoverFeeds(){const u=el('discover-url').value.trim(),out=el('d
  const publisherHost=parsed.hostname.replace(/^www\./,'');
  const publisherParts=publisherHost.split('.');const publisherRoot=publisherParts.slice(-2).join('.');
  const existing=feeds.filter(f=>{try{const host=new URL(f.url).hostname;return host===publisherRoot||host.endsWith('.'+publisherRoot)}catch(_){return false}}).slice(0,8).map(f=>f.url);
- const r=await fetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
+ const r=await authorizedNewsgoFetch('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u,existing})});const data=await r.json();if(!r.ok)throw Error(data.error||'HTTP '+r.status);if(!data.feeds||!data.feeds.length)throw Error('No RSS or Atom feeds found. Try Advanced with a direct feed URL.');
  const groups=new Map();
  data.feeds.forEach(f=>{
   const domain=publisherForFeed(f),key=domain||'(unknown publisher)';
@@ -912,9 +933,10 @@ let homepageIdentity=null;
 let suiteHandoff='';
 const suiteHandoffKey='newsgo.homepage.handoff.v1';
 const suiteRecoveryKey='newsgo.homepage.recovery-attempt.v1';
-// The local-mode fragment suppresses recovery for this visit only. A later
-// direct visit must recheck Homepage, which may have gained a valid login.
-let explicitBrowserOnly=false;
+// Require a Homepage-verified personal user or Guest on every visit.
+let rejectedLegacyLocalMode=false;
+function allowVerifiedNewsgo(){document.documentElement.classList.add('suite-auth-ready')}
+function denyUnverifiedNewsgo(){document.documentElement.classList.remove('suite-auth-ready')}
 function readSuiteHandoff(){
  const fragment=new URLSearchParams(location.hash.slice(1));
  const delivered=fragment.get('suite_token');
@@ -922,11 +944,11 @@ function readSuiteHandoff(){
  if(delivered!==null || browserOnly){
   history.replaceState(null,'',location.pathname+location.search);
   if(browserOnly){
-   // Homepage explicitly said there is no live account. Suppress redirect
-   // during this page visit, preserving browser-local subscriptions.
-   explicitBrowserOnly=true;
+   rejectedLegacyLocalMode=true;
    try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
+   denyUnverifiedNewsgo();
+   location.replace(homepageOrigin+'/#suite_signin=required');
   }else if(/^[a-f0-9]{64}$/.test(delivered)){
    try{sessionStorage.setItem(suiteHandoffKey,delivered)}catch(_){}
   }else {
@@ -944,6 +966,23 @@ window.addEventListener('homepage-heartbeat-rejected',event=>{
  void checkHomepageSession();
 });
 const homepageAccountHeaders=()=>suiteHandoff?{Authorization:'Bearer '+suiteHandoff}:{};
+// No browser-supplied identity flags are trusted by the API authorization gate.
+async function authorizedNewsgoFetch(path,options={}){
+ if(!homepageIdentity||!suiteHandoff||suiteExpiresAt<=Date.now()||rejectedLegacyLocalMode)
+  throw Error('Homepage sign-in or Guest access required');
+ const response=await fetch(path,{...options,headers:{...(options.headers||{}),Authorization:'Bearer '+suiteHandoff}});
+ if(response.status===401||response.status===403){
+  denyUnverifiedNewsgo();homepageIdentity=null;suiteExpiresAt=0;suiteHandoff='';
+  try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
+  accountSessionState();promptSuiteSignIn();
+  throw Error('Homepage session expired or revoked');
+ }
+ if(response.status===503){
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();
+  promptSuiteSignIn();throw Error('Homepage verification unavailable');
+ }
+ return response;
+}
 // A separately opened NewsGo tab has a fresh sessionStorage. Recover a
 // previously verified child handoff from another NewsGo tab, without a redirect.
 const suiteTabChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('newsgo.suite-handoff.v1'):null;
@@ -957,7 +996,7 @@ if(suiteTabChannel)suiteTabChannel.onmessage=event=>{
    suiteTabChannel.postMessage({type:'offer',request:data.request,token:suiteHandoff});
   }
  }else if(data.type==='offer'&&suiteTabRecovery&&data.request===suiteTabRecovery.request&&
-  !suiteHandoff&&!explicitBrowserOnly&&typeof data.token==='string'&&/^[a-f0-9]{64}$/.test(data.token)){
+  !suiteHandoff&&!rejectedLegacyLocalMode&&typeof data.token==='string'&&/^[a-f0-9]{64}$/.test(data.token)){
   const recovery=suiteTabRecovery;suiteTabRecovery=null;
   suiteHandoff=data.token;
   try{sessionStorage.setItem(suiteHandoffKey,suiteHandoff)}catch(_){}
@@ -965,7 +1004,7 @@ if(suiteTabChannel)suiteTabChannel.onmessage=event=>{
  }
 };
 function recoverSuiteHandoffFromTab(){
- if(!suiteTabChannel||explicitBrowserOnly||suiteHandoff)return Promise.resolve(false);
+ if(!suiteTabChannel||rejectedLegacyLocalMode||suiteHandoff)return Promise.resolve(false);
  if(suiteTabRecovery)return suiteTabRecovery.promise;
  const request=Math.random().toString(36).slice(2)+Date.now().toString(36);
  let resolveRecovery;
@@ -981,7 +1020,7 @@ function recoverSuiteHandoffFromTab(){
 // send Safari through an endless NewsGo/Homepage loop. If sessionStorage is
 // unavailable, fail closed to the existing sign-in prompt.
 function attemptHomepageRecovery(){
- if(explicitBrowserOnly)return false;
+ if(rejectedLegacyLocalMode)return false;
  if(recoveryNavigationPending)return true;
  try{
   if(sessionStorage.getItem(suiteRecoveryKey)==='pending')return false;
@@ -1041,8 +1080,8 @@ function accountSessionState(){
  updateScraperTraceExportVisibility();
  updateAccountControls();
  if(!homepageIdentity||homepageIdentity.role==='guest'){
-  clearTimeout(accountTimer);accountTimer=null;
-  accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;
+  accountReady=false;accountRevision=null;accountOwner=null;accountConflict=false;accountSyncNeeded=false;
+  readerSaveFeedback();
   accountStatus('');
  }
 }
@@ -1052,9 +1091,9 @@ async function checkHomepageSession(){
  initSuiteAccountHeader();
  const show=t=>{homepageSessionStatus.textContent=t;homepageSessionStatus.classList.toggle('signed-in',!!homepageIdentity);showSuiteSessionStatus()};
  if(location.protocol!=='https:' || location.hostname!=='newsgo.themauris.org'){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Open NewsGo from Homepage');promptSuiteSignIn();return;
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage sign-in or Guest required');promptSuiteSignIn();return;
  }
- if(!suiteHandoff && !explicitBrowserOnly){
+ if(!suiteHandoff && !rejectedLegacyLocalMode){
   // A live sibling tab may have a verified child bearer; ask it in-place.
   // If none answers, let Homepage verify the parent session through its bridge.
   const recovered=await recoverSuiteHandoffFromTab();
@@ -1064,15 +1103,15 @@ async function checkHomepageSession(){
   return;
  }
  if(!suiteHandoff){
-  homepageIdentity=null;accountSessionState();show('Not signed in · Browser settings only');promptSuiteSignIn();return;
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage sign-in or Guest required');promptSuiteSignIn();return;
  }
  try{
   const verifiedToken=suiteHandoff;
   const response=await fetch(homepageOrigin+'/api/session/profile',{credentials:'omit',cache:'no-store',headers:{Authorization:'Bearer '+verifiedToken}});
   // Ignore stale verification completing after a successful bearer rotation.
   if(verifiedToken!==suiteHandoff)return;
-  if(response.status===401){
-   suiteExpiresAt=0;
+  if(response.status===401||response.status===403){
+   denyUnverifiedNewsgo();suiteExpiresAt=0;
    suiteHandoff='';try{sessionStorage.removeItem(suiteHandoffKey)}catch(_){}
    if(attemptHomepageRecovery())return;
    homepageIdentity=null;accountSessionState();show('Account access expired · Open NewsGo from Homepage');promptSuiteSignIn();return;
@@ -1083,13 +1122,16 @@ async function checkHomepageSession(){
   if(!Number.isFinite(suiteExpiresAt)||suiteExpiresAt<=Date.now())throw Error('Expired profile');
   if(typeof profile.user!=='string'||!profile.user)throw Error('Invalid profile');
   if(homepageIdentity&&homepageIdentity.user!==profile.user){homepageIdentity=null;accountSessionState()}
-  homepageIdentity={user:profile.user,role:profile.role==='guest'?'guest':profile.role==='admin'?'admin':'user'};
+  if(!['guest','user','admin'].includes(profile.role))throw Error('Unrecognized Homepage role');
+  homepageIdentity={user:profile.user,role:profile.role};
+  allowVerifiedNewsgo();
   try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
   dismissSuiteSignInPrompt();
   accountSessionState();show(SuiteBannerStatus.signedInText(homepageIdentity.user));showSuiteSessionStatus();
+  if(refreshPendingAfterAuth){refreshPendingAfterAuth=false;void refresh()}
   if(homepageIdentity.role!=='guest')void initializeHomepageAccount(profile.user,verifiedToken);
  }catch(e){
-  homepageIdentity=null;accountSessionState();show('Account connection unavailable · Browser settings only');showSuiteSessionStatus();
+  denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage verification unavailable');showSuiteSessionStatus();promptSuiteSignIn();
  }
 }
 // Profile storage is user-scoped by Homepage; no user identifier is supplied.
@@ -1102,7 +1144,7 @@ async function homepageReaderRecord(){
 }
 // Homepage-verified NewsGo preferences hydrate automatically; local browser
 // settings remain available when signed out. Saves use revisioned writes.
-let accountRevision=null,accountReady=false,accountPending=false,accountDirty=false,accountConflict=false,accountTimer=null,accountOwner=null;
+let accountRevision=null,accountReady=false,accountPending=false,accountConflict=false,accountOwner=null;
 let accountNotice='';
 let accountDiagnostic={operation:'Not attempted',result:'No account load or save attempted yet',time:''};
 function renderAccountDiagnostic(){
@@ -1118,31 +1160,78 @@ function recordAccountDiagnostic(operation,result){accountDiagnostic={operation,
 const accountStatus=message=>{accountNotice=message||'';if(suiteAccountLine){suiteAccountLine.title=accountNotice;showSuiteSessionStatus()}};
 function accountSnapshot(){return {subscriptions:registry,excludedDomains,excludedArticleDomains:articleDomains,maxArticleAgeDays,maximumLeadStories,leadOnlyAllSubscriptions,useClassificationCache,lastReadingSelection:validReadingSelection(activeReadingSelection)||''}}
 function validAccountData(d){return d&&Array.isArray(d.subscriptions)&&Array.isArray(d.excludedDomains)&&Array.isArray(d.excludedArticleDomains)&&d.subscriptions.every(recordValid)&&d.excludedDomains.every(x=>typeof x==='string'&&exclusionDomain(x)===x)&&d.excludedArticleDomains.every(x=>typeof x==='string'&&articleDomain(x)===x)}
-async function accountSave(){
- await checkHomepageSession();
- if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountPending||accountConflict||!accountDirty||accountOwner!==homepageIdentity.user)return;
- accountPending=true;accountDirty=false;
+// Save is invoked only by the user-triggered Save Changes button.
+async function accountSave(snapshot){
+ if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountPending||
+    accountConflict||accountOwner!==homepageIdentity.user){
+  accountStatus('Account is unavailable. Click Save Changes to retry.');
+  return false;
+ }
+ accountPending=true;
  const owner=accountOwner,token=suiteHandoff,revision=accountRevision;
  try{
-  const data=accountSnapshot();
-  if(!validAccountData(data))throw Error('Local profile failed validation');
-  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{method:'PUT',credentials:'omit',cache:'no-store',headers:{'Content-Type':'application/json',...homepageAccountHeaders()},body:JSON.stringify({revision,data})});
-  // An older in-flight write must never update a newly signed-in user's
-  // revision or account status.
-  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
-  if(response.status===409){accountConflict=true;throw Error('Account settings changed elsewhere. Local changes were not saved; reload to use the latest account record.')}
+  if(!validAccountData(snapshot))throw Error('Saved profile failed validation');
+  const response=await fetch(homepageOrigin+'/api/storage/newsgo',{
+   method:'PUT',credentials:'omit',cache:'no-store',
+   headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+   body:JSON.stringify({revision,data:snapshot})
+  });
+  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)
+   throw Error('Account changed while saving; please sign in again and retry');
+  if(response.status===409){accountConflict=true;throw Error('Account settings changed elsewhere. Reload to reconcile before retrying.')}
   if(!response.ok)throw Error('Account save failed (HTTP '+response.status+')');
   const result=await response.json();
-  if(!homepageIdentity||homepageIdentity.user!==owner||accountOwner!==owner||suiteHandoff!==token)return;
+  if(!Number.isSafeInteger(result.revision)||result.revision<=revision)throw Error('Invalid account-save response');
   accountRevision=result.revision;
+  try{localStorage.removeItem(readerUnsyncedKey(owner))}catch(_){}
+  accountSyncNeeded=false;
   recordAccountDiagnostic('Save','Succeeded (revision '+result.revision+')');
   accountStatus('');
- }catch(e){if(accountOwner===owner){accountDirty=true;accountStatus(e.message);recordAccountDiagnostic('Save','Failed: '+e.message)}}
- finally{accountPending=false;if(accountDirty&&!accountConflict&&accountReady&&homepageIdentity&&homepageIdentity.user===accountOwner){clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,30000)}}
+  return true;
+ }catch(e){
+  if(accountOwner===owner&&homepageIdentity&&homepageIdentity.user===owner)accountSyncNeeded=true;
+  accountStatus(e.message);
+  recordAccountDiagnostic('Save','Failed: '+e.message);
+  return false;
+ }finally{accountPending=false;readerSaveFeedback()}
 }
-function scheduleAccountSave(){
- if(!homepageIdentity||homepageIdentity.role==='guest'||!accountReady||accountConflict)return;
- accountDirty=true;clearTimeout(accountTimer);accountTimer=setTimeout(accountSave,650);
+
+async function commitReaderSettings(){
+ if(readerSaveBusy||!hasUnsavedReaderSettings())return;
+ const snapshot=accountSnapshot();
+ if(!validAccountData(snapshot)){readerSaveFeedback('Save failed: invalid settings.');return}
+ readerSaveBusy=true;readerSaveFeedback('Saving…');
+ const staged=new Map(pendingReaderSettings);
+ const personal=!!(homepageIdentity&&homepageIdentity.role!=='guest');
+ const owner=personal?homepageIdentity.user:'';
+ const writes=[...staged];
+ if(personal)writes.push([readerUnsyncedKey(owner),JSON.stringify(snapshot)]);
+ const before=new Map(writes.map(([key])=>[key,localStorage.getItem(key)]));
+ try{
+  for(const [key,value] of writes){
+   if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value);
+  }
+ }catch(e){
+  for(const [key,value] of before){
+   try{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,value)}catch(_){}
+  }
+  readerSaveBusy=false;readerSaveFeedback('Save failed: '+e.message+'. Click Save Changes to retry.');
+  return;
+ }
+ for(const [key,value] of staged){
+  if(pendingReaderSettings.get(key)===value)pendingReaderSettings.delete(key);
+ }
+ if(personal){
+  accountSyncNeeded=true;
+  const success=await accountSave(snapshot);
+  readerSaveBusy=false;
+  readerSaveFeedback(success?
+   (pendingReaderSettings.size?'Settings saved; newer edits are still unsaved.':'Settings saved.') :
+   ((accountNotice||'Account save unavailable')+' · Click Save Changes to retry.'));
+ }else{
+  readerSaveBusy=false;
+  readerSaveFeedback(pendingReaderSettings.size?'Settings saved; newer edits are still unsaved.':'Settings saved.');
+ }
 }
 // Homepage account profile is loaded automatically after verified sign-in.
 // Never treat a failed GET as an empty account; do not overwrite on 409.
@@ -1156,28 +1245,38 @@ async function initializeHomepageAccount(owner,token){
   if(!homepageIdentity||homepageIdentity.user!==owner||suiteHandoff!==token)return;
   if(record&&(!validAccountData(record.data)||!Number.isSafeInteger(record.revision)||record.revision<0))
    throw Error('Invalid saved account settings; local preferences retained');
-  clearTimeout(accountTimer);accountTimer=null;
-  let prior='';
-  try{prior=localStorage.getItem('newsgo.account.last-owner.v1')||''}catch(_){}
-  if(record){
-   applyAccountPreferences(record.data);
-   accountRevision=record.revision;
-  }else{
-   // A new account must not inherit a different verified user's local data.
-   if(prior&&prior!==owner){
+  let prior='',unsyncedSnapshot=null;
+  try{
+   prior=localStorage.getItem('newsgo.account.last-owner.v1')||'';
+   const saved=localStorage.getItem(readerUnsyncedKey(owner));
+   if(saved){
+    unsyncedSnapshot=JSON.parse(saved);
+    if(!validAccountData(unsyncedSnapshot))throw Error('Invalid pending account snapshot');
+   }
+  }catch(e){
+   if(e instanceof SyntaxError||e.message==='Invalid pending account snapshot')throw e;
+  }
+  // Never discard in-flight UI edits. Otherwise recover the latest explicit
+  // account-save snapshot for this owner, not another user's browser state.
+  const staged=pendingReaderSettings.size>0;
+  if(unsyncedSnapshot&&!staged)applyAccountPreferences(unsyncedSnapshot);
+  else if(!staged){
+   if(record)applyAccountPreferences(record.data);
+   else if(prior&&prior!==owner){
     applyAccountPreferences({subscriptions:[],excludedDomains:[],excludedArticleDomains:[],maxArticleAgeDays:0,maximumLeadStories:3,leadOnlyAllSubscriptions:false,useClassificationCache:true,lastReadingSelection:''});
    }
-   accountRevision=0;
   }
-  accountOwner=owner;accountReady=true;accountConflict=false;accountDirty=false;
-  recordAccountDiagnostic('Load',record?'Succeeded (revision '+record.revision+')':'No saved record; initializing account');
+  accountRevision=record?record.revision:0;
+  accountOwner=owner;accountReady=true;accountConflict=false;
+  accountSyncNeeded=!!unsyncedSnapshot;
+  recordAccountDiagnostic('Load',staged?'Unsaved edits retained for Save Changes':unsyncedSnapshot?'Pending explicit account save recovered':record?'Succeeded (revision '+record.revision+')':'No saved record; awaiting Save Changes');
   try{localStorage.setItem('newsgo.account.last-owner.v1',owner)}catch(_){}
-  accountStatus('');
-  if(!record)scheduleAccountSave();
+  accountStatus(staged||unsyncedSnapshot?'Unsaved settings retained; click Save Changes to save.':'');
+  readerSaveFeedback(hasUnsavedReaderSettings()?'Unsaved changes · Click Save Changes.':'');
  }catch(e){
   accountReady=false;
   accountStatus('Account preferences could not load: '+e.message);
-  recordAccountDiagnostic('Load','Failed: '+e.message+'. Browser subscriptions preserved; automatic account saves paused.');
+  recordAccountDiagnostic('Load','Failed: '+e.message+'. Browser preferences preserved; no account write attempted.');
  }finally{if(accountLoadingUser===owner)accountLoadingUser=null}
 }
 let adminRevision=0;
@@ -1223,7 +1322,7 @@ const adminStatus=message=>{el('admin-status').textContent=message};
 const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
 const adminDirty=()=>adminSavedValues!==null&&Object.keys(articleAdminFields).some(key=>adminValues()[key]!==adminSavedValues[key]);
 async function adminRequest(method,payload){
- const response=await fetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
+ const response=await authorizedNewsgoFetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
  if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
 }
 async function loadAdmin(){
@@ -1268,20 +1367,21 @@ async function confirmAdminLeave(action){
 el('maximum-article-age').value=String(maxArticleAgeDays);
 el('maximum-article-age').addEventListener('change',e=>setArticleAge(e.target.value));
 el('maximum-lead-stories').value=String(maximumLeadStories);
-el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);localStorage.setItem(leadCountKey,String(maximumLeadStories));scheduleAccountSave();renderPersonalArticles()});
+el('maximum-lead-stories').addEventListener('change',e=>{maximumLeadStories=normalizedLeadCount(e.target.value);stageReaderSetting(leadCountKey,String(maximumLeadStories));renderPersonalArticles()});
 el('use-classification-cache').checked=useClassificationCache;
-el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;localStorage.setItem(classificationCachePreferenceKey,String(useClassificationCache));scheduleAccountSave();});
+el('use-classification-cache').addEventListener('change',event=>{useClassificationCache=event.target.checked;stageReaderSetting(classificationCachePreferenceKey,String(useClassificationCache));});
 el('rss-metadata-only').checked=rssMetadataOnly;
-el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;localStorage.setItem(rssOnlyPreferenceKey,String(rssMetadataOnly));});
+el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;stageReaderSetting(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-settings').addEventListener('click',()=>{showView('settings');if(mayAdminister())loadAdmin()});
 el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
 el('admin-form').addEventListener('submit',async event=>{event.preventDefault();await saveAdmin()});
-window.addEventListener('beforeunload',event=>{if(adminDirty()){event.preventDefault();event.returnValue=''}});
+window.addEventListener('beforeunload',event=>{if(adminDirty()||hasUnsavedReaderSettings()){event.preventDefault();event.returnValue=''}});
+el('reader-save-changes').addEventListener('click',()=>{void commitReaderSettings()});
 el('download-scrapergo-urls').addEventListener('click',downloadScraperTraceBatch);
-updateAccountControls();
+updateAccountControls();readerSaveFeedback('');
 restoreReadingSelection(localStorage.getItem(readingSelectionKey));
 void checkHomepageSession();
 window.addEventListener('focus',()=>{void checkHomepageSession()});

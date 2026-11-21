@@ -60,7 +60,7 @@ func TestClassificationCachePreferenceWiring(t *testing.T){
   "useClassificationCache",
   "useClassificationCache,lastReadingSelection:",
   "data.useClassificationCache!==false",
-  "scheduleAccountSave();",
+  "stageReaderSetting(classificationCachePreferenceKey,String(useClassificationCache))",
  }{
   if !strings.Contains(personalJS,needle){t.Errorf("browser wiring missing %q",needle)}
  }

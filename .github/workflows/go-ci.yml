@@ -19,9 +19,21 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Validate private service-auth launcher import
+        run: |
+          bash -n newsgo.sh
+          grep -F 'source "$SERVICE_AUTH_ENV"' newsgo.sh
+          grep -F 'SERVICE_AUTH_ENV="/Users/richardmauri/projects/homepage/private/service-auth.env"' newsgo.sh
       - name: Report formatting debt (non-blocking)
         run: |
           git ls-files '*.go' | xargs gofmt -l
+      - name: Validate embedded dashboard JavaScript (CI only)
+        run: |
+          node -e 'const fs=require("fs");const src=fs.readFileSync("internal/dashboard/personal_script.go","utf8");const prefix="const personalJS = `";const start=src.indexOf(prefix);const end=src.lastIndexOf("`");if(start<0||end<=start)process.exit(1);fs.writeFileSync("/tmp/newsgo-personal.js",src.slice(start+prefix.length,end));'
+          node --check /tmp/newsgo-personal.js
+          node --check internal/dashboard/activity.js
+      - name: Verify user-triggered Save Changes in browser JavaScript (CI only)
+        run: node scripts/test-explicit-save.cjs
       - name: Run tests
         run: go test -count=1 ./...
       - name: Build
