@@ -21,7 +21,9 @@ const rssOnlyPreferenceKey='newsgo.rssMetadataOnly.v1';
 const classificationCachePreferenceKey='newsgo.useClassificationCache.v1';
 const leadCountKey='newsgo.maximumLeadStories.v1';
 const leadOnlyKey='newsgo.leadOnlyAllSubscriptions.v1';
-const readerUnsyncedOwnerKey='newsgo.account.unsynced-owner.v1';
+// Per-user pending snapshots prevent a failed account save from being
+// overwritten when another authenticated identity uses this browser.
+const readerUnsyncedKey=owner=>'newsgo.account.unsynced.v1.'+encodeURIComponent(owner);
 const pendingReaderSettings=new Map();
 let accountSyncNeeded=false,readerSaveBusy=false;
 function hasUnsavedReaderSettings(){return pendingReaderSettings.size>0||accountSyncNeeded}
@@ -1142,13 +1144,13 @@ async function accountSave(snapshot){
   const result=await response.json();
   if(!Number.isSafeInteger(result.revision)||result.revision<=revision)throw Error('Invalid account-save response');
   accountRevision=result.revision;
-  try{if(localStorage.getItem(readerUnsyncedOwnerKey)===owner)localStorage.removeItem(readerUnsyncedOwnerKey)}catch(_){}
+  try{localStorage.removeItem(readerUnsyncedKey(owner))}catch(_){}
   accountSyncNeeded=false;
   recordAccountDiagnostic('Save','Succeeded (revision '+result.revision+')');
   accountStatus('');
   return true;
  }catch(e){
-  accountSyncNeeded=true;
+  if(accountOwner===owner&&homepageIdentity&&homepageIdentity.user===owner)accountSyncNeeded=true;
   accountStatus(e.message);
   recordAccountDiagnostic('Save','Failed: '+e.message);
   return false;
@@ -1164,7 +1166,7 @@ async function commitReaderSettings(){
  const personal=!!(homepageIdentity&&homepageIdentity.role!=='guest');
  const owner=personal?homepageIdentity.user:'';
  const writes=[...staged];
- if(personal)writes.push([readerUnsyncedOwnerKey,owner]);
+ if(personal)writes.push([readerUnsyncedKey(owner),JSON.stringify(snapshot)]);
  const before=new Map(writes.map(([key])=>[key,localStorage.getItem(key)]));
  try{
   for(const [key,value] of writes){
@@ -1204,29 +1206,33 @@ async function initializeHomepageAccount(owner,token){
   if(!homepageIdentity||homepageIdentity.user!==owner||suiteHandoff!==token)return;
   if(record&&(!validAccountData(record.data)||!Number.isSafeInteger(record.revision)||record.revision<0))
    throw Error('Invalid saved account settings; local preferences retained');
-  let prior='',unsyncedOwner='';
+  let prior='',unsyncedSnapshot=null;
   try{
    prior=localStorage.getItem('newsgo.account.last-owner.v1')||'';
-   unsyncedOwner=localStorage.getItem(readerUnsyncedOwnerKey)||'';
-  }catch(_){}
-  // A delayed GET may not replace user edits already staged in this tab.
-  // A failed explicit account save also survives a browser reload.
-  const preserveLocalEdits=pendingReaderSettings.size>0||unsyncedOwner===owner;
-  if(record){
-   if(!preserveLocalEdits)applyAccountPreferences(record.data);
-   accountRevision=record.revision;
-  }else{
-   // Never silently copy a different account's saved browser preferences.
-   if(!preserveLocalEdits&&prior&&prior!==owner){
+   const saved=localStorage.getItem(readerUnsyncedKey(owner));
+   if(saved){
+    unsyncedSnapshot=JSON.parse(saved);
+    if(!validAccountData(unsyncedSnapshot))throw Error('Invalid pending account snapshot');
+   }
+  }catch(e){
+   if(e instanceof SyntaxError||e.message==='Invalid pending account snapshot')throw e;
+  }
+  // Never discard in-flight UI edits. Otherwise recover the latest explicit
+  // account-save snapshot for this owner, not another user's browser state.
+  const staged=pendingReaderSettings.size>0;
+  if(unsyncedSnapshot&&!staged)applyAccountPreferences(unsyncedSnapshot);
+  else if(!staged){
+   if(record)applyAccountPreferences(record.data);
+   else if(prior&&prior!==owner){
     applyAccountPreferences({subscriptions:[],excludedDomains:[],excludedArticleDomains:[],maxArticleAgeDays:0,maximumLeadStories:3,leadOnlyAllSubscriptions:false,useClassificationCache:true,lastReadingSelection:''});
    }
-   accountRevision=0;
   }
+  accountRevision=record?record.revision:0;
   accountOwner=owner;accountReady=true;accountConflict=false;
-  accountSyncNeeded=unsyncedOwner===owner;
-  recordAccountDiagnostic('Load',preserveLocalEdits?'Unsaved browser edits preserved for Save Changes':record?'Succeeded (revision '+record.revision+')':'No saved record; awaiting Save Changes');
+  accountSyncNeeded=!!unsyncedSnapshot;
+  recordAccountDiagnostic('Load',staged?'Unsaved edits retained for Save Changes':unsyncedSnapshot?'Pending explicit account save recovered':record?'Succeeded (revision '+record.revision+')':'No saved record; awaiting Save Changes');
   try{localStorage.setItem('newsgo.account.last-owner.v1',owner)}catch(_){}
-  accountStatus(preserveLocalEdits?'Unsaved changes retained; click Save Changes to save.':'');
+  accountStatus(staged||unsyncedSnapshot?'Unsaved settings retained; click Save Changes to save.':'');
   readerSaveFeedback(hasUnsavedReaderSettings()?'Unsaved changes · Click Save Changes.':'');
  }catch(e){
   accountReady=false;
