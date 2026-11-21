@@ -15,8 +15,10 @@ func TestReaderSettingsOnlyCommitOnSaveChanges(t *testing.T) {
   "stageReaderSetting(exclusionKey,JSON.stringify(excludedDomains))",
   "stageReaderSetting(articleExclusionKey,JSON.stringify(articleDomains))",
   "stageReaderSetting(agePreferenceKey,String(maxArticleAgeDays))",
-  "stageReaderSetting(readingSelectionKey,value)",
-  "stageReaderSetting(readingSelectionKey,null)",
+  "function rememberReadingSelection(value)",
+  "localStorage.setItem(readingSelectionKey,String(value))",
+  "rememberReadingSelection(null)",
+  "localStorage.removeItem(readingSelectionKey)",
   "stageReaderSetting(leadCountKey,String(maximumLeadStories))",
   "stageReaderSetting(leadOnlyKey,String(leadOnlyAllSubscriptions))",
   "stageReaderSetting(classificationCachePreferenceKey,String(useClassificationCache))",
@@ -30,6 +32,7 @@ func TestReaderSettingsOnlyCommitOnSaveChanges(t *testing.T) {
  } {
   if !strings.Contains(personalJS,want){t.Errorf("missing explicit-save contract %q",want)}
  }
+ if strings.Contains(personalJS,"stageReaderSetting(readingSelectionKey") {t.Fatal("reading navigation must not enter pending Save Changes settings")} 
  for _,bad:=range []string{
   "scheduleAccountSave()",
   "setTimeout(accountSave,650)",
