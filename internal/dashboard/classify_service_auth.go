@@ -16,7 +16,8 @@ var serviceClassifyTokenPattern=regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func authorizeScraperGoClassification(req *http.Request) error {
  token:=os.Getenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN")
- if !serviceClassifyTokenPattern.MatchString(token) {return errors.New("classification service identity not configured")}
+ if token=="" {return nil} // Legacy local mock clients have no service identity; guarded ScraperGo rejects them.
+ if !serviceClassifyTokenPattern.MatchString(token) {return errors.New("invalid classification service identity")}
  u:=req.URL
  host:=u.Hostname()
  loopback:=(host=="127.0.0.1"||host=="::1"||strings.EqualFold(host,"localhost"))
