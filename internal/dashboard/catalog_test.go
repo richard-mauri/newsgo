@@ -58,7 +58,7 @@ func TestCatalogHidesBrokenFeedsAndTogglesSubscriptions(t *testing.T) {
   "following?'Unsubscribe'",
   "if(!await confirmSubscriptionRemoval(record.name))return;",
   "if(!unsubscribeRecord(record.id))return;",
-  "localStorage.removeItem(readingSelectionKey);scheduleAccountSave();",
+  "rememberReadingSelection(null);",
   "renderManager();renderReading();",
   "unavailable feeds hidden",
   "No usable feeds found",
