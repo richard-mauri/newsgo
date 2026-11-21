@@ -723,6 +723,9 @@ function showView(view){
  [['manage-personal','discover'],['view-subscriptions','subscriptions'],['manage-settings','settings'],['manage-diagnostics','diagnostics']].forEach(([id,value])=>el(id).setAttribute('aria-pressed',String(view===value)));
 }
 let refreshSequence=0;
+// A restored reading selection may request headlines before the Homepage
+// child bearer has been verified. Resume that request once verification passes.
+let refreshPendingAfterAuth=false;
 async function refresh(){
  const refreshStart=performance.now();let batchDuration=0;
  const sequence=++refreshSequence;
@@ -730,6 +733,13 @@ async function refresh(){
  updateScraperTraceExportVisibility();
  const loading=el('personal-loading');
  if(activeReadingSelection===null)return;
+ if(!homepageIdentity||!suiteHandoff||suiteExpiresAt<=Date.now()||rejectedLegacyLocalMode){
+  refreshPendingAfterAuth=true;
+  loading.classList.remove('is-refreshing');
+  loading.textContent='Waiting for Homepage sign-in or Guest verification…';
+  return;
+ }
+ refreshPendingAfterAuth=false;
  renderReading();
  if(!feeds.length){loading.classList.remove('is-refreshing');allPersonalArticles=[];personalErrors=[];renderPersonalArticles();return}
  const snapshot=activeReadingSelection==='all'?feeds.slice():feeds.filter(f=>f.url===activeReadingSelection);
@@ -1118,6 +1128,7 @@ async function checkHomepageSession(){
   try{sessionStorage.removeItem(suiteRecoveryKey)}catch(_){}
   dismissSuiteSignInPrompt();
   accountSessionState();show(SuiteBannerStatus.signedInText(homepageIdentity.user));showSuiteSessionStatus();
+  if(refreshPendingAfterAuth){refreshPendingAfterAuth=false;void refresh()}
   if(homepageIdentity.role!=='guest')void initializeHomepageAccount(profile.user,verifiedToken);
  }catch(e){
   denyUnverifiedNewsgo();homepageIdentity=null;accountSessionState();show('Homepage verification unavailable');showSuiteSessionStatus();promptSuiteSignIn();
