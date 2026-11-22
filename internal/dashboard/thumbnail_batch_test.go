@@ -3,6 +3,7 @@ package dashboard
 import (
  "bufio"
  "bytes"
+ "context"
  "encoding/base64"
  "encoding/json"
  "fmt"
@@ -87,4 +88,43 @@ func TestThumbnailBatchRemainsProtectedByHomepageGuard(t *testing.T){
  w:=httptest.NewRecorder()
  app.ServeHTTP(w,httptest.NewRequest("POST","/api/thumbnail/batch",payload))
  if w.Code!=http.StatusUnauthorized{t.Fatalf("unauthorized batch status %d",w.Code)}
+}
+
+func TestThumbnailBatchDeliversFirstImageBeforeSlowPeerCompletes(t *testing.T){
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN",testThumbnailToken)
+ entered:=make(chan struct{},1)
+ release:=make(chan struct{})
+ upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if strings.Contains(r.URL.Query().Get("url"),"slow"){entered<-struct{}{};<-release}
+  w.Header().Set("Content-Type","image/png")
+  _,_=w.Write([]byte{137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0})
+ }))
+ defer upstream.Close()
+ state:=&State{reader:upstream.URL}
+ server:=httptest.NewServer(http.HandlerFunc(state.serveThumbnailBatch))
+ defer server.Close()
+ body,_:=json.Marshal(thumbnailBatchRequest{URLs:[]string{"https://example.com/slow","https://example.com/fast"}})
+ ctx,cancel:=context.WithTimeout(context.Background(),3*time.Second)
+ defer cancel()
+ req,_:=http.NewRequestWithContext(ctx,"POST",server.URL+"/api/thumbnail/batch",bytes.NewReader(body))
+ response,err:=server.Client().Do(req)
+ if err!=nil{close(release);t.Fatal(err)}
+ defer response.Body.Close()
+ if response.StatusCode!=200 {close(release);t.Fatalf("status %d",response.StatusCode)}
+ first:=make(chan thumbnailBatchItem,1)
+ readError:=make(chan error,1)
+ go func(){
+  line,e:=bufio.NewReader(response.Body).ReadBytes('\n')
+  if e!=nil{readError<-e;return}
+  var item thumbnailBatchItem
+  if e=json.Unmarshal(line,&item);e!=nil{readError<-e;return}
+  first<-item
+ }()
+ select {
+ case item:=<-first:
+  if item.Index!=1||item.Status!=200 {t.Errorf("first streamed image did not finish ahead of slow image: %+v",item)}
+ case e:=<-readError:t.Errorf("stream reading error: %v",e)
+ case <-time.After(time.Second):t.Error("first image was not flushed while slow peer is pending")
+ }
+ close(release)
 }
