@@ -167,6 +167,11 @@ async function run(){
  assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
  assert.ok(script.includes('localStorage.setItem(field.key'),'recent searches remain browser operational history');
  assert.ok(script.includes('localStorage.removeItem(field.key'),'history clearing remains immediate');
+ assert.ok(script.includes("authorizedNewsgoFetch(imageURL,{signal:controller.signal,cache:'no-store'})"),'protected thumbnail requests use the verified NewsGo fetch path');
+ assert.ok(script.includes('URL.createObjectURL(blob)')&&script.includes('URL.revokeObjectURL(src)'),'thumbnail blob URL lifecycle is bounded');
+ assert.ok(script.includes('for(const controller of thumbnailRequests)controller.abort()'),'stale thumbnail requests are aborted');
+ assert.ok(script.includes("if(rssMetadataOnly){"),'RSS image rendering remains a separate path');
+ assert.ok(!script.includes('img.src=a.image;\\n   const imageStart'),'normal images no longer use a naked ScraperGo img src');
  console.log('NewsGo Save Changes: staged, personal, Guest, retry, rollback and unload checks passed.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1});
