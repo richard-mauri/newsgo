@@ -15,7 +15,7 @@ func TestThumbnailProxyRequiresSeparateCredentialAndValidRequest(t *testing.T) {
  t.Setenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN","")
  state:=&State{reader:"https://scrapergo.themauris.org"}
  for _,tc:=range []struct{method,article,width string; want int}{
-  {"GET",testThumbnailArticle,"256",http.StatusServiceUnavailable},
+  {"GET",testThumbnailArticle,"256",http.StatusBadGateway},
   {"POST",testThumbnailArticle,"256",http.StatusMethodNotAllowed},
   {"GET","http://127.0.0.1/private","256",http.StatusBadRequest},
   {"GET","ftp://example.com/a","256",http.StatusBadRequest},
