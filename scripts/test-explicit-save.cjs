@@ -167,6 +167,35 @@ async function run(){
  assert.ok(!script.includes('scheduleAccountSave('),'no automatic account synchronization remains');
  assert.ok(script.includes('localStorage.setItem(field.key'),'recent searches remain browser operational history');
  assert.ok(script.includes('localStorage.removeItem(field.key'),'history clearing remains immediate');
+ assert.ok(script.includes("authorizedNewsgoFetch(imageURL,{signal:controller.signal,cache:'no-store'})"),'protected thumbnail requests use the verified NewsGo fetch path');
+ assert.ok(script.includes('URL.createObjectURL(blob)')&&script.includes('URL.revokeObjectURL(src)'),'thumbnail blob URL lifecycle is bounded');
+ assert.ok(script.includes('for(const controller of thumbnailRequests)controller.abort()'),'stale thumbnail requests are aborted');
+ assert.ok(script.includes("if(rssMetadataOnly){"),'RSS image rendering remains a separate path');
+ assert.ok(!script.includes('img.src=a.image;\\n   const imageStart'),'normal images no longer use a naked ScraperGo img src');
+ // Thumbnail gateway failure must not revoke an otherwise healthy Homepage login.
+ // Exercise the actual authorizedNewsgoFetch implementation with a 502 from
+ // the new thumbnail proxy and a separate 503 from the outer auth gate.
+ const authFetchStart=script.indexOf('async function authorizedNewsgoFetch(path,options={})');
+ const authFetchEnd=script.indexOf('// A separately opened NewsGo tab',authFetchStart);
+ assert.ok(authFetchStart>0&&authFetchEnd>authFetchStart,'authenticated fetch wrapper available');
+ const authFetchCode=script.slice(authFetchStart,authFetchEnd);
+ const authCtx={
+  homepageIdentity:{user:'richard',role:'user'},
+  suiteHandoff:'a'.repeat(64),suiteExpiresAt:Date.now()+60000,
+  rejectedLegacyLocalMode:false,denyUnverifiedNewsgo(){authCtx.denials++},
+  denials:0,accountSessionState(){},promptSuiteSignIn(){authCtx.prompts++},
+  prompts:0,sessionStorage:{removeItem(){}},suiteHandoffKey:'newsgo.homepage.handoff.v1',
+  Date,Error,fetch:async()=>({status:502,ok:false})
+ };
+ vm.createContext(authCtx);vm.runInContext(authFetchCode,authCtx);
+ let imageResponse=await authCtx.authorizedNewsgoFetch('/api/thumbnail?url=example');
+ assert.equal(imageResponse.status,502,'unavailable image returns ordinary gateway error');
+ assert.equal(authCtx.homepageIdentity.user,'richard','thumbnail failure must preserve verified reader identity');
+ assert.equal(authCtx.denials,0,'thumbnail failure must not hide articles');
+ assert.equal(authCtx.prompts,0,'thumbnail failure must not open sign-in dialog');
+ authCtx.fetch=async()=>({status:503,ok:false});
+ await assert.rejects(()=>authCtx.authorizedNewsgoFetch('/api/personal'),/Homepage verification unavailable/);
+ assert.equal(authCtx.denials,1,'actual Homepage auth outage still denies the reader');
  console.log('NewsGo Save Changes: staged, personal, Guest, retry, rollback and unload checks passed.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1});
