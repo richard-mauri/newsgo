@@ -429,8 +429,19 @@ let latestTiming=null;
 const thumbnailTiming=new Map();
 let thumbnailCanceledCount=0;
 function thumbnailServerTiming(response){
- const q=response.headers.get('X-Thumbnail-Queue-Ms'),u=response.headers.get('X-Thumbnail-Upstream-Ms');
- return {queueMs:q===null?null:Number(q),upstreamMs:u===null?null:Number(u),outcome:response.headers.get('X-Thumbnail-Outcome')||('http_'+response.status)};
+ // Only a response bearing the explicit proxy marker can be attributed to
+ // NewsGo. A missing marker is not evidence that Cloudflare caused the error:
+ // the auth gate, an intermediary or stripped headers may also be responsible.
+ const fromProxy=response.headers.get('X-NewsGo-Thumbnail-Proxy')==='v1';
+ const q=fromProxy?response.headers.get('X-Thumbnail-Queue-Ms'):null;
+ const u=fromProxy?response.headers.get('X-Thumbnail-Upstream-Ms'):null;
+ const reason=fromProxy?response.headers.get('X-Thumbnail-Outcome'):null;
+ return {
+  proxyObserved:fromProxy,
+  queueMs:q===null?null:Number(q),
+  upstreamMs:u===null?null:Number(u),
+  outcome:fromProxy?(reason?'proxy_'+reason:'proxy_unclassified_http_'+response.status):'unattributed_http_'+response.status
+ };
 }
 const thumbnailResults=new Map();
 const thumbnailRequests=new Set();
@@ -454,10 +465,10 @@ async function loadProtectedThumbnail(img,articleURL,imageURL,started){
   if(controller.signal.aborted||!img.isConnected)return;
   const objectURL=URL.createObjectURL(blob);thumbnailObjectURLs.add(objectURL);
   img.addEventListener('load',()=>{if(controller.signal.aborted)return;thumbnailResults.set(articleURL,'loaded');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics()},{once:true});
-  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics();img.remove()},{once:true});
+  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{}),outcome:'browser_decode_failure'});updateDiagnostics();img.remove()},{once:true});
   img.src=objectURL;
  }catch(err){
-  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics();img.remove()}
+  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{outcome:'browser_transport_or_auth_failure'})});updateDiagnostics();img.remove()}
  }finally{thumbnailRequests.delete(controller)}
 }
 function rawFeedBytes(feed){
@@ -519,7 +530,9 @@ function updateDiagnostics(){
   add('Loaded / failed / pending',loaded+' / '+failed+' / '+pending);
   add('Queue wait mean / p95',queue.length?avg(queue)+' / '+p95(queue)+' ms':'Not measured');
   add('Upstream mean / p95',upstream.length?avg(upstream)+' / '+p95(upstream)+' ms':'Not measured');
-  add('Measured server responses',queue.length);
+  add('NewsGo-marked responses',observed.filter(x=>x.proxyObserved===true).length);
+  add('Unattributed HTTP responses (no NewsGo marker)',observed.filter(x=>x.outcome&&x.outcome.startsWith('unattributed_http_')).length);
+  add('Measured queue waits',queue.length);
   add('Browser requests canceled on rerender',thumbnailCanceledCount);
   const outcomes=new Map();
   for(const v of observed){const reason=v.outcome||'browser_image_event';outcomes.set(reason,(outcomes.get(reason)||0)+1)}
