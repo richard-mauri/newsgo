@@ -56,13 +56,15 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
  }
  token:=os.Getenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN")
  if !thumbnailServiceTokenPattern.MatchString(token) || token==os.Getenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN") {
-  http.Error(w, "Thumbnail service unavailable", http.StatusServiceUnavailable)
+  // An unconfigured thumbnail backend is not a Homepage verification outage.
+  http.Error(w, "Thumbnail service unavailable", http.StatusBadGateway)
   return
  }
  reader,err:=url.Parse(s.reader)
  if err!=nil || reader.User!=nil || reader.RawQuery!="" || reader.Fragment!="" ||
    !(reader.Scheme=="https" || (reader.Scheme=="http" && (reader.Hostname()=="localhost" || reader.Hostname()=="127.0.0.1" || reader.Hostname()=="::1"))) {
-  http.Error(w, "Thumbnail service unavailable", http.StatusServiceUnavailable)
+  // An unconfigured thumbnail backend is not a Homepage verification outage.
+  http.Error(w, "Thumbnail service unavailable", http.StatusBadGateway)
   return
  }
  endpoint:=strings.TrimRight(s.reader,"/")+"/api/thumbnail?"+url.Values{"url":{article},"width":{"256"}}.Encode()
