@@ -21,6 +21,7 @@ func main() {
 	addr := flag.String("listen", "127.0.0.1:8084", "HTTP listen address")
 	reader := flag.String("scrapergo", "https://scrapergo.themauris.org", "ScraperGo reader base URL")
 	thumbnailBackend := flag.String("thumbnail-backend", "", "optional server-only ScraperGo thumbnail backend (explicit loopback HTTP host and port)")
+	classificationBackend := flag.String("classification-backend", "", "optional server-only ScraperGo classification backend (explicit loopback HTTP host and port)")
 	showVersion := flag.Bool("version", false, "print the executable version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -46,6 +47,9 @@ func main() {
 		log.Fatal(e)
 	}
 	if e = app.SetThumbnailBackend(*thumbnailBackend); e != nil {
+		log.Fatal(e)
+	}
+	if e = app.SetClassificationBackend(*classificationBackend); e != nil {
 		log.Fatal(e)
 	}
 	settingsStore, e := dashboard.NewSettingsStore(*settingsDir)
