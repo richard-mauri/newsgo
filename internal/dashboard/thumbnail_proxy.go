@@ -40,6 +40,14 @@ func (s *State) SetThumbnailBackend(raw string) error {
  return nil
 }
 
+// Classification uses exactly the same strict loopback validation.
+func (s *State) SetClassificationBackend(raw string) error {
+ var validated State
+ if err:=validated.SetThumbnailBackend(raw);err!=nil{return err}
+ s.classificationBackend=validated.thumbnailBackend
+ return nil
+}
+
 const maxThumbnailBytes int64 = 3 << 20
 
 var thumbnailProxySlots = make(chan struct{}, 6)
