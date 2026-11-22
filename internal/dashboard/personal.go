@@ -284,7 +284,7 @@ func scraperThumbnailURL(reader, article string) string {
 	if !safeURL(article) {
 		return ""
 	}
-	return strings.TrimRight(reader, "/") + "/api/thumbnail?" + url.Values{"url": {article}, "width": {"256"}}.Encode()
+	return "/api/thumbnail?" + url.Values{"url": {article}, "width": {"256"}}.Encode()
 }
 
 // Classification is authoritative only for a confirmed homepage/index. A failed
