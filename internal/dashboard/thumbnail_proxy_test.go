@@ -11,8 +11,8 @@ import (
 const testThumbnailToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 const testThumbnailArticle = "https://example.com/news/one"
 
-func TestThumbnailProxyRequiresSeparateCredentialAndValidRequest(t *testing.T) {
- t.Setenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN","")
+func TestThumbnailProxyRequiresSharedCredentialAndValidRequest(t *testing.T) {
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN","")
  state:=&State{reader:"https://scrapergo.themauris.org"}
  for _,tc:=range []struct{method,article,width string; want int}{
   {"GET",testThumbnailArticle,"256",http.StatusBadGateway},
@@ -29,7 +29,7 @@ func TestThumbnailProxyRequiresSeparateCredentialAndValidRequest(t *testing.T) {
 }
 
 func TestThumbnailProxyPreservesImageAndMachineCredential(t *testing.T) {
- t.Setenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN",testThumbnailToken)
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN",testThumbnailToken)
  payload:=[]byte{137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0}
  upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
   if r.URL.Path!="/api/thumbnail"{t.Errorf("unexpected path %q",r.URL.Path)}
@@ -50,7 +50,7 @@ func TestThumbnailProxyPreservesImageAndMachineCredential(t *testing.T) {
 }
 
 func TestThumbnailProxyRejectsNonimageAndRedirect(t *testing.T) {
- t.Setenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN",testThumbnailToken)
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN",testThumbnailToken)
  for _,tc:=range []struct{status int;mime string}{
   {http.StatusFound,"image/png"},
   {http.StatusOK,"text/html"},
