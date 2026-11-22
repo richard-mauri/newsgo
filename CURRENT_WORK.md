@@ -33,3 +33,7 @@ git pull --ff-only origin fix/114-authenticated-thumbnails
 ```
 
 No merge, Issue closure, remote branch deletion, deployment, restart, tag or release authorized. Owner `FINISH` is separately required for promotion.
+
+## Safari regression found during local review (2026-11-22)
+
+Owner screenshots show a valid twelve-hour Homepage personal login, while NewsGo briefly signs in and shows articles then immediately hides them and shows `Not signed in`; tab focus reproduces the flash. Source trace establishes that an unconfigured private thumbnail machine token causes the new NewsGo thumbnail proxy to return **HTTP 503**, which `authorizedNewsgoFetch` mistakes for a Homepage verification outage. Fixed within the same draft PR #115 by returning **502 Bad Gateway** for the thumbnail proxy's own configuration failures (without altering the outer Homepage auth 503) and added Go plus CI-only executable browser regression proving the reader remains signed in on 502 while a true 503 still denies access. Matching ScraperGo work is draft [PR #148](https://github.com/richard-mauri/scrapergo/pull/148), Issue #147. Existing auth and user data remain unchanged. Owner Safari still must verify no flash on initial load or focus, and image rendering after private credential provisioning. Exact-head CI status must be checked after this update.
