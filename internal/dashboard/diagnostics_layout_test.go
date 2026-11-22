@@ -76,3 +76,16 @@ func TestDiagnosticsExclusionNavigationAndFilteringRetained(t *testing.T) {
 		}
 	}
 }
+
+func TestThumbnailAttributionShowsMissingMarkerAsUnattributed(t *testing.T) {
+ for _,needle:=range []string{
+  "response.headers.get('X-NewsGo-Thumbnail-Proxy')==='v1'",
+  "'proxy_'+reason",
+  "'unattributed_http_'+response.status",
+  "Unattributed HTTP responses (no NewsGo marker)",
+  "browser_transport_or_auth_failure",
+  "browser_decode_failure",
+ } {
+  if !strings.Contains(personalJS,needle) {t.Errorf("missing thumbnail attribution guard %q",needle)}
+ }
+}
