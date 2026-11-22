@@ -176,3 +176,53 @@ func TestThumbnailUpstreamDeadlineAndSafeDiagnosticHeaders(t *testing.T) {
  }
  if strings.Contains(w.Body.String(),testThumbnailToken) || strings.Contains(w.Body.String(),testThumbnailArticle) {t.Fatal("sensitive request data in response")}
 }
+
+func TestThumbnailProxyResponseOriginMarkerOnSuccessAndFailures(t *testing.T){
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN",testThumbnailToken)
+ validPNG:=[]byte{137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0}
+ upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  w.Header().Set("Content-Type","image/png");_,_=w.Write(validPNG)
+ }))
+ defer upstream.Close()
+ state:=&State{reader:upstream.URL}
+ for _,tc:=range []struct{name,method,path string;status int;outcome string}{
+  {"success","GET","/api/thumbnail?url="+url.QueryEscape(testThumbnailArticle),http.StatusOK,"loaded"},
+  {"invalid-article","GET","/api/thumbnail?url="+url.QueryEscape("http://127.0.0.1/"),http.StatusBadRequest,""},
+  {"bad-method","POST","/api/thumbnail?url="+url.QueryEscape(testThumbnailArticle),http.StatusMethodNotAllowed,""},
+ }{
+  t.Run(tc.name,func(t *testing.T){
+   w:=httptest.NewRecorder()
+   state.serveThumbnail(w,httptest.NewRequest(tc.method,tc.path,nil))
+   if w.Code!=tc.status{t.Fatalf("got %d want %d",w.Code,tc.status)}
+   if v:=w.Header().Get("X-NewsGo-Thumbnail-Proxy");v!="v1"{t.Fatalf("missing fixed origin marker %q",v)}
+   if w.Header().Get("X-Thumbnail-Outcome")!=tc.outcome{t.Fatal("unexpected classified outcome")}
+   for _,name:=range []string{"X-NewsGo-Thumbnail-Proxy","X-Thumbnail-Outcome","X-Thumbnail-Queue-Ms"}{
+    if strings.Contains(w.Header().Get(name),testThumbnailToken)||strings.Contains(w.Header().Get(name),testThumbnailArticle){t.Fatalf("sensitive data leaked in %s",name)}
+   }
+  })
+ }
+}
+
+func TestThumbnailProxyQueueTimeoutIsMarked(t *testing.T){
+ previous:=currentThumbnailSettings()
+ activeThumbnailSettings.Store(ThumbnailSettings{Concurrency:1,QueueWaitSeconds:1,UpstreamTimeoutSeconds:2})
+ defer activeThumbnailSettings.Store(previous)
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN",testThumbnailToken)
+ entered:=make(chan struct{},1);release:=make(chan struct{})
+ upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  entered<-struct{}{};<-release
+  w.Header().Set("Content-Type","image/png")
+  _,_=w.Write([]byte{137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0})
+ }))
+ defer upstream.Close()
+ state:=&State{reader:upstream.URL}
+ first:=make(chan struct{})
+ go func(){defer close(first);w:=httptest.NewRecorder();state.serveThumbnail(w,httptest.NewRequest("GET","/api/thumbnail?url="+url.QueryEscape(testThumbnailArticle),nil))}()
+ <-entered
+ w:=httptest.NewRecorder();state.serveThumbnail(w,httptest.NewRequest("GET","/api/thumbnail?url="+url.QueryEscape(testThumbnailArticle),nil))
+ if w.Code!=http.StatusGatewayTimeout || w.Header().Get("X-Thumbnail-Outcome")!="queue_timeout" || w.Header().Get("X-NewsGo-Thumbnail-Proxy")!="v1" {
+  t.Fatalf("queue 504 must be marked: %d, %q, %q",w.Code,w.Header().Get("X-Thumbnail-Outcome"),w.Header().Get("X-NewsGo-Thumbnail-Proxy"))
+ }
+ close(release)
+ select{case <-first:case <-time.After(3*time.Second):t.Fatal("upstream request hung")}
+}
