@@ -428,6 +428,30 @@ let latestRawFeeds=[];
 let latestTiming=null;
 const thumbnailTiming=new Map();
 const thumbnailResults=new Map();
+const thumbnailRequests=new Set();
+const thumbnailObjectURLs=new Set();
+function cancelThumbnailRequests(){
+ for(const controller of thumbnailRequests)controller.abort();
+ thumbnailRequests.clear();
+ for(const src of thumbnailObjectURLs)URL.revokeObjectURL(src);
+ thumbnailObjectURLs.clear();
+}
+async function loadProtectedThumbnail(img,articleURL,imageURL,started){
+ const controller=new AbortController();thumbnailRequests.add(controller);
+ try{
+  const response=await authorizedNewsgoFetch(imageURL,{signal:controller.signal,cache:'no-store'});
+  if(!response.ok)throw Error('Thumbnail HTTP '+response.status);
+  const blob=await response.blob();
+  if(!blob.type.startsWith('image/')||blob.size>3*1024*1024)throw Error('Invalid thumbnail image');
+  if(controller.signal.aborted||!img.isConnected)return;
+  const objectURL=URL.createObjectURL(blob);thumbnailObjectURLs.add(objectURL);
+  img.addEventListener('load',()=>{if(controller.signal.aborted)return;thumbnailResults.set(articleURL,'loaded');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics()},{once:true});
+  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics();img.remove()},{once:true});
+  img.src=objectURL;
+ }catch(err){
+  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics();img.remove()}
+ }finally{thumbnailRequests.delete(controller)}
+}
 function rawFeedBytes(feed){
  const encoded=feed.body||'';
  const binary=atob(encoded),bytes=new Uint8Array(binary.length);
@@ -633,6 +657,7 @@ function renderFilteredArticles(){
 }
 
 function renderPersonalArticles(){
+ cancelThumbnailRequests();
  renderFilteredSubscriptionOffer();
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
@@ -652,13 +677,17 @@ function renderPersonalArticles(){
   if(a.dateWarning){const warning=document.createElement('span');warning.className='date-warning';warning.textContent=' ⚠ '+a.dateWarning;warning.title='Original feed date shown. Article age could not be determined.';sub.append(warning);}
   const original=document.createElement('a');original.href=a.url;original.target='_blank';original.rel='noopener noreferrer';original.textContent=featured?'Original publisher ↗':'Original ↗';original.className='original';
   sub.append(original);body.append(meta,title,sub)
-  if(a.image&&/^https:\/\/[^\s/]+/i.test(a.image)){
-   const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';img.src=a.image;
+  if(a.image&&(rssMetadataOnly?a.image.startsWith('https://'):a.image.startsWith('/api/thumbnail?'))){
+   const img=document.createElement('img');img.className='article-thumb';img.alt='';img.loading='eager';img.referrerPolicy='no-referrer';
    const imageStart=performance.now();
    if(!thumbnailResults.has(a.url))thumbnailResults.set(a.url,'pending');
-   img.addEventListener('load',()=>{thumbnailResults.set(a.url,'loaded');thumbnailTiming.set(a.url,{duration:performance.now()-imageStart});updateDiagnostics()});
-   img.addEventListener('error',()=>{thumbnailResults.set(a.url,'failed');thumbnailTiming.set(a.url,{duration:performance.now()-imageStart});updateDiagnostics();img.remove()});
+   if(rssMetadataOnly){
+    img.addEventListener('load',()=>{thumbnailResults.set(a.url,'loaded');thumbnailTiming.set(a.url,{duration:performance.now()-imageStart});updateDiagnostics()});
+    img.addEventListener('error',()=>{thumbnailResults.set(a.url,'failed');thumbnailTiming.set(a.url,{duration:performance.now()-imageStart});updateDiagnostics();img.remove()});
+    img.src=a.image;
+   }
    if(featured)body.prepend(img);else row.append(img);
+   if(!rssMetadataOnly)void loadProtectedThumbnail(img,a.url,a.image,imageStart);
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
  });
