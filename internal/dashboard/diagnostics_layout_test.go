@@ -23,6 +23,8 @@ func TestDiagnosticsOwnsFilteredAuditAndExcludedDomains(t *testing.T) {
 		`id="diagnostics-summary"`,
 		`id="diagnostics-timing"`,
 		`id="diagnostics-note"`,
+		`id="thumbnail-performance-panel"`,
+		`id="thumbnail-performance"`,
 		`<details id="exclusions-panel"`,
 		`<summary><strong>Excluded Domains</strong> <span id="excluded-count">(0)</span></summary>`,
 		`id="filtered-articles-card"`,
