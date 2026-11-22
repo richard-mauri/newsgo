@@ -55,7 +55,7 @@ func TestThumbnailBatchStreamsMixedOutOfOrderResults(t *testing.T){
  state.serveThumbnailBatch(w,httptest.NewRequest("POST","/api/thumbnail/batch",bytes.NewReader(payload)))
  if w.Code!=200||w.Header().Get("X-Thumbnail-Batch")!="v1" {t.Fatalf("bad batch headers %d",w.Code)}
  scan:=bufio.NewScanner(bytes.NewReader(w.Body.Bytes()))
- scan.Buffer(make([]byte,1024),maxThumbnailBytes*2)
+ scan.Buffer(make([]byte,1024),int(maxThumbnailBytes*2))
  var items []thumbnailBatchItem
  for scan.Scan(){
   var item thumbnailBatchItem
