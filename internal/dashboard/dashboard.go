@@ -119,6 +119,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/diagnostic/feed-trace" { s.serveFeedTrace(w,r); return }
+	if r.URL.Path == "/api/thumbnail/batch" { s.serveThumbnailBatch(w,r); return }
 	if r.URL.Path == "/api/thumbnail" { s.serveThumbnail(w,r); return }
 	if r.URL.Path == "/api/personal" {
 		s.servePersonal(w, r)
