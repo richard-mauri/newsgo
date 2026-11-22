@@ -815,6 +815,7 @@ function renderPersonalArticles(){
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
  });
+ if(thumbnailBatchItems.length)void loadThumbnailBatches(thumbnailBatchItems,batchGeneration);
  renderFilteredArticles();
  updateDiagnostics();
  const hasArticles=count>0;
