@@ -95,10 +95,18 @@ func TestThumbnailAdminSettingsPersistAndLegacyDefault(t *testing.T) {
  if got:=adminCall(t,restarted,http.MethodPut,true,bad).Code;got!=http.StatusBadRequest{t.Fatalf("invalid concurrency allowed: %d",got)}
  // A previous-version saved document has no thumbnail field.
  legacy:=defaultServerSettings()
- legacy.Thumbnail=ThumbnailSettings{}
- if err=atomicJSON(filepath.Join(dir,"server-settings.json"),legacy);err!=nil{t.Fatal(err)}
+ raw,err:=json.Marshal(legacy);if err!=nil{t.Fatal(err)}
+ var oldFormat map[string]json.RawMessage
+ if err=json.Unmarshal(raw,&oldFormat);err!=nil{t.Fatal(err)}
+ delete(oldFormat,"thumbnail")
+ if err=atomicJSON(filepath.Join(dir,"server-settings.json"),oldFormat);err!=nil{t.Fatal(err)}
  if err=restarted.ActivateServerSettings();err!=nil{t.Fatal(err)}
  if got:=currentThumbnailSettings();got!=defaultThumbnailSettings(){t.Fatalf("legacy settings not defaulted: %+v",got)}
+ // An explicitly present but invalid zero section must not be silently defaulted.
+ invalid:=defaultServerSettings()
+ invalid.Thumbnail=ThumbnailSettings{}
+ if err=atomicJSON(filepath.Join(dir,"server-settings.json"),invalid);err!=nil{t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err==nil{t.Fatal("explicitly invalid thumbnail settings accepted")}
  if _,err=os.Stat(filepath.Join(dir,"classification-cache.json"));!os.IsNotExist(err){t.Fatal("legacy load unexpectedly modified cache")}
 }
 
