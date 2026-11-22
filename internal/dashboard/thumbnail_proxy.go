@@ -4,6 +4,7 @@ import (
  "context"
  "errors"
  "io"
+ "log"
  "net"
  "net/http"
  "net/url"
@@ -98,6 +99,25 @@ func thumbnailActivePeak() (int,int) {
 // Homepage auth gate). It never exposes a ScraperGo service credential to JS.
 // ScraperGo grants this shared NewsGo machine credential only scoped API routes.
 func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
+ // Capture handler-generated failures separately from the outer auth boundary.
+ // Both events share NewsGo's opaque request ID. No article URL or token is logged.
+ observed:=&thumbnailResponseCapture{ResponseWriter:w}
+ w=observed
+ entered:=time.Now()
+ defer func(){
+  status:=observed.status
+  if status==http.StatusOK {return}
+  reason:=observed.Header().Get("X-Thumbnail-Outcome")
+  if reason=="" {
+   if r.Context().Err()!=nil {reason="client_cancelled"} else {reason="handler_rejected"}
+  }
+  id:=thumbnailRequestID(r)
+  if id==""{id="-"}
+  log.Printf("THUMBNAIL handler id=%s status=%d outcome=%s duration_ms=%d queue_ms=%s upstream_ms=%s",
+   id,status,reason,time.Since(entered).Milliseconds(),
+   numericThumbnailMetric(observed.Header().Get("X-Thumbnail-Queue-Ms")),
+   numericThumbnailMetric(observed.Header().Get("X-Thumbnail-Upstream-Ms")))
+ }()
  // Mark every response produced by this thumbnail handler, including errors.
  // Absence of this marker in Safari is intentionally *unattributed*: an edge,
  // auth gate or other intermediary may have generated or altered the response.
