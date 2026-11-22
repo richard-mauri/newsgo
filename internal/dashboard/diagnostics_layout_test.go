@@ -115,7 +115,7 @@ func TestDiagnosticsTextExportAvailableWithoutExposingSensitiveData(t *testing.T
   if strings.Contains(report,forbidden){t.Errorf("report includes sensitive source %q",forbidden)}
  }
  downloadStart:=strings.Index(personalJS,"function downloadDiagnostics(){")
- downloadEnd:=strings.Index(personalJS,"el('download-diagnostics').addEventListener",downloadStart)
+ downloadEnd:=strings.Index(personalJS[downloadStart:],"el('download-diagnostics').addEventListener")+downloadStart
  if downloadStart<0||downloadEnd<=downloadStart {t.Fatal("missing direct-download wiring")}
  download:=personalJS[downloadStart:downloadEnd]
  for _,want:=range []string{
