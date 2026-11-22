@@ -32,7 +32,7 @@ var thumbnailProxySlots = make(chan struct{}, 6)
 
 // serveThumbnail is a verified-NewsGo-user endpoint (protected by the outer
 // Homepage auth gate). It never exposes a ScraperGo service credential to JS.
-// ScraperGo must separately grant GET /api/thumbnail to this distinct credential.
+// ScraperGo grants this shared NewsGo machine credential only scoped API routes.
 func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
  w.Header().Set("Cache-Control", "no-store")
  w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -54,8 +54,8 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
   http.Error(w, "Unsupported image width", http.StatusBadRequest)
   return
  }
- token:=os.Getenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN")
- if !thumbnailServiceTokenPattern.MatchString(token) || token==os.Getenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN") {
+ token:=os.Getenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN")
+ if !thumbnailServiceTokenPattern.MatchString(token) {
   // An unconfigured thumbnail backend is not a Homepage verification outage.
   http.Error(w, "Thumbnail service unavailable", http.StatusBadGateway)
   return
