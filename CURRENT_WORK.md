@@ -1,39 +1,35 @@
 # Current work — NewsGo
 
-**Verified merged main at session start:** `cc86480caafbf3299b1064c380e0d7e5bd17ff3c`. **Current scoped issue:** [#114](https://github.com/richard-mauri/newsgo/issues/114), **branch:** `fix/114-authenticated-thumbnails`. This is a new draft candidate based on current `main`; historical auth branch `auth/110-verified-suite-access` was not present and must not be used. ScraperGo merged main inspected at `e22b2e7427a6884074d10e72b24b47fe544aded8`. The documented earlier auth PRs #111 and #146 are historical references, not current candidate heads.
+**Merged main verified:** `cc86480caafbf3299b1064c380e0d7e5bd17ff3c`. **Active scope:** [Issue #114](https://github.com/richard-mauri/newsgo/issues/114), draft [PR #115](https://github.com/richard-mauri/newsgo/pull/115), branch `fix/114-authenticated-thumbnails` based on `main`. Coordinated ScraperGo [Issue #147](https://github.com/richard-mauri/scrapergo/issues/147), draft [PR #148](https://github.com/richard-mauri/scrapergo/pull/148), branch `fix/147-newsgo-thumbnail-auth` based on ScraperGo merged `main` `e22b2e7427a6884074d10e72b24b47fe544aded8`. Both historical authentication PRs (#111, #146) are superseded by merged main and are not active working branches.
 
-## Scope and evidence
+## Problem and resolution
 
-Owner Safari showed 196 accepted NewsGo articles, **190 thumbnail failures and 0 successes** on both cold and cached reads. A specific ScraperGo `GET /api/thumbnail` yielded HTTP 401 with no Authorization header. RSS metadata-only thumbnails rendered successfully. NewsGo used direct `img.src` pointing to protected ScraperGo; ScraperGo's server gate requires a Homepage bearer for all media endpoints and grants the existing service token solely to `POST /api/classify`.
+Owner Safari observed 196 NewsGo articles, 190 normal thumbnail failures (0 loads) and an unauthorized ScraperGo `GET /api/thumbnail` (HTTP 401) because the browser's direct `<img>` request lacked bearer authentication. RSS metadata-only publisher images worked. Draft PR #115 routes normal thumbnail loads through a NewsGo same-origin, Homepage-authenticated `GET /api/thumbnail` proxy, which bounds upstream URL, method, width, image type/size, redirects, timeout and concurrent requests. Browser uses `authorizedNewsgoFetch` and a temporary blob URL; RSS mode is unchanged.
 
-This NewsGo draft makes normal reading thumbnail URLs same-origin `/api/thumbnail` and loads them through `authorizedNewsgoFetch` with the verified NewsGo child bearer; browser blob URLs are revoked on rerender, requests aborted and diagnostics retained. NewsGo's server proxy validates requests, uses only the configured ScraperGo destination (HTTPS or explicit loopback HTTP), refuses redirects and non-images, limits body size and concurrency, and requires **separate** private `SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN`. This credential is **not** the existing classification-only token. RSS mode is unchanged.
+Owner subsequently observed a valid Homepage personal session briefly displaying articles then disappearing after the new proxy returned HTTP 503 for missing service configuration. Fixed the proxy's own unavailable/configuration failure to HTTP **502**, retaining the outer Homepage verification gate's 503 behavior and CI-only browser regression. Homepage personal/Guest auth, per-user settings and explicit Save Changes remain unchanged.
 
-## Cross-repository blocker
+The owner confirmed the original private `SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN` exists in `/Users/richardmauri/projects/homepage/private/service-auth.env` and instructed reuse of that **one existing 64-lowercase-hex machine credential for all allowlisted NewsGo→ScraperGo APIs**, instead of creating a per-endpoint thumbnail token. This draft now uses that existing variable to forward `GET /api/thumbnail`; ScraperGo PR #148 permits the same credential on `POST /api/classify` and `GET /api/thumbnail` only. Other endpoints remain strictly protected; no token value or new variable is introduced. Do not add or source `SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN`.
 
-ScraperGo does not yet accept a distinct machine-thumbnail credential on `GET /api/thumbnail`. A **separately authorized, scoped ScraperGo Issue/PR** is required before integration acceptance or deployment. Do not relax ScraperGo's API gate, reuse the classification token, place credentials in browser state, or restart services as part of this NewsGo draft.
+## Security, tests, documentation and operations
 
-## Verification and safety
+The outer NewsGo Homepage gate requires a verified user/Guest bearer for every app API request. The machine token stays server-side and is forwarded only to the fixed ScraperGo HTTPS/explicit-loopback endpoint, never in query params or HTML. Existing classification authorization and ScraperGo SSRF/media policies remain intact. Added Go and CI-only browser tests for proxy image success/errors, missing credential 502 without sign-out, real 503 fail-closed, shared token scope and other-route denial.
 
-GitHub-only code and documentation changes. Added `internal/dashboard/thumbnail_proxy_test.go` for method/credential/request validation, image passthrough, redirect and MIME failures, and protected URL construction. **GitHub Go CI run #735 passed on code/test head `5036a39411ca0a2b165f9d66dc908522b01abd28`**, including Go tests/build, embedded JS syntax and CI-only browser checks. A subsequent documentation head requires its own exact-head CI confirmation. **Local `./devbuild.sh`, actual Mac/Safari image acceptance, ScraperGo credential provisioning and cross-service integration remain unverified.** Owner Mac uncommitted/unpushed files, private tokens, browser storage, subscriptions, accounts, tunnel, process and build-counter state cannot be inspected. No local files, tokens, processes, tunnels, data stores or production deployment changed.
+Reviewed current Homepage `SUITE_DEVELOPMENT_POLICY.md` v1.1.0 from `main` plus NewsGo `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, `CURRENT_WORK.md`. Updated README/ARCHITECTURE/DEVELOPMENT and this handoff; AGENTS and Homepage policy unchanged. **Exact-head CI must be verified on the latest commit of each PR before handoff.** Previous CI #741 passed on the earlier NewsGo head and is not proof of this change. Owner's Mac local working tree, private credential value, local settings/browser state and tunnel are inaccessible; no private data, credentials, launchers, account settings, subscriptions, counters, processes or tunnels modified. No production restart/deployment/merge authorized. Owner Mac/Safari/live cross-service acceptance remains unverified.
 
-Read current Homepage merged `SUITE_DEVELOPMENT_POLICY.md` v1.1.0 and NewsGo `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, `CURRENT_WORK.md`. Updated README, ARCHITECTURE, DEVELOPMENT, CURRENT_WORK for #114; AGENTS and Homepage policy unchanged. CI outcome and draft PR link should be updated here when verified.
-
-## Owner Mac handoff (not yet authorized for production launch)
+## Owner Mac handoff (only after final CI)
 
 ```bash
 cd ~/projects/newsgo
 git status --short --branch
-# Stop if uncommitted work is present.
+# Stop if there are uncommitted changes.
 git fetch origin
 git checkout fix/114-authenticated-thumbnails
 git pull --ff-only origin fix/114-authenticated-thumbnails
 ./devbuild.sh
 ./dist/newsgo-darwin-arm64 -version
-# ./newsgo.sh restarts NewsGo and Cloudflare; do not execute without separate authorization.
+# Run ./newsgo.sh only after separate restart authorization.
 ```
 
-No merge, Issue closure, remote branch deletion, deployment, restart, tag or release authorized. Owner `FINISH` is separately required for promotion.
+Use the owner's **2026 M6 Apple Silicon MacBook Pro**, never the obsolete Intel hardware. `./devbuild.sh` already runs Go tests and builds ARM64 and compatibility AMD64 binaries. The version check is optional, not a startup prerequisite. The owner's private file remains as it is; verify that both running services load the existing credential, then retest Safari personal/Guest, initial load/tab focus, normal thumbnails, RSS-only mode and other API denials.
 
-## Safari regression found during local review (2026-11-22)
-
-Owner screenshots show a valid twelve-hour Homepage personal login, while NewsGo briefly signs in and shows articles then immediately hides them and shows `Not signed in`; tab focus reproduces the flash. Source trace establishes that an unconfigured private thumbnail machine token causes the new NewsGo thumbnail proxy to return **HTTP 503**, which `authorizedNewsgoFetch` mistakes for a Homepage verification outage. Fixed within the same draft PR #115 by returning **502 Bad Gateway** for the thumbnail proxy's own configuration failures (without altering the outer Homepage auth 503) and added Go plus CI-only executable browser regression proving the reader remains signed in on 502 while a true 503 still denies access. Matching ScraperGo work is draft [PR #148](https://github.com/richard-mauri/scrapergo/pull/148), Issue #147. Existing auth and user data remain unchanged. Owner Safari still must verify no flash on initial load or focus, and image rendering after private credential provisioning. Exact-head CI status must be checked after this update.
+**Promotion authority:** Both PRs remain draft; no `FINISH`, merge, issue closure, branch deletion, restart, deployment, tag, release or semantic version change authorized.
