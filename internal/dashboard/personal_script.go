@@ -1450,8 +1450,19 @@ el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView
 // entire page HTML, feed/article URLs, raw feed bodies, account data or tokens.
 function diagnosticsTextReport(){
  updateDiagnostics();
- const snapshot=(id)=>{const node=el(id);return node?Array.from(node.children).map(child=>
-  (child.textContent||'').trim().replace(/\\s+/g,' ')).filter(Boolean):[]};
+ const normalized=(value)=>String(value||'').trim().replace(/\s+/g,' ');
+ const snapshot=(id)=>{
+  const node=el(id);
+  if(!node)return [];
+  return Array.from(node.children).map(child=>{
+   const heading=child.querySelector('strong');
+   if(heading){
+    const number=child.querySelector('div');
+    return normalized(heading.textContent)+': '+normalized(number?number.textContent:'');
+   }
+   return normalized(child.textContent);
+  }).filter(Boolean);
+ };
  const timestamp=new Date().toISOString();
  const lines=[
   'NEWSGO DIAGNOSTICS',
@@ -1484,11 +1495,11 @@ function diagnosticsTextReport(){
   'PRIVACY',
   'No authentication tokens, cookies, article/feed URLs, account data, or raw feed bodies are included.'
  ];
- return lines.join('\\n')+'\\n';
+ return lines.join('\n')+'\n';
 }
 function downloadDiagnostics(){
  const report=diagnosticsTextReport();
- const date=new Date().toISOString().replace(/[-:]/g,'').replace(/\\..*$/,'').replace('T','-');
+ const date=new Date().toISOString().replace(/[-:]/g,'').replace(/\..*$/,'').replace('T','-');
  const blob=new Blob([report],{type:'text/plain;charset=utf-8'});
  const objectURL=URL.createObjectURL(blob);
  const link=document.createElement('a');
