@@ -89,3 +89,41 @@ func TestThumbnailAttributionShowsMissingMarkerAsUnattributed(t *testing.T) {
   if !strings.Contains(personalJS,needle) {t.Errorf("missing thumbnail attribution guard %q",needle)}
  }
 }
+
+func TestDiagnosticsTextExportAvailableWithoutExposingSensitiveData(t *testing.T) {
+ html:=page.Tree.Root.String()
+ if !strings.Contains(html,"id=\"download-diagnostics\"") {t.Fatal("missing diagnostic download button")}
+ start:=strings.Index(personalJS,"function diagnosticsTextReport(){")
+ end:=strings.Index(personalJS,"function downloadDiagnostics(){")
+ if start<0 || end<=start {t.Fatal("missing standalone report construction")}
+ report:=personalJS[start:end]
+ for _,want:=range []string{
+  "snapshot('diagnostics-summary')",
+  "snapshot('diagnostics-timing')",
+  "snapshot('thumbnail-performance')",
+  "'LATEST READ'","'THUMBNAIL PERFORMANCE'","'INTERPRETATION'",
+  "return lines.join('\\n')+'\\n'",
+ }{
+  if !strings.Contains(report,want){t.Errorf("report missing %q",want)}
+ }
+ // Only explicitly allowed aggregate metric values may enter the text file.
+ for _,forbidden:=range []string{
+  "document.body.innerText","document.documentElement","outerHTML",
+  "latestRawFeeds","allPersonalArticles","suiteHandoff",
+  "sessionStorage","localStorage","document.cookie",
+ }{
+  if strings.Contains(report,forbidden){t.Errorf("report includes sensitive source %q",forbidden)}
+ }
+ downloadStart:=strings.Index(personalJS,"function downloadDiagnostics(){")
+ downloadEnd:=strings.Index(personalJS,"el('download-diagnostics').addEventListener",downloadStart)
+ if downloadStart<0||downloadEnd<=downloadStart {t.Fatal("missing direct-download wiring")}
+ download:=personalJS[downloadStart:downloadEnd]
+ for _,want:=range []string{
+  "diagnosticsTextReport()","text/plain;charset=utf-8",
+  "URL.createObjectURL(blob)","link.download='newsgo-diagnostics-'",
+  "URL.revokeObjectURL(objectURL)",
+ }{
+  if !strings.Contains(download,want){t.Errorf("missing local TXT download behavior %q",want)}
+ }
+ if strings.Contains(download,"fetch(") || strings.Contains(download,"adminRequest("){t.Fatal("download must not make a network request")}
+}
