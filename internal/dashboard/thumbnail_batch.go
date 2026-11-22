@@ -1,13 +1,16 @@
 package dashboard
 
 import (
+ "context"
  "encoding/base64"
  "encoding/json"
  "io"
  "net/http"
  "net/http/httptest"
  "net/url"
- "runtime"
+ "log"
+ "strconv"
+ "time"
  "sync"
 )
 
@@ -51,6 +54,8 @@ func (s *State) serveThumbnailBatch(w http.ResponseWriter,r *http.Request){
  if concurrency>6 {concurrency=6}
  if concurrency>len(payload.URLs){concurrency=len(payload.URLs)}
  if concurrency<1 {concurrency=1}
+ batchID:=strconv.FormatUint(thumbnailRequestSerial.Add(1),10)
+ w.Header().Set("X-NewsGo-Request-ID",batchID)
  w.Header().Set("Content-Type","application/x-ndjson; charset=utf-8")
  w.Header().Set("X-Thumbnail-Batch","v1")
  w.WriteHeader(http.StatusOK)
@@ -67,7 +72,7 @@ func (s *State) serveThumbnailBatch(w http.ResponseWriter,r *http.Request){
     if r.Context().Err()!=nil{return}
     // The synthetic request never carries a browser identity or token; it is
     // called only after the enclosing batch has passed Homepage's auth guard.
-    sub:=httptest.NewRequest(http.MethodGet,"/api/thumbnail?url="+url.QueryEscape(item.article)+"&width=256",nil).WithContext(r.Context())
+    sub:=httptest.NewRequest(http.MethodGet,"/api/thumbnail?url="+url.QueryEscape(item.article)+"&width=256",nil).WithContext(context.WithValue(r.Context(),thumbnailTraceIDKey{},batchID+"."+strconv.Itoa(item.index)))
     captured:=httptest.NewRecorder()
     s.serveThumbnail(captured,sub)
     response:=captured.Result()
@@ -89,10 +94,14 @@ func (s *State) serveThumbnailBatch(w http.ResponseWriter,r *http.Request){
  }()
  go func(){wg.Wait();close(results)}()
  encoder:=json.NewEncoder(w)
+ started:=time.Now()
+ completed,failed:=0,0
  for item:=range results {
   if r.Context().Err()!=nil{return}
   if err:=encoder.Encode(item);err!=nil{return}
+  completed++
+  if item.Status!=http.StatusOK{failed++}
   if f,ok:=w.(http.Flusher);ok{f.Flush()}
  }
- runtime.KeepAlive(payload)
+ log.Printf("THUMBNAIL batch id=%s requested=%d completed=%d failed=%d duration_ms=%d",batchID,len(payload.URLs),completed,failed,time.Since(started).Milliseconds())
 }
