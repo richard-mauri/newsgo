@@ -427,10 +427,16 @@ let latestReadStats=null;
 let latestRawFeeds=[];
 let latestTiming=null;
 const thumbnailTiming=new Map();
+let thumbnailCanceledCount=0;
+function thumbnailServerTiming(response){
+ const q=response.headers.get('X-Thumbnail-Queue-Ms'),u=response.headers.get('X-Thumbnail-Upstream-Ms');
+ return {queueMs:q===null?null:Number(q),upstreamMs:u===null?null:Number(u),outcome:response.headers.get('X-Thumbnail-Outcome')||('http_'+response.status)};
+}
 const thumbnailResults=new Map();
 const thumbnailRequests=new Set();
 const thumbnailObjectURLs=new Set();
 function cancelThumbnailRequests(){
+ thumbnailCanceledCount+=thumbnailRequests.size;
  for(const controller of thumbnailRequests)controller.abort();
  thumbnailRequests.clear();
  for(const src of thumbnailObjectURLs)URL.revokeObjectURL(src);
@@ -438,18 +444,20 @@ function cancelThumbnailRequests(){
 }
 async function loadProtectedThumbnail(img,articleURL,imageURL,started){
  const controller=new AbortController();thumbnailRequests.add(controller);
+ let serverInfo=null;
  try{
   const response=await authorizedNewsgoFetch(imageURL,{signal:controller.signal,cache:'no-store'});
+  serverInfo=thumbnailServerTiming(response);
   if(!response.ok)throw Error('Thumbnail HTTP '+response.status);
   const blob=await response.blob();
   if(!blob.type.startsWith('image/')||blob.size>3*1024*1024)throw Error('Invalid thumbnail image');
   if(controller.signal.aborted||!img.isConnected)return;
   const objectURL=URL.createObjectURL(blob);thumbnailObjectURLs.add(objectURL);
-  img.addEventListener('load',()=>{if(controller.signal.aborted)return;thumbnailResults.set(articleURL,'loaded');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics()},{once:true});
-  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics();img.remove()},{once:true});
+  img.addEventListener('load',()=>{if(controller.signal.aborted)return;thumbnailResults.set(articleURL,'loaded');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics()},{once:true});
+  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics();img.remove()},{once:true});
   img.src=objectURL;
  }catch(err){
-  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics();img.remove()}
+  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics();img.remove()}
  }finally{thumbnailRequests.delete(controller)}
 }
 function rawFeedBytes(feed){
@@ -499,6 +507,24 @@ function updateDiagnostics(){
  const values=[['Feed entries fetched',latestReadStats.fetched],['Accepted articles',latestReadStats.accepted],['Thumbnails loaded',loaded],['Thumbnail failures',failed],['Thumbnails pending',pending],['Images not requested',notRequested],['Classification cache hits',latestReadStats.cacheHits||0],['Classification cache misses',latestReadStats.cacheMisses||0],['Cold / absent cache entries',latestReadStats.cacheColdMisses||0],['Expired cache entries',latestReadStats.cacheExpiredMisses||0],['Misses returning unknown (not cached)',latestReadStats.noncacheableUnknown||0],['Misses returning unavailable (not cached)',latestReadStats.noncacheableUnavailable||0],['Misses with upstream/protocol failure (not cached)',latestReadStats.upstreamFailures||0],['Classification cache bypasses',latestReadStats.cacheBypasses||0],['Caching disabled by server',latestReadStats.cacheDisabled||0],['Server cache TTL',latestReadStats.cacheTTLMinutes===0?'Disabled (0 minutes)':latestReadStats.cacheTTLMinutes+' minutes'],['Cache hit rate',((latestReadStats.cacheHits||0)+(latestReadStats.cacheMisses||0))?Math.round(100*(latestReadStats.cacheHits||0)/((latestReadStats.cacheHits||0)+(latestReadStats.cacheMisses||0)))+'%':'N/A'],['Filtered by classification or age',latestReadStats.filtered],['Unprocessed (feed cap)',latestReadStats.unprocessed]];
  for(const [name,value] of values){const item=document.createElement('div');const label=document.createElement('strong');label.textContent=name;const number=document.createElement('div');number.textContent=String(value);number.style.fontSize='1.5rem';item.append(label,number);panel.append(item)}
  const timingPanel=el('diagnostics-timing');if(timingPanel){timingPanel.replaceChildren();if(latestTiming){const rows=[['Total refresh',latestTiming.totalMs],['Feed batch requests',latestTiming.batchMs],['Sum of per-feed fetch/wait durations',latestTiming.feedMs],['Sum of per-feed classification durations',latestTiming.classifyMs],['Browser render',latestTiming.renderMs]];for(const [label,value] of rows){const p=document.createElement('p');p.textContent=label+': '+Math.round(value)+' ms';timingPanel.append(p)}const completed=[...thumbnailTiming.values()].filter(x=>Number.isFinite(x.duration));if(completed.length){const average=completed.reduce((n,x)=>n+x.duration,0)/completed.length;const p=document.createElement('p');p.textContent='Thumbnail load/error event time: average '+Math.round(average)+' ms across '+completed.length+' completed images';timingPanel.append(p)}}else timingPanel.textContent='Timing available after the next completed read.';}
+ const thumbPanel=el('thumbnail-performance');
+ if(thumbPanel){
+  thumbPanel.replaceChildren();
+  const observed=[...thumbnailTiming.values()];
+  const queue=observed.map(x=>x.queueMs).filter(Number.isFinite).sort((a,b)=>a-b);
+  const upstream=observed.map(x=>x.upstreamMs).filter(Number.isFinite).sort((a,b)=>a-b);
+  const avg=a=>Math.round(a.reduce((n,x)=>n+x,0)/a.length);
+  const p95=a=>Math.round(a[Math.ceil(a.length*.95)-1]);
+  const add=(name,value)=>{const p=document.createElement('p');p.textContent=name+': '+value;thumbPanel.append(p)};
+  add('Loaded / failed / pending',loaded+' / '+failed+' / '+pending);
+  add('Queue wait mean / p95',queue.length?avg(queue)+' / '+p95(queue)+' ms':'Not measured');
+  add('Upstream mean / p95',upstream.length?avg(upstream)+' / '+p95(upstream)+' ms':'Not measured');
+  add('Measured server responses',queue.length);
+  add('Browser requests canceled on rerender',thumbnailCanceledCount);
+  const outcomes=new Map();
+  for(const v of observed){const reason=v.outcome||'browser_image_event';outcomes.set(reason,(outcomes.get(reason)||0)+1)}
+  for(const [reason,count] of [...outcomes.entries()].sort((a,b)=>b[1]-a[1]))add('Outcome '+reason,count);
+ }
  renderRawFeeds();
  el('diagnostics-note').textContent='Source: '+latestReadStats.selection+' · '+latestReadStats.feeds+' feeds · '+latestReadStats.failedFeeds+' feed errors · '+latestReadStats.mode+'. Cache misses include noncacheable unknown/unavailable outcomes and upstream failures; reloading cannot guarantee 100% cache hits. Thumbnail outcomes can change after the read completes.';
 }
@@ -790,7 +816,7 @@ async function refresh(){
    if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
   }
   if(sequence!==refreshSequence)return;
-  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();thumbnailCanceledCount=0;
   latestRawFeeds=data.filter(g=>g.rawFeed).map(g=>({name:g.source.name,...g.rawFeed}));
   latestReadStats={mode:rssMetadataOnly?'RSS metadata + ScraperGo verified':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,cacheHits:data.reduce((n,g)=>n+(g.classificationCacheHits||0),0),cacheMisses:data.reduce((n,g)=>n+(g.classificationCacheMisses||0),0),cacheColdMisses:data.reduce((n,g)=>n+(g.classificationCacheColdMisses||0),0),cacheExpiredMisses:data.reduce((n,g)=>n+(g.classificationCacheExpiredMisses||0),0),noncacheableUnknown:data.reduce((n,g)=>n+(g.classificationNoncacheableUnknown||0),0),noncacheableUnavailable:data.reduce((n,g)=>n+(g.classificationNoncacheableUnavailable||0),0),upstreamFailures:data.reduce((n,g)=>n+(g.classificationUpstreamFailures||0),0),cacheBypasses:data.reduce((n,g)=>n+(g.classificationCacheBypasses||0),0),cacheDisabled:data.reduce((n,g)=>n+(g.classificationCacheDisabled||0),0),cacheTTLMinutes:data.find(g=>Number.isInteger(g.classificationCacheTTLMinutes))?.classificationCacheTTLMinutes??0,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
@@ -1329,6 +1355,7 @@ function applyAccountPreferences(data){
 
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
+const thumbnailAdminFields={concurrency:'admin-thumb-concurrency',queueWaitSeconds:'admin-thumb-queue',upstreamTimeoutSeconds:'admin-thumb-timeout'};
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
 // Add classification-cache TTL control alongside feed-cache settings.
 const feedCacheInput=document.getElementById('admin-feed-cache');
@@ -1346,10 +1373,11 @@ if(feedCacheInput){
  parent.insertAdjacentElement('afterend',label);
 }
 let currentImageSettings=null;
+let currentThumbnailSettings=null;
 let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
-const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
-const adminDirty=()=>adminSavedValues!==null&&Object.keys(articleAdminFields).some(key=>adminValues()[key]!==adminSavedValues[key]);
+const adminValues=()=>Object.fromEntries([...Object.entries(articleAdminFields),...Object.entries(thumbnailAdminFields).map(([key,id])=>['thumbnail.'+key,id])].map(([key,id])=>[key,el(id).value]));
+const adminDirty=()=>adminSavedValues!==null&&Object.keys(adminSavedValues).some(key=>adminValues()[key]!==adminSavedValues[key]);
 async function adminRequest(method,payload){
  const response=await authorizedNewsgoFetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
  if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
@@ -1357,8 +1385,9 @@ async function adminRequest(method,payload){
 async function loadAdmin(){
  if(!mayAdminister())return false;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
-  currentImageSettings=data.image;
+  currentImageSettings=data.image;currentThumbnailSettings=data.thumbnail;
   for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
+   for(const [key,id] of Object.entries(thumbnailAdminFields)){el(id).value=(data.thumbnail||{})[key]??'';}
   adminSavedValues=adminValues();
   adminStatus('Server settings loaded (revision '+adminRevision+').');
   return true;
@@ -1368,9 +1397,10 @@ async function saveAdmin(){
  if(!mayAdminister()||!currentImageSettings)return false;
  const form=el('admin-form');
  if(!form.reportValidity())return false;
- const articles=Object.fromEntries(Object.entries(adminValues()).map(([key,value])=>[key,Number(value)]));
- try{const result=await adminRequest('PUT',{revision:adminRevision,image:currentImageSettings,articles});
-  adminRevision=result.revision;currentImageSettings=result.image;adminSavedValues=adminValues();
+ const articles=Object.fromEntries(Object.keys(articleAdminFields).map(key=>[key,Number(adminValues()[key])]));
+ const thumbnail=Object.fromEntries(Object.keys(thumbnailAdminFields).map(key=>[key,Number(adminValues()['thumbnail.'+key])]));
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image:currentImageSettings,articles,thumbnail});
+  adminRevision=result.revision;currentImageSettings=result.image;currentThumbnailSettings=result.thumbnail;adminSavedValues=adminValues();
   adminStatus('Saved server settings (revision '+adminRevision+').');return true;
  }catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.');return false}
 }
