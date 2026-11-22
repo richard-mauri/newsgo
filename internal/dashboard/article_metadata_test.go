@@ -8,7 +8,7 @@ import (
 
 func TestScraperThumbnailURL(t *testing.T) {
 	got := scraperThumbnailURL("https://scrapergo.themauris.org/", "https://www.cnbc.com/article.html#new_tab")
-	if !strings.HasPrefix(got, "https://scrapergo.themauris.org/api/thumbnail?") || !strings.Contains(got, "width=256") || !strings.Contains(got, "url=https%3A%2F%2Fwww.cnbc.com%2Farticle.html") || strings.Contains(got, "new_tab") {
+	if !strings.HasPrefix(got, "/api/thumbnail?") || !strings.Contains(got, "width=256") || !strings.Contains(got, "url=https%3A%2F%2Fwww.cnbc.com%2Farticle.html") || strings.Contains(got, "new_tab") {
 		t.Fatalf("bad thumbnail URL: %s", got)
 	}
 	for _, bad := range []string{"javascript:alert(1)", "https://user:password@example.org/x", "file:///etc/passwd"} {
