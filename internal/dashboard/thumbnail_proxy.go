@@ -2,13 +2,13 @@ package dashboard
 
 import (
  "context"
- "crypto/subtle"
  "errors"
  "io"
  "net/http"
  "net/url"
  "os"
  "regexp"
+ "strconv"
  "strings"
  "time"
 )
@@ -16,6 +16,8 @@ import (
 var thumbnailServiceTokenPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 const maxThumbnailBytes int64 = 3 << 20
+
+var thumbnailProxySlots = make(chan struct{}, 6)
 
 // serveThumbnail is a verified-NewsGo-user endpoint (protected by the outer
 // Homepage auth gate). It never exposes a ScraperGo service credential to JS.
@@ -60,6 +62,10 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
  request.Header.Set("Authorization","Service "+token)
  request.Header.Set("Accept","image/avif,image/webp,image/png,image/jpeg,image/gif")
  client:=&http.Client{Timeout:12*time.Second,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}}
+ select {
+ case thumbnailProxySlots<-struct{}{}:defer func(){<-thumbnailProxySlots}()
+ case <-ctx.Done():return
+ }
  response,err:=client.Do(request)
  if err!=nil {
   if errors.Is(err,context.Canceled) {return}
@@ -94,12 +100,7 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
   return
  }
  w.Header().Set("Content-Type",contentType)
- w.Header().Set("Content-Length",stringSize(len(data)))
+ w.Header().Set("Content-Length",strconv.Itoa(len(data)))
  _,_=w.Write(data)
 }
 
-// stringSize prevents a heavyweight formatting dependency in the image path.
-func stringSize(n int)string {if n==0{return "0"};var b [20]byte;i:=len(b);for n>0{i--;b[i]=byte('0'+n%10);n/=10};return string(b[i:])}
-
-// The token must never be accidentally accepted as a Homepage user bearer.
-var _ = subtle.ConstantTimeCompare
