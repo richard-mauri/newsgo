@@ -98,9 +98,12 @@ func (s *SettingsStore) loadServerSettings() (serverSettings, error) {
 	if e = json.Unmarshal(b, &v); e != nil {
 		return v, e
 	}
- // Existing server-settings.json files predate the optional thumbnail section.
- // Preserve all existing saved settings without rewriting the file on load.
- if v.Thumbnail==(ThumbnailSettings{}) {v.Thumbnail=defaultThumbnailSettings()}
+ // Existing settings files predate the thumbnail section. Only absence,
+ // not an explicitly invalid zero configuration, receives safe defaults.
+ // Loading never rewrites the owner's saved file.
+ var present map[string]json.RawMessage
+ if err:=json.Unmarshal(b,&present);err!=nil{return v,err}
+ if _,ok:=present["thumbnail"];!ok {v.Thumbnail=defaultThumbnailSettings()}
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
