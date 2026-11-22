@@ -152,7 +152,7 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	v.BannerHTML=template.HTML(masthead.String())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self' https://home.themauris.org; img-src 'self' https:")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; script-src 'self'; connect-src 'self' https://home.themauris.org; img-src 'self' https: blob:")
 	if err := page.Execute(w, v); err != nil {
 		return
 	}
