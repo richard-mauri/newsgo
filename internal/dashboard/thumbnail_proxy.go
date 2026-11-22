@@ -4,6 +4,7 @@ import (
  "context"
  "errors"
  "io"
+ "net"
  "net/http"
  "net/url"
  "os"
@@ -14,6 +15,16 @@ import (
 )
 
 var thumbnailServiceTokenPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+
+func validThumbnailArticleURL(raw string) bool {
+ if !safeURL(raw) {return false}
+ u,err:=url.Parse(raw)
+ if err!=nil {return false}
+ host:=strings.TrimSuffix(strings.ToLower(u.Hostname()),".")
+ if host=="localhost" || !strings.Contains(host,".") {return false}
+ if ip:=net.ParseIP(host);ip!=nil && !publicIP(ip) {return false}
+ return true
+}
 
 const maxThumbnailBytes int64 = 3 << 20
 
@@ -35,7 +46,7 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
   return
  }
  article:=strings.TrimSpace(r.URL.Query().Get("url"))
- if len(article)==0 || len(article)>2048 || !safeURL(article) {
+ if len(article)==0 || len(article)>2048 || !validThumbnailArticleURL(article) {
   http.Error(w, "Invalid article URL", http.StatusBadRequest)
   return
  }
@@ -44,7 +55,7 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
   return
  }
  token:=os.Getenv("SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN")
- if !thumbnailServiceTokenPattern.MatchString(token) {
+ if !thumbnailServiceTokenPattern.MatchString(token) || token==os.Getenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN") {
   http.Error(w, "Thumbnail service unavailable", http.StatusServiceUnavailable)
   return
  }
