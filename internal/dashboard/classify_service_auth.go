@@ -33,3 +33,9 @@ func classificationHTTPClient(timeoutSeconds int) *http.Client {
  return &http.Client{Timeout:time.Duration(timeoutSeconds)*time.Second,
   CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}}
 }
+
+// The public reader URL remains the classification cache identity.
+func classificationRequestBackend(publicReader, backend string) string {
+ if backend!="" {return backend}
+ return publicReader
+}
