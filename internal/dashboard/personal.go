@@ -230,7 +230,7 @@ func (s *State) servePersonal(w http.ResponseWriter, r *http.Request) {
    // RSS metadata-only controls presentation, not article eligibility.
    // Both reading modes require ScraperGo-confirmed articles.
    var cacheStats classificationCacheStats
-   decisions = classifyFeedArticlesWithExclusionsStats(r.Context(), s.reader, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache, req.ExcludedDomains, &cacheStats)
+   decisions = classifyFeedArticlesWithExclusionsBackendStats(r.Context(), s.reader, s.classificationBackend, articles, req.MaxArticleAgeDays, req.UseClassificationCache == nil || *req.UseClassificationCache, req.ExcludedDomains, &cacheStats)
    res.ClassificationCacheHits=cacheStats.hits.Load()
    res.ClassificationCacheMisses=cacheStats.misses.Load()
    res.ClassificationCacheBypasses=cacheStats.bypasses.Load()
@@ -354,6 +354,9 @@ func classifyFeedArticlesWithAgeStats(ctx context.Context, reader string, articl
  return classifyFeedArticlesWithExclusionsStats(ctx,reader,articles,days,useCache,nil,stats)
 }
 func classifyFeedArticlesWithExclusionsStats(ctx context.Context, reader string, articles []feeds.Article, days int, useCache bool, exclusions []string, stats *classificationCacheStats) []string {
+ return classifyFeedArticlesWithExclusionsBackendStats(ctx, reader, "", articles, days, useCache, exclusions, stats)
+}
+func classifyFeedArticlesWithExclusionsBackendStats(ctx context.Context, reader, backend string, articles []feeds.Article, days int, useCache bool, exclusions []string, stats *classificationCacheStats) []string {
 	out := make([]string, len(articles))
  limiter := make(chan struct{}, currentArticleSettings().ClassificationConcurrency)
 	var wg sync.WaitGroup
@@ -372,7 +375,7 @@ func classifyFeedArticlesWithExclusionsStats(ctx context.Context, reader string,
 			continue
 		}
 		wg.Add(1)
-		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCacheStats(ctx, reader, article, useCache, stats) }(i, a.URL)
+		go func(i int, article string) { defer wg.Done(); select { case limiter <- struct{}{}: defer func(){ <-limiter }(); case <-ctx.Done(): out[i]="unknown"; return }; out[i] = newsClassifyWithCacheBackendStats(ctx, reader, backend, article, useCache, stats) }(i, a.URL)
 	}
 	wg.Wait()
 	return out
@@ -383,7 +386,10 @@ func newsClassify(ctx context.Context, reader, article string) string {
 func newsClassifyWithCache(ctx context.Context, reader, article string, useCache bool) string {
  return newsClassifyWithCacheStats(ctx,reader,article,useCache,nil)
 }
-func newsClassifyWithCacheStats(ctx context.Context, reader, article string, useCache bool, stats *classificationCacheStats) (classification string) {
+func newsClassifyWithCacheStats(ctx context.Context, reader, article string, useCache bool, stats *classificationCacheStats) string {
+ return newsClassifyWithCacheBackendStats(ctx, reader, "", article, useCache, stats)
+}
+func newsClassifyWithCacheBackendStats(ctx context.Context, reader, backend, article string, useCache bool, stats *classificationCacheStats) (classification string) {
  miss := false
  upstreamCompleted := false
  defer func() {
@@ -422,7 +428,7 @@ func newsClassifyWithCacheStats(ctx context.Context, reader, article string, use
 	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(currentArticleSettings().ClassificationTimeoutSeconds)*time.Second)
 	defer cancel()
 	body, _ := json.Marshal(map[string]string{"url": article})
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(reader, "/")+"/api/classify", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, strings.TrimRight(classificationRequestBackend(reader,backend), "/")+"/api/classify", bytes.NewReader(body))
 	if err != nil {
 		return "unknown"
 	}

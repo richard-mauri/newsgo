@@ -68,5 +68,5 @@ func(s *State) serveAdminClassificationDiagnostic(w http.ResponseWriter,r *http.
  r.Body=http.MaxBytesReader(w,r.Body,4096)
  var req struct {URL string `json:"url"`}
  if json.NewDecoder(r.Body).Decode(&req)!=nil || len(req.URL)>2048 || !safeURL(normalizeClassificationURL(req.URL)) {http.Error(w,"invalid article URL",http.StatusBadRequest);return}
- _=json.NewEncoder(w).Encode(classifyDiagnostic(r.Context(),s.reader,req.URL))
+ _=json.NewEncoder(w).Encode(classifyDiagnostic(r.Context(),classificationRequestBackend(s.reader,s.classificationBackend),req.URL))
 }

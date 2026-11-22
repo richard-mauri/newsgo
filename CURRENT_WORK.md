@@ -1,35 +1,15 @@
 # Current work — NewsGo
 
-**Merged main verified:** `cc86480caafbf3299b1064c380e0d7e5bd17ff3c`. **Active scope:** [Issue #114](https://github.com/richard-mauri/newsgo/issues/114), draft [PR #115](https://github.com/richard-mauri/newsgo/pull/115), branch `fix/114-authenticated-thumbnails` based on `main`. Coordinated ScraperGo [Issue #147](https://github.com/richard-mauri/scrapergo/issues/147), draft [PR #148](https://github.com/richard-mauri/scrapergo/pull/148), branch `fix/147-newsgo-thumbnail-auth` based on ScraperGo merged `main` `e22b2e7427a6884074d10e72b24b47fe544aded8`. Both historical authentication PRs (#111, #146) are superseded by merged main and are not active working branches.
+**Issue:** [#116](https://github.com/richard-mauri/newsgo/issues/116) — conservative thumbnail-only loopback candidate. **Branch:** `fix/116-thumbnail-loopback-backend`; **base:** NewsGo merged main `e9078c70bfa36cdec20762ac17ae205b70e92b43` (PR #115 merged). ScraperGo merged main `eab6019d68282dc36003fb5d447cb981c4146787` (PR #148 merged). Do not revive either merged authentication PR.
 
-## Problem and resolution
+## Scope and owner decision
 
-Owner Safari observed 196 NewsGo articles, 190 normal thumbnail failures (0 loads) and an unauthorized ScraperGo `GET /api/thumbnail` (HTTP 401) because the browser's direct `<img>` request lacked bearer authentication. RSS metadata-only publisher images worked. Draft PR #115 routes normal thumbnail loads through a NewsGo same-origin, Homepage-authenticated `GET /api/thumbnail` proxy, which bounds upstream URL, method, width, image type/size, redirects, timeout and concurrent requests. Browser uses `authorizedNewsgoFetch` and a temporary blob URL; RSS mode is unchanged.
+Owner initiated BEGIN then NEXT on November 22, 2026 and explicitly requested a low-risk incremental approach with minimal hands-on testing. This candidate adds **optional, server-only** `-thumbnail-backend` and `-classification-backend` flags restricted to explicit HTTP loopback IPs and ports. The latter was added by owner-approved NEXT in the same draft PR #117. The first affects the authenticated thumbnail proxy; the second redirects only normal classification POST and the uncached administrator diagnostic to localhost, while retaining the public ScraperGo reader URL as the persisted classification cache namespace. The Issue #116 branch updates `newsgo.sh` to pass both `-thumbnail-backend http://127.0.0.1:8083` and `-classification-backend http://127.0.0.1:8083` while retaining the public `-scrapergo` URL and private token sourcing; the binary default remains the existing public upstream. New regression tests cover fixed backend isolation, classification cache preservation, admin diagnostic routing and rejected destinations. No browser concurrency scheduler, rerender rewrite, semaphore/timeout fix, HTTP transport tuning, or classification semantics change.
 
-Owner subsequently observed a valid Homepage personal session briefly displaying articles then disappearing after the new proxy returned HTTP 503 for missing service configuration. Fixed the proxy's own unavailable/configuration failure to HTTP **502**, retaining the outer Homepage verification gate's 503 behavior and CI-only browser regression. Homepage personal/Guest auth, per-user settings and explicit Save Changes remain unchanged.
+## Preservation and verification
 
-The owner confirmed the original private `SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN` exists in `/Users/richardmauri/projects/homepage/private/service-auth.env` and instructed reuse of that **one existing 64-lowercase-hex machine credential for all allowlisted NewsGo→ScraperGo APIs**, instead of creating a per-endpoint thumbnail token. This draft now uses that existing variable to forward `GET /api/thumbnail`; ScraperGo PR #148 permits the same credential on `POST /api/classify` and `GET /api/thumbnail` only. Other endpoints remain strictly protected; no token value or new variable is introduced. Do not add or source `SUITE_NEWSGO_SCRAPERGO_THUMBNAIL_TOKEN`.
+The original shared `SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN` is retained without rotation or exposure. Homepage per-user/Guest authorization, account isolation, subscriptions, exclusions, Save Changes, RSS mode, image size/MIME checks, redirects, SSRF and classification semantics are unchanged. No owner-local state, tunnel, private env, process or data was accessed or modified; GitHub branch launcher text was modified but not executed. The agent's GitHub-only environment does not establish the owner's Mac working-tree status. The previous thumbnail-only build and Safari comparison were owner-performed, with 172/190 thumbnails loaded versus 108/189 on the public route. The newly extended classification code's `./devbuild.sh`, owner M6 Mac Safari acceptance, and tunnel comparison are **unverified** until performed. CI on exact draft PR head must be inspected before any successful owner handoff; do not assume a pass. Follow Homepage `SUITE_DEVELOPMENT_POLICY.md` v1.1.0 and NewsGo's five documents.
 
-## Security, tests, documentation and operations
+## Owner operations and promotion
 
-The outer NewsGo Homepage gate requires a verified user/Guest bearer for every app API request. The machine token stays server-side and is forwarded only to the fixed ScraperGo HTTPS/explicit-loopback endpoint, never in query params or HTML. Existing classification authorization and ScraperGo SSRF/media policies remain intact. Added Go and CI-only browser tests for proxy image success/errors, missing credential 502 without sign-out, real 503 fail-closed, shared token scope and other-route denial.
-
-Reviewed current Homepage `SUITE_DEVELOPMENT_POLICY.md` v1.1.0 from `main` plus NewsGo `AGENTS.md`, `README.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, `CURRENT_WORK.md`. Updated README/ARCHITECTURE/DEVELOPMENT and this handoff; AGENTS and Homepage policy unchanged. **Go CI #748 passed** on NewsGo head `9c9b8478483f7c7ec90cf90306427d37a375bee7` ([run](https://github.com/richard-mauri/newsgo/actions/runs/45034632720)), including Go tests/build and CI-only browser checks. A subsequent documentation-only handoff commit requires its own exact-head CI confirmation. Owner's Mac local working tree, private credential value, local settings/browser state and tunnel are inaccessible; no private data, credentials, launchers, account settings, subscriptions, counters, processes or tunnels modified. No production restart/deployment/merge authorized. Owner Mac/Safari/live cross-service acceptance remains unverified.
-
-## Owner Mac handoff (only after final CI)
-
-```bash
-cd ~/projects/newsgo
-git status --short --branch
-# Stop if there are uncommitted changes.
-git fetch origin
-git checkout fix/114-authenticated-thumbnails
-git pull --ff-only origin fix/114-authenticated-thumbnails
-./devbuild.sh
-./dist/newsgo-darwin-arm64 -version
-# Run ./newsgo.sh only after separate restart authorization.
-```
-
-Use the owner's **2026 M6 Apple Silicon MacBook Pro**, never the obsolete Intel hardware. `./devbuild.sh` already runs Go tests and builds ARM64 and compatibility AMD64 binaries. The version check is optional, not a startup prerequisite. The owner's private file remains as it is; verify that both running services load the existing credential, then retest Safari personal/Guest, initial load/tab focus, normal thumbnails, RSS-only mode and other API denials.
-
-**Promotion authority:** Both PRs remain draft; no `FINISH`, merge, issue closure, branch deletion, restart, deployment, tag, release or semantic version change authorized.
+Before fetching or building on the M6 Mac, inspect `cd ~/projects/newsgo && git status --short --branch` and stop if dirty. After passing exact-head CI and permission to test locally, fetch and check out `fix/116-thumbnail-loopback-backend` without overwriting local changes, run `./devbuild.sh` **once**, then validate the executable version. **Do not run `./newsgo.sh`** (it restarts NewsGo and its dedicated Cloudflare tunnel) without separate authorization. Classification activation requires separate owner authorization to run the updated launcher, which restarts NewsGo and its dedicated tunnel. No merge, FINISH, Issue closure, branch deletion, deployment, tag, release or version bump is authorized.

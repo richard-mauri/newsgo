@@ -26,6 +26,28 @@ func validThumbnailArticleURL(raw string) bool {
  return true
 }
 
+// SetThumbnailBackend configures only the server-to-server thumbnail endpoint.
+// Public ScraperGo reader links and classification remain unchanged.
+func (s *State) SetThumbnailBackend(raw string) error {
+ if raw == "" { s.thumbnailBackend = ""; return nil }
+ u,err:=url.Parse(raw)
+ if err!=nil || u.Scheme!="http" || u.User!=nil || u.RawQuery!="" || u.Fragment!="" ||
+   (u.Path!="" && u.Path!="/") || u.RawPath!="" || u.Opaque!="" ||
+   (u.Hostname()!="127.0.0.1" && u.Hostname()!="::1") || u.Port()=="" {
+  return errors.New("invalid thumbnail backend: explicit loopback HTTP host and port required")
+ }
+ s.thumbnailBackend=strings.TrimRight(raw,"/")
+ return nil
+}
+
+// Classification uses exactly the same strict loopback validation.
+func (s *State) SetClassificationBackend(raw string) error {
+ var validated State
+ if err:=validated.SetThumbnailBackend(raw);err!=nil{return err}
+ s.classificationBackend=validated.thumbnailBackend
+ return nil
+}
+
 const maxThumbnailBytes int64 = 3 << 20
 
 var thumbnailProxySlots = make(chan struct{}, 6)
@@ -60,14 +82,16 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
   http.Error(w, "Thumbnail service unavailable", http.StatusBadGateway)
   return
  }
- reader,err:=url.Parse(s.reader)
+ backend:=s.reader
+ if s.thumbnailBackend!="" {backend=s.thumbnailBackend}
+ reader,err:=url.Parse(backend)
  if err!=nil || reader.User!=nil || reader.RawQuery!="" || reader.Fragment!="" ||
    !(reader.Scheme=="https" || (reader.Scheme=="http" && (reader.Hostname()=="localhost" || reader.Hostname()=="127.0.0.1" || reader.Hostname()=="::1"))) {
   // An unconfigured thumbnail backend is not a Homepage verification outage.
   http.Error(w, "Thumbnail service unavailable", http.StatusBadGateway)
   return
  }
- endpoint:=strings.TrimRight(s.reader,"/")+"/api/thumbnail?"+url.Values{"url":{article},"width":{"256"}}.Encode()
+ endpoint:=strings.TrimRight(backend,"/")+"/api/thumbnail?"+url.Values{"url":{article},"width":{"256"}}.Encode()
  ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second)
  defer cancel()
  request,err:=http.NewRequestWithContext(ctx,http.MethodGet,endpoint,nil)
