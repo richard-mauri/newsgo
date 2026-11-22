@@ -446,7 +446,10 @@ function thumbnailServerTiming(response){
 const thumbnailResults=new Map();
 const thumbnailRequests=new Set();
 const thumbnailObjectURLs=new Set();
+let thumbnailBatchGeneration=0;
+let thumbnailBatchHTTPCount=0;
 function cancelThumbnailRequests(){
+ thumbnailBatchGeneration++;
  thumbnailCanceledCount+=thumbnailRequests.size;
  for(const controller of thumbnailRequests)controller.abort();
  thumbnailRequests.clear();
@@ -470,6 +473,85 @@ async function loadProtectedThumbnail(img,articleURL,imageURL,started){
  }catch(err){
   if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{outcome:'browser_transport_or_auth_failure'})});updateDiagnostics();img.remove()}
  }finally{thumbnailRequests.delete(controller)}
+}
+// One browser-to-NewsGo HTTP batch at a time. The server works on up to six
+// items concurrently and streams each completed result, eliminating the huge
+// collection of requests waiting on NewsGo's 12s per-request admission timer.
+async function loadThumbnailBatches(items,generation){
+ for(let offset=0;offset<items.length;offset+=20){
+  if(generation!==thumbnailBatchGeneration)return;
+  const group=items.slice(offset,offset+20);
+  const controller=new AbortController();thumbnailRequests.add(controller);
+  const remaining=new Set(group.map((_,i)=>i));
+  const fail=(entry,detail)=>{if(generation!==thumbnailBatchGeneration||!entry.img.isConnected)return;
+   thumbnailResults.set(entry.article,'failed');
+   thumbnailTiming.set(entry.article,{duration:performance.now()-entry.started,...detail});
+   entry.img.remove();updateDiagnostics();
+  };
+  try{
+   thumbnailBatchHTTPCount++;
+   const response=await authorizedNewsgoFetch('/api/thumbnail/batch',{
+    method:'POST',headers:{'Content-Type':'application/json','Accept':'application/x-ndjson'},
+    body:JSON.stringify({urls:group.map(entry=>entry.article)}),cache:'no-store',signal:controller.signal
+   });
+   if((response.status===404||response.status===405)&&generation===thumbnailBatchGeneration){
+    // Compatibility with an older server that does not support batches.
+    for(const entry of items.slice(offset))void loadProtectedThumbnail(entry.img,entry.article,entry.imageURL,entry.started);
+    return;
+   }
+   if(!response.ok||!response.body||response.headers.get('X-Thumbnail-Batch')!=='v1')throw Error('Batch unavailable');
+   const reader=response.body.getReader(),decoder=new TextDecoder();
+   let partial='';
+   const deliver=(record)=>{
+    if(generation!==thumbnailBatchGeneration||!record||!Number.isInteger(record.index)||!remaining.has(record.index))return;
+    remaining.delete(record.index);
+    const entry=group[record.index];
+    const detail={proxyObserved:true,
+     queueMs:record.queueMs===''||record.queueMs==null?null:Number(record.queueMs),
+     upstreamMs:record.upstreamMs===''||record.upstreamMs==null?null:Number(record.upstreamMs),
+     outcome:'proxy_'+(record.outcome||'batch_http_'+record.status)};
+    if(record.status!==200||!record.data||!/^image\/(jpeg|png|gif|webp|avif)$/.test(record.type||'')){
+     fail(entry,detail);return;
+    }
+    try{
+     const decoded=atob(record.data);
+     if(decoded.length>3*1024*1024)throw Error('Oversize thumbnail');
+     const bytes=new Uint8Array(decoded.length);
+     for(let i=0;i<decoded.length;i++)bytes[i]=decoded.charCodeAt(i);
+     if(!entry.img.isConnected)return;
+     const objectURL=URL.createObjectURL(new Blob([bytes],{type:record.type}));
+     thumbnailObjectURLs.add(objectURL);
+     entry.img.addEventListener('load',()=>{if(generation!==thumbnailBatchGeneration)return;
+      thumbnailResults.set(entry.article,'loaded');
+      thumbnailTiming.set(entry.article,{duration:performance.now()-entry.started,...detail});
+      updateDiagnostics();
+     },{once:true});
+     entry.img.addEventListener('error',()=>{if(generation!==thumbnailBatchGeneration)return;
+      fail(entry,{...detail,outcome:'browser_decode_failure'});
+     },{once:true});
+     entry.img.src=objectURL;
+    }catch(_){fail(entry,{...detail,outcome:'browser_decode_failure'})}
+   };
+   while(true){
+    const {done,value}=await reader.read();
+    if(done)break;
+    partial+=decoder.decode(value,{stream:true});
+    let position;
+    while((position=partial.indexOf('\n'))!==-1){
+     const line=partial.slice(0,position);partial=partial.slice(position+1);
+     if(line){try{deliver(JSON.parse(line))}catch(_){/* unresolved items fail below */}}
+    }
+   }
+   partial+=decoder.decode();
+   if(partial.trim()){try{deliver(JSON.parse(partial))}catch(_){}}
+  }catch(error){
+   if(controller.signal.aborted||generation!==thumbnailBatchGeneration)return;
+  }finally{
+   thumbnailRequests.delete(controller);
+  }
+  if(generation!==thumbnailBatchGeneration)return;
+  for(const index of remaining)fail(group[index],{outcome:'browser_batch_transport_failure'});
+ }
 }
 function rawFeedBytes(feed){
  const encoded=feed.body||'';
@@ -528,6 +610,7 @@ function updateDiagnostics(){
   const p95=a=>Math.round(a[Math.ceil(a.length*.95)-1]);
   const add=(name,value)=>{const p=document.createElement('p');p.textContent=name+': '+value;thumbPanel.append(p)};
   add('Loaded / failed / pending',loaded+' / '+failed+' / '+pending);
+  add('Browser thumbnail batch requests',thumbnailBatchHTTPCount);
   add('Queue wait mean / p95',queue.length?avg(queue)+' / '+p95(queue)+' ms':'Not measured');
   add('Upstream mean / p95',upstream.length?avg(upstream)+' / '+p95(upstream)+' ms':'Not measured');
   add('NewsGo-marked responses',observed.filter(x=>x.proxyObserved===true).length);
@@ -697,6 +780,8 @@ function renderFilteredArticles(){
 
 function renderPersonalArticles(){
  cancelThumbnailRequests();
+ const batchGeneration=thumbnailBatchGeneration;
+ const thumbnailBatchItems=[];
  renderFilteredSubscriptionOffer();
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
@@ -726,7 +811,7 @@ function renderPersonalArticles(){
     img.src=a.image;
    }
    if(featured)body.prepend(img);else row.append(img);
-   if(!rssMetadataOnly)void loadProtectedThumbnail(img,a.url,a.image,imageStart);
+   if(!rssMetadataOnly)thumbnailBatchItems.push({img,article:a.url,imageURL:a.image,started:imageStart});
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
  });
@@ -829,7 +914,7 @@ async function refresh(){
    if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
   }
   if(sequence!==refreshSequence)return;
-  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();thumbnailCanceledCount=0;
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();thumbnailCanceledCount=0;thumbnailBatchHTTPCount=0;
   latestRawFeeds=data.filter(g=>g.rawFeed).map(g=>({name:g.source.name,...g.rawFeed}));
   latestReadStats={mode:rssMetadataOnly?'RSS metadata + ScraperGo verified':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,cacheHits:data.reduce((n,g)=>n+(g.classificationCacheHits||0),0),cacheMisses:data.reduce((n,g)=>n+(g.classificationCacheMisses||0),0),cacheColdMisses:data.reduce((n,g)=>n+(g.classificationCacheColdMisses||0),0),cacheExpiredMisses:data.reduce((n,g)=>n+(g.classificationCacheExpiredMisses||0),0),noncacheableUnknown:data.reduce((n,g)=>n+(g.classificationNoncacheableUnknown||0),0),noncacheableUnavailable:data.reduce((n,g)=>n+(g.classificationNoncacheableUnavailable||0),0),upstreamFailures:data.reduce((n,g)=>n+(g.classificationUpstreamFailures||0),0),cacheBypasses:data.reduce((n,g)=>n+(g.classificationCacheBypasses||0),0),cacheDisabled:data.reduce((n,g)=>n+(g.classificationCacheDisabled||0),0),cacheTTLMinutes:data.find(g=>Number.isInteger(g.classificationCacheTTLMinutes))?.classificationCacheTTLMinutes??0,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
