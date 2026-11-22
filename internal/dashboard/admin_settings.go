@@ -21,6 +21,22 @@ type ImageSettings struct {
 	MissingImageCacheSeconds  int `json:"missingImageCacheSeconds"`
 }
 // ArticleSettings governs the active feed classification pipeline.
+// ThumbnailSettings are server-wide operational limits. Security bounds remain fixed.
+type ThumbnailSettings struct {
+ Concurrency int `json:"concurrency"`
+ QueueWaitSeconds int `json:"queueWaitSeconds"`
+ UpstreamTimeoutSeconds int `json:"upstreamTimeoutSeconds"`
+}
+func defaultThumbnailSettings() ThumbnailSettings {return ThumbnailSettings{6,12,12}}
+func validThumbnailSettings(t ThumbnailSettings) bool {
+ return t.Concurrency>=1&&t.Concurrency<=16&&t.QueueWaitSeconds>=1&&t.QueueWaitSeconds<=30&&t.UpstreamTimeoutSeconds>=2&&t.UpstreamTimeoutSeconds<=30
+}
+var activeThumbnailSettings atomic.Value
+func currentThumbnailSettings() ThumbnailSettings {
+ if v:=activeThumbnailSettings.Load();v!=nil{return v.(ThumbnailSettings)}
+ return defaultThumbnailSettings()
+}
+
 type ArticleSettings struct {
  MaxArticlesPerFeed int `json:"maxArticlesPerFeed"`
  ClassificationTimeoutSeconds int `json:"classificationTimeoutSeconds"`
@@ -39,6 +55,7 @@ type serverSettings struct {
 	Revision  uint64        `json:"revision"`
 	Image     ImageSettings `json:"image"`
  Articles ArticleSettings `json:"articles"`
+ Thumbnail ThumbnailSettings `json:"thumbnail,omitempty"`
 	UpdatedAt string        `json:"updatedAt,omitempty"`
 }
 
@@ -59,14 +76,15 @@ func (s *SettingsStore) ActivateServerSettings() error {
 	}
 	activeImageSettings.Store(c.Image)
  activeArticleSettings.Store(c.Articles)
+ activeThumbnailSettings.Store(c.Thumbnail)
 	return nil
 }
 func defaultServerSettings() serverSettings {
-	return serverSettings{Image: ImageSettings{2500, 512, 12, 25, 90}, Articles: defaultArticleSettings()}
+	return serverSettings{Image: ImageSettings{2500, 512, 12, 25, 90}, Articles: defaultArticleSettings(), Thumbnail:defaultThumbnailSettings()}
 }
 func validServerSettings(c serverSettings) bool {
 	i := c.Image
-	return validArticleSettings(c.Articles) && i.MetadataTimeoutMs >= 500 && i.MetadataTimeoutMs <= 10000 && i.MaxHTMLKiB >= 128 && i.MaxHTMLKiB <= 2048 && i.ParallelRequests >= 1 && i.ParallelRequests <= 16 && i.EnrichmentDeadlineSeconds >= 10 && i.EnrichmentDeadlineSeconds <= 60 && i.MissingImageCacheSeconds >= 30 && i.MissingImageCacheSeconds <= 600
+	return validThumbnailSettings(c.Thumbnail) && validArticleSettings(c.Articles) && i.MetadataTimeoutMs >= 500 && i.MetadataTimeoutMs <= 10000 && i.MaxHTMLKiB >= 128 && i.MaxHTMLKiB <= 2048 && i.ParallelRequests >= 1 && i.ParallelRequests <= 16 && i.EnrichmentDeadlineSeconds >= 10 && i.EnrichmentDeadlineSeconds <= 60 && i.MissingImageCacheSeconds >= 30 && i.MissingImageCacheSeconds <= 600
 }
 func (s *SettingsStore) loadServerSettings() (serverSettings, error) {
 	b, e := os.ReadFile(s.file("server-settings.json"))
@@ -80,6 +98,9 @@ func (s *SettingsStore) loadServerSettings() (serverSettings, error) {
 	if e = json.Unmarshal(b, &v); e != nil {
 		return v, e
 	}
+ // Existing server-settings.json files predate the optional thumbnail section.
+ // Preserve all existing saved settings without rewriting the file on load.
+ if v.Thumbnail==(ThumbnailSettings{}) {v.Thumbnail=defaultThumbnailSettings()}
  if !validServerSettings(v) {
 		return v, errors.New("invalid stored server settings")
 	}
@@ -152,6 +173,7 @@ func (s *SettingsStore) ServeAdminSettings(w http.ResponseWriter, r *http.Reques
 	}
 	activeImageSettings.Store(candidate.Image)
  activeArticleSettings.Store(candidate.Articles)
+ activeThumbnailSettings.Store(candidate.Thumbnail)
  clearNewsClassificationCache()
 	_ = json.NewEncoder(w).Encode(candidate)
 }
