@@ -9,6 +9,7 @@ import (
  "path/filepath"
  "strings"
  "testing"
+ "time"
 )
 
 func adminCall(t *testing.T, store *SettingsStore, method string, authorized bool, payload any) *httptest.ResponseRecorder {
@@ -118,4 +119,22 @@ func TestThumbnailAdminLayoutAndDiagnosticsContract(t *testing.T) {
  for _,item:=range []string{"thumbnailAdminFields","thumbnailServerTiming(response)","Queue wait mean / p95","Upstream mean / p95","thumbnailCanceledCount"}{
   if !strings.Contains(personalJS,item){t.Errorf("missing thumbnail behavior %s",item)}
  }
+}
+
+func TestThumbnailOnlyAdminSaveDoesNotClearClassificationCache(t *testing.T) {
+ store,err:=NewSettingsStore(t.TempDir());if err!=nil{t.Fatal(err)}
+ key:="https://scrapergo.themauris.org|https://example.org/thumbnail-tuning"
+ newsClassificationCache.Lock()
+ oldEntries,oldPath:=newsClassificationCache.entries,newsClassificationCache.path
+ newsClassificationCache.entries=map[string]newsClassificationEntry{key:{value:"article",expiry:time.Now().Add(time.Minute)}}
+ newsClassificationCache.path=""
+ newsClassificationCache.Unlock()
+ defer func(){newsClassificationCache.Lock();newsClassificationCache.entries=oldEntries;newsClassificationCache.path=oldPath;newsClassificationCache.Unlock()}()
+ candidate:=defaultServerSettings()
+ candidate.Thumbnail.Concurrency=4
+ if w:=adminCall(t,store,http.MethodPut,true,candidate);w.Code!=http.StatusOK{t.Fatalf("thumbnail save=%d %s",w.Code,w.Body.String())}
+ newsClassificationCache.Lock()
+ _,ok:=newsClassificationCache.entries[key]
+ newsClassificationCache.Unlock()
+ if !ok {t.Fatal("thumbnail-only settings change erased classification cache")}
 }
