@@ -427,10 +427,30 @@ let latestReadStats=null;
 let latestRawFeeds=[];
 let latestTiming=null;
 const thumbnailTiming=new Map();
+let thumbnailCanceledCount=0;
+function thumbnailServerTiming(response){
+ // Only a response bearing the explicit proxy marker can be attributed to
+ // NewsGo. A missing marker is not evidence that Cloudflare caused the error:
+ // the auth gate, an intermediary or stripped headers may also be responsible.
+ const fromProxy=response.headers.get('X-NewsGo-Thumbnail-Proxy')==='v1';
+ const q=fromProxy?response.headers.get('X-Thumbnail-Queue-Ms'):null;
+ const u=fromProxy?response.headers.get('X-Thumbnail-Upstream-Ms'):null;
+ const reason=fromProxy?response.headers.get('X-Thumbnail-Outcome'):null;
+ return {
+  proxyObserved:fromProxy,
+  queueMs:q===null?null:Number(q),
+  upstreamMs:u===null?null:Number(u),
+  outcome:fromProxy?(reason?'proxy_'+reason:'proxy_unclassified_http_'+response.status):'unattributed_http_'+response.status
+ };
+}
 const thumbnailResults=new Map();
 const thumbnailRequests=new Set();
 const thumbnailObjectURLs=new Set();
+let thumbnailBatchGeneration=0;
+let thumbnailBatchHTTPCount=0;
 function cancelThumbnailRequests(){
+ thumbnailBatchGeneration++;
+ thumbnailCanceledCount+=thumbnailRequests.size;
  for(const controller of thumbnailRequests)controller.abort();
  thumbnailRequests.clear();
  for(const src of thumbnailObjectURLs)URL.revokeObjectURL(src);
@@ -438,19 +458,100 @@ function cancelThumbnailRequests(){
 }
 async function loadProtectedThumbnail(img,articleURL,imageURL,started){
  const controller=new AbortController();thumbnailRequests.add(controller);
+ let serverInfo=null;
  try{
   const response=await authorizedNewsgoFetch(imageURL,{signal:controller.signal,cache:'no-store'});
+  serverInfo=thumbnailServerTiming(response);
   if(!response.ok)throw Error('Thumbnail HTTP '+response.status);
   const blob=await response.blob();
   if(!blob.type.startsWith('image/')||blob.size>3*1024*1024)throw Error('Invalid thumbnail image');
   if(controller.signal.aborted||!img.isConnected)return;
   const objectURL=URL.createObjectURL(blob);thumbnailObjectURLs.add(objectURL);
-  img.addEventListener('load',()=>{if(controller.signal.aborted)return;thumbnailResults.set(articleURL,'loaded');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics()},{once:true});
-  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics();img.remove()},{once:true});
+  img.addEventListener('load',()=>{if(controller.signal.aborted)return;thumbnailResults.set(articleURL,'loaded');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{})});updateDiagnostics()},{once:true});
+  img.addEventListener('error',()=>{thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{}),outcome:'browser_decode_failure'});updateDiagnostics();img.remove()},{once:true});
   img.src=objectURL;
  }catch(err){
-  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started});updateDiagnostics();img.remove()}
+  if(!controller.signal.aborted){thumbnailResults.set(articleURL,'failed');thumbnailTiming.set(articleURL,{duration:performance.now()-started,...(serverInfo||{outcome:'browser_transport_or_auth_failure'})});updateDiagnostics();img.remove()}
  }finally{thumbnailRequests.delete(controller)}
+}
+// One browser-to-NewsGo HTTP batch at a time. The server works on up to six
+// items concurrently and streams each completed result, eliminating the huge
+// collection of requests waiting on NewsGo's 12s per-request admission timer.
+async function loadThumbnailBatches(items,generation){
+ for(let offset=0;offset<items.length;offset+=20){
+  if(generation!==thumbnailBatchGeneration)return;
+  const group=items.slice(offset,offset+20);
+  const controller=new AbortController();thumbnailRequests.add(controller);
+  const remaining=new Set(group.map((_,i)=>i));
+  const fail=(entry,detail)=>{if(generation!==thumbnailBatchGeneration||!entry.img.isConnected)return;
+   thumbnailResults.set(entry.article,'failed');
+   thumbnailTiming.set(entry.article,{duration:performance.now()-entry.started,...detail});
+   entry.img.remove();updateDiagnostics();
+  };
+  try{
+   thumbnailBatchHTTPCount++;
+   const response=await authorizedNewsgoFetch('/api/thumbnail/batch',{
+    method:'POST',headers:{'Content-Type':'application/json','Accept':'application/x-ndjson'},
+    body:JSON.stringify({urls:group.map(entry=>entry.article)}),cache:'no-store',signal:controller.signal
+   });
+   if((response.status===404||response.status===405)&&generation===thumbnailBatchGeneration){
+    // Compatibility with an older server that does not support batches.
+    for(const entry of items.slice(offset))void loadProtectedThumbnail(entry.img,entry.article,entry.imageURL,entry.started);
+    return;
+   }
+   if(!response.ok||!response.body||response.headers.get('X-Thumbnail-Batch')!=='v1')throw Error('Batch unavailable');
+   const reader=response.body.getReader(),decoder=new TextDecoder();
+   let partial='';
+   const deliver=(record)=>{
+    if(generation!==thumbnailBatchGeneration||!record||!Number.isInteger(record.index)||!remaining.has(record.index))return;
+    remaining.delete(record.index);
+    const entry=group[record.index];
+    const detail={proxyObserved:true,
+     queueMs:record.queueMs===''||record.queueMs==null?null:Number(record.queueMs),
+     upstreamMs:record.upstreamMs===''||record.upstreamMs==null?null:Number(record.upstreamMs),
+     outcome:'proxy_'+(record.outcome||'batch_http_'+record.status)};
+    if(record.status!==200||!record.data||!/^image\/(jpeg|png|gif|webp|avif)$/.test(record.type||'')){
+     fail(entry,detail);return;
+    }
+    try{
+     const decoded=atob(record.data);
+     if(decoded.length>3*1024*1024)throw Error('Oversize thumbnail');
+     const bytes=new Uint8Array(decoded.length);
+     for(let i=0;i<decoded.length;i++)bytes[i]=decoded.charCodeAt(i);
+     if(!entry.img.isConnected)return;
+     const objectURL=URL.createObjectURL(new Blob([bytes],{type:record.type}));
+     thumbnailObjectURLs.add(objectURL);
+     entry.img.addEventListener('load',()=>{if(generation!==thumbnailBatchGeneration)return;
+      thumbnailResults.set(entry.article,'loaded');
+      thumbnailTiming.set(entry.article,{duration:performance.now()-entry.started,...detail});
+      updateDiagnostics();
+     },{once:true});
+     entry.img.addEventListener('error',()=>{if(generation!==thumbnailBatchGeneration)return;
+      fail(entry,{...detail,outcome:'browser_decode_failure'});
+     },{once:true});
+     entry.img.src=objectURL;
+    }catch(_){fail(entry,{...detail,outcome:'browser_decode_failure'})}
+   };
+   while(true){
+    const {done,value}=await reader.read();
+    if(done)break;
+    partial+=decoder.decode(value,{stream:true});
+    let position;
+    while((position=partial.indexOf('\n'))!==-1){
+     const line=partial.slice(0,position);partial=partial.slice(position+1);
+     if(line){try{deliver(JSON.parse(line))}catch(_){/* unresolved items fail below */}}
+    }
+   }
+   partial+=decoder.decode();
+   if(partial.trim()){try{deliver(JSON.parse(partial))}catch(_){}}
+  }catch(error){
+   if(controller.signal.aborted||generation!==thumbnailBatchGeneration)return;
+  }finally{
+   thumbnailRequests.delete(controller);
+  }
+  if(generation!==thumbnailBatchGeneration)return;
+  for(const index of remaining)fail(group[index],{outcome:'browser_batch_transport_failure'});
+ }
 }
 function rawFeedBytes(feed){
  const encoded=feed.body||'';
@@ -499,6 +600,27 @@ function updateDiagnostics(){
  const values=[['Feed entries fetched',latestReadStats.fetched],['Accepted articles',latestReadStats.accepted],['Thumbnails loaded',loaded],['Thumbnail failures',failed],['Thumbnails pending',pending],['Images not requested',notRequested],['Classification cache hits',latestReadStats.cacheHits||0],['Classification cache misses',latestReadStats.cacheMisses||0],['Cold / absent cache entries',latestReadStats.cacheColdMisses||0],['Expired cache entries',latestReadStats.cacheExpiredMisses||0],['Misses returning unknown (not cached)',latestReadStats.noncacheableUnknown||0],['Misses returning unavailable (not cached)',latestReadStats.noncacheableUnavailable||0],['Misses with upstream/protocol failure (not cached)',latestReadStats.upstreamFailures||0],['Classification cache bypasses',latestReadStats.cacheBypasses||0],['Caching disabled by server',latestReadStats.cacheDisabled||0],['Server cache TTL',latestReadStats.cacheTTLMinutes===0?'Disabled (0 minutes)':latestReadStats.cacheTTLMinutes+' minutes'],['Cache hit rate',((latestReadStats.cacheHits||0)+(latestReadStats.cacheMisses||0))?Math.round(100*(latestReadStats.cacheHits||0)/((latestReadStats.cacheHits||0)+(latestReadStats.cacheMisses||0)))+'%':'N/A'],['Filtered by classification or age',latestReadStats.filtered],['Unprocessed (feed cap)',latestReadStats.unprocessed]];
  for(const [name,value] of values){const item=document.createElement('div');const label=document.createElement('strong');label.textContent=name;const number=document.createElement('div');number.textContent=String(value);number.style.fontSize='1.5rem';item.append(label,number);panel.append(item)}
  const timingPanel=el('diagnostics-timing');if(timingPanel){timingPanel.replaceChildren();if(latestTiming){const rows=[['Total refresh',latestTiming.totalMs],['Feed batch requests',latestTiming.batchMs],['Sum of per-feed fetch/wait durations',latestTiming.feedMs],['Sum of per-feed classification durations',latestTiming.classifyMs],['Browser render',latestTiming.renderMs]];for(const [label,value] of rows){const p=document.createElement('p');p.textContent=label+': '+Math.round(value)+' ms';timingPanel.append(p)}const completed=[...thumbnailTiming.values()].filter(x=>Number.isFinite(x.duration));if(completed.length){const average=completed.reduce((n,x)=>n+x.duration,0)/completed.length;const p=document.createElement('p');p.textContent='Thumbnail load/error event time: average '+Math.round(average)+' ms across '+completed.length+' completed images';timingPanel.append(p)}}else timingPanel.textContent='Timing available after the next completed read.';}
+ const thumbPanel=el('thumbnail-performance');
+ if(thumbPanel){
+  thumbPanel.replaceChildren();
+  const observed=[...thumbnailTiming.values()];
+  const queue=observed.map(x=>x.queueMs).filter(Number.isFinite).sort((a,b)=>a-b);
+  const upstream=observed.map(x=>x.upstreamMs).filter(Number.isFinite).sort((a,b)=>a-b);
+  const avg=a=>Math.round(a.reduce((n,x)=>n+x,0)/a.length);
+  const p95=a=>Math.round(a[Math.ceil(a.length*.95)-1]);
+  const add=(name,value)=>{const p=document.createElement('p');p.textContent=name+': '+value;thumbPanel.append(p)};
+  add('Loaded / failed / pending',loaded+' / '+failed+' / '+pending);
+  add('Browser thumbnail batch requests',thumbnailBatchHTTPCount);
+  add('Queue wait mean / p95',queue.length?avg(queue)+' / '+p95(queue)+' ms':'Not measured');
+  add('Upstream mean / p95',upstream.length?avg(upstream)+' / '+p95(upstream)+' ms':'Not measured');
+  add('NewsGo-marked responses',observed.filter(x=>x.proxyObserved===true).length);
+  add('Unattributed HTTP responses (no NewsGo marker)',observed.filter(x=>x.outcome&&x.outcome.startsWith('unattributed_http_')).length);
+  add('Measured queue waits',queue.length);
+  add('Browser requests canceled on rerender',thumbnailCanceledCount);
+  const outcomes=new Map();
+  for(const v of observed){const reason=v.outcome||'browser_image_event';outcomes.set(reason,(outcomes.get(reason)||0)+1)}
+  for(const [reason,count] of [...outcomes.entries()].sort((a,b)=>b[1]-a[1]))add('Outcome '+reason,count);
+ }
  renderRawFeeds();
  el('diagnostics-note').textContent='Source: '+latestReadStats.selection+' · '+latestReadStats.feeds+' feeds · '+latestReadStats.failedFeeds+' feed errors · '+latestReadStats.mode+'. Cache misses include noncacheable unknown/unavailable outcomes and upstream failures; reloading cannot guarantee 100% cache hits. Thumbnail outcomes can change after the read completes.';
 }
@@ -658,6 +780,8 @@ function renderFilteredArticles(){
 
 function renderPersonalArticles(){
  cancelThumbnailRequests();
+ const batchGeneration=thumbnailBatchGeneration;
+ const thumbnailBatchItems=[];
  renderFilteredSubscriptionOffer();
  const lead=el('personal-lead-stories'),list=el('personal-articles');
  lead.replaceChildren();list.replaceChildren();
@@ -687,10 +811,11 @@ function renderPersonalArticles(){
     img.src=a.image;
    }
    if(featured)body.prepend(img);else row.append(img);
-   if(!rssMetadataOnly)void loadProtectedThumbnail(img,a.url,a.image,imageStart);
+   if(!rssMetadataOnly)thumbnailBatchItems.push({img,article:a.url,imageURL:a.image,started:imageStart});
   }
   if(featured){row.append(body);lead.append(row)}else{row.prepend(body);list.append(row)}
  });
+ if(thumbnailBatchItems.length)void loadThumbnailBatches(thumbnailBatchItems,batchGeneration);
  renderFilteredArticles();
  updateDiagnostics();
  const hasArticles=count>0;
@@ -790,7 +915,7 @@ async function refresh(){
    if(completed<snapshot.length)loading.textContent='Updated '+completed+' of '+snapshot.length+' web feeds…'+context;
   }
   if(sequence!==refreshSequence)return;
-  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();
+  allPersonalArticles=[];personalErrors=[];filteredEntries=[];notProcessedEntries=[];thumbnailResults.clear();thumbnailTiming.clear();thumbnailCanceledCount=0;thumbnailBatchHTTPCount=0;
   latestRawFeeds=data.filter(g=>g.rawFeed).map(g=>({name:g.source.name,...g.rawFeed}));
   latestReadStats={mode:rssMetadataOnly?'RSS metadata + ScraperGo verified':'ScraperGo verified',fetched:data.reduce((n,g)=>n+(g.feedEntries||0),0),accepted:data.reduce((n,g)=>n+(g.articles||[]).length,0),filtered:data.reduce((n,g)=>n+(g.filtered||[]).length,0),unprocessed:data.reduce((n,g)=>n+(g.notProcessed||0),0),failedFeeds:data.filter(g=>g.error).length,cacheHits:data.reduce((n,g)=>n+(g.classificationCacheHits||0),0),cacheMisses:data.reduce((n,g)=>n+(g.classificationCacheMisses||0),0),cacheColdMisses:data.reduce((n,g)=>n+(g.classificationCacheColdMisses||0),0),cacheExpiredMisses:data.reduce((n,g)=>n+(g.classificationCacheExpiredMisses||0),0),noncacheableUnknown:data.reduce((n,g)=>n+(g.classificationNoncacheableUnknown||0),0),noncacheableUnavailable:data.reduce((n,g)=>n+(g.classificationNoncacheableUnavailable||0),0),upstreamFailures:data.reduce((n,g)=>n+(g.classificationUpstreamFailures||0),0),cacheBypasses:data.reduce((n,g)=>n+(g.classificationCacheBypasses||0),0),cacheDisabled:data.reduce((n,g)=>n+(g.classificationCacheDisabled||0),0),cacheTTLMinutes:data.find(g=>Number.isInteger(g.classificationCacheTTLMinutes))?.classificationCacheTTLMinutes??0,feeds:snapshot.length,selection:activeReadingSelection==='all'?'All subscriptions':(snapshot[0]?.name||'One subscription')};
   data.forEach(group=>{if(group.filtered)filteredEntries.push(...group.filtered);if(group.notProcessed)notProcessedEntries.push({source:group.source.name,count:group.notProcessed})});
@@ -1329,6 +1454,7 @@ function applyAccountPreferences(data){
 
  refreshExclusionViews();renderExclusionManager();renderManager();refresh();
 }
+const thumbnailAdminFields={concurrency:'admin-thumb-concurrency',queueWaitSeconds:'admin-thumb-queue',upstreamTimeoutSeconds:'admin-thumb-timeout'};
 const articleAdminFields={maxArticlesPerFeed:'admin-articles',classificationTimeoutSeconds:'admin-classification-timeout',classificationConcurrency:'admin-classification-parallel',feedCacheMinutes:'admin-feed-cache',feedSearchTimeoutSeconds:'admin-feed-search-timeout',classificationCacheMinutes:'admin-classification-cache'};
 // Add classification-cache TTL control alongside feed-cache settings.
 const feedCacheInput=document.getElementById('admin-feed-cache');
@@ -1346,10 +1472,11 @@ if(feedCacheInput){
  parent.insertAdjacentElement('afterend',label);
 }
 let currentImageSettings=null;
+let currentThumbnailSettings=null;
 let adminSavedValues=null;
 const adminStatus=message=>{el('admin-status').textContent=message};
-const adminValues=()=>Object.fromEntries(Object.entries(articleAdminFields).map(([key,id])=>[key,el(id).value]));
-const adminDirty=()=>adminSavedValues!==null&&Object.keys(articleAdminFields).some(key=>adminValues()[key]!==adminSavedValues[key]);
+const adminValues=()=>Object.fromEntries([...Object.entries(articleAdminFields),...Object.entries(thumbnailAdminFields).map(([key,id])=>['thumbnail.'+key,id])].map(([key,id])=>[key,el(id).value]));
+const adminDirty=()=>adminSavedValues!==null&&Object.keys(adminSavedValues).some(key=>adminValues()[key]!==adminSavedValues[key]);
 async function adminRequest(method,payload){
  const response=await authorizedNewsgoFetch('/api/admin/settings',{method,headers:{...adminAuthHeader(),...(payload?{'Content-Type':'application/json'}:{})},...(payload?{body:JSON.stringify(payload)}:{}),cache:'no-store'});
  if(!response.ok)throw Error('HTTP '+response.status+' — '+(await response.text()).trim().slice(0,140));return response.json();
@@ -1357,8 +1484,9 @@ async function adminRequest(method,payload){
 async function loadAdmin(){
  if(!mayAdminister())return false;
  try{const data=await adminRequest('GET');adminRevision=data.revision;
-  currentImageSettings=data.image;
+  currentImageSettings=data.image;currentThumbnailSettings=data.thumbnail;
   for(const [key,id] of Object.entries(articleAdminFields)){const field=el(id);if(field)field.value=(data.articles||{})[key]??'';}
+   for(const [key,id] of Object.entries(thumbnailAdminFields)){el(id).value=(data.thumbnail||{})[key]??'';}
   adminSavedValues=adminValues();
   adminStatus('Server settings loaded (revision '+adminRevision+').');
   return true;
@@ -1368,9 +1496,10 @@ async function saveAdmin(){
  if(!mayAdminister()||!currentImageSettings)return false;
  const form=el('admin-form');
  if(!form.reportValidity())return false;
- const articles=Object.fromEntries(Object.entries(adminValues()).map(([key,value])=>[key,Number(value)]));
- try{const result=await adminRequest('PUT',{revision:adminRevision,image:currentImageSettings,articles});
-  adminRevision=result.revision;currentImageSettings=result.image;adminSavedValues=adminValues();
+ const articles=Object.fromEntries(Object.keys(articleAdminFields).map(key=>[key,Number(adminValues()[key])]));
+ const thumbnail=Object.fromEntries(Object.keys(thumbnailAdminFields).map(key=>[key,Number(adminValues()['thumbnail.'+key])]));
+ try{const result=await adminRequest('PUT',{revision:adminRevision,image:currentImageSettings,articles,thumbnail});
+  adminRevision=result.revision;currentImageSettings=result.image;currentThumbnailSettings=result.thumbnail;adminSavedValues=adminValues();
   adminStatus('Saved server settings (revision '+adminRevision+').');return true;
  }catch(e){adminStatus('Save failed: '+e.message+' Reload before retrying if another administrator made changes.');return false}
 }
@@ -1403,6 +1532,68 @@ el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;stageReaderSetting(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-settings').addEventListener('click',()=>{showView('settings');if(mayAdminister())loadAdmin()});
 el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
+// Export only known, aggregate, locally rendered diagnostics. Never serialize
+// entire page HTML, feed/article URLs, raw feed bodies, account data or tokens.
+function diagnosticsTextReport(){
+ updateDiagnostics();
+ const normalized=(value)=>String(value||'').trim().replace(/\s+/g,' ');
+ const snapshot=(id)=>{
+  const node=el(id);
+  if(!node)return [];
+  return Array.from(node.children).map(child=>{
+   const heading=child.querySelector('strong');
+   if(heading){
+    const number=child.querySelector('div');
+    return normalized(heading.textContent)+': '+normalized(number?number.textContent:'');
+   }
+   return normalized(child.textContent);
+  }).filter(Boolean);
+ };
+ const timestamp=new Date().toISOString();
+ const lines=[
+  'NEWSGO DIAGNOSTICS',
+  'Generated (UTC): '+timestamp,
+  'Scope: latest completed read in this browser (no request history)',
+  'Thumbnail outcomes may change after the read completes.',
+  '',
+  'LATEST READ',
+  ...(latestReadStats?snapshot('diagnostics-summary'):['No completed read yet.']),
+  '',
+  'TIMING',
+  ...(latestTiming?snapshot('diagnostics-timing'):['No completed read timing yet.']),
+  '',
+  'THUMBNAIL PERFORMANCE',
+  ...(latestReadStats?snapshot('thumbnail-performance'):['No completed thumbnail report yet.']),
+  '',
+  'THUMBNAIL SETTINGS',
+  ...(currentThumbnailSettings&&mayAdminister()?[
+   'Concurrency limit: '+currentThumbnailSettings.concurrency,
+   'Maximum queue wait (seconds): '+currentThumbnailSettings.queueWaitSeconds,
+   'Upstream timeout (seconds): '+currentThumbnailSettings.upstreamTimeoutSeconds
+  ]:['Administrator settings not available in this browser view.']),
+  '',
+  'INTERPRETATION',
+  'Only proxy_* outcomes with a NewsGo marker are attributed to the NewsGo thumbnail handler.',
+  'unattributed_http_* means no NewsGo marker was observed; the origin is unknown.',
+  'Queue and upstream timings summarize only responses with valid server measurements.',
+  'Browser load/error timing includes both successful and failed thumbnails.',
+  '',
+  'PRIVACY',
+  'No authentication tokens, cookies, article/feed URLs, account data, or raw feed bodies are included.'
+ ];
+ return lines.join('\n')+'\n';
+}
+function downloadDiagnostics(){
+ const report=diagnosticsTextReport();
+ const date=new Date().toISOString().replace(/[-:]/g,'').replace(/\..*$/,'').replace('T','-');
+ const blob=new Blob([report],{type:'text/plain;charset=utf-8'});
+ const objectURL=URL.createObjectURL(blob);
+ const link=document.createElement('a');
+ link.href=objectURL;link.download='newsgo-diagnostics-'+date+'.txt';
+ document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(objectURL),1000);
+}
+el('download-diagnostics').addEventListener('click',downloadDiagnostics);
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));

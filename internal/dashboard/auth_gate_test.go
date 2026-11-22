@@ -1,7 +1,9 @@
 package dashboard
 
 import (
+ "bytes"
  "fmt"
+ "log"
  "net/http"
  "net/http/httptest"
  "strings"
@@ -72,4 +74,94 @@ func TestNewsGoAuthGateRejectsNetworkFailure(t *testing.T){
  req.Header.Set("Authorization","Bearer "+strings.Repeat("b",64))
  rec:=httptest.NewRecorder();handler.ServeHTTP(rec,req)
  if rec.Code!=503{t.Fatalf("unexpected network error status %d",rec.Code)}
+}
+
+func TestThumbnailBoundaryTracesBeforeAndInsideHandlerWithoutSecrets(t *testing.T) {
+ token:=strings.Repeat("c",64)
+ profile:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if got:=r.Header.Get("Authorization");got!="Bearer "+token {t.Error("profile bearer mismatch")}
+  fmt.Fprintf(w,`{"user":"private-account","role":"user","expiresAt":%q}`,time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
+ }))
+ defer profile.Close()
+ gate:=&NewsGoAuthGate{ProfileURL:profile.URL,Client:profile.Client()}
+ app:=gate.Protect(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  w.Header().Set("X-NewsGo-Thumbnail-Proxy","v1")
+  w.Header().Set("X-Thumbnail-Outcome","queue_timeout")
+  w.Header().Set("X-Thumbnail-Queue-Ms","123")
+  w.WriteHeader(http.StatusGatewayTimeout)
+ }))
+ var output bytes.Buffer
+ original:=log.Writer()
+ log.SetOutput(&output)
+ defer log.SetOutput(original)
+ request:=func(auth string) *httptest.ResponseRecorder {
+  r:=httptest.NewRequest("GET","/api/thumbnail?url=https%3A%2F%2Fexample.com%2Fprivate",nil)
+  if auth!="" {r.Header.Set("Authorization",auth)}
+  r.Header.Set("X-NewsGo-Request-ID","untrusted-header")
+  w:=httptest.NewRecorder()
+  app.ServeHTTP(w,r)
+  return w
+ }
+ unauth:=request("")
+ if unauth.Code!=http.StatusUnauthorized{t.Fatalf("unauthorized returned %d",unauth.Code)}
+ if unauth.Header().Get("X-NewsGo-Thumbnail-Proxy")!=""{t.Fatal("outer gate produced handler marker")}
+ verified:=request("Bearer "+token)
+ if verified.Code!=http.StatusGatewayTimeout{t.Fatalf("handler returned %d",verified.Code)}
+ if verified.Header().Get("X-NewsGo-Thumbnail-Proxy")!="v1"{t.Fatal("handler marker lost")}
+ id1,id2:=unauth.Header().Get("X-NewsGo-Request-ID"),verified.Header().Get("X-NewsGo-Request-ID")
+ if id1==""||id2==""||id1==id2||id1=="untrusted-header"||id2=="untrusted-header"{t.Fatalf("bad IDs %q %q",id1,id2)}
+ logs:=output.String()
+ for _,want:=range []string{"THUMBNAIL boundary id="+id1+" status=401 handler_marked=false outcome=before_handler","THUMBNAIL boundary id="+id2+" status=504 handler_marked=true outcome=queue_timeout","queue_ms=123"} {
+  if !strings.Contains(logs,want){t.Errorf("missing trace fragment %q in %s",want,logs)}
+ }
+ for _,secret:=range []string{token,"private-account","example.com","private","untrusted-header"}{
+  if strings.Contains(logs,secret){t.Errorf("log exposed private content: %q",secret)}
+ }
+}
+
+func TestThumbnailBoundarySuccessesAreAggregated(t *testing.T) {
+ var output bytes.Buffer
+ original:=log.Writer()
+ log.SetOutput(&output)
+ defer log.SetOutput(original)
+ handler:=traceThumbnailBoundary(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  w.Header().Set("X-NewsGo-Thumbnail-Proxy","v1")
+  w.WriteHeader(http.StatusOK)
+ }))
+ start:=thumbnailCompletedSuccesses.Load()
+ for i:=0;i<100;i++{
+  w:=httptest.NewRecorder()
+  handler.ServeHTTP(w,httptest.NewRequest("GET","/api/thumbnail?url=https://example.com",nil))
+  if w.Code!=200{t.Fatal("expected success")}
+ }
+ logs:=output.String()
+ if strings.Contains(logs,"boundary id="){t.Fatal("successful thumbnail logged individually")}
+ if !strings.Contains(logs,"THUMBNAIL boundary_success_total="){t.Fatalf("expected periodic success aggregate, start=%d: %s",start,logs)}
+}
+
+func TestThumbnailHandlerAndBoundaryShareServerID(t *testing.T) {
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN","")
+ token:=strings.Repeat("d",64)
+ profile:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  fmt.Fprintf(w,`{"user":"test","role":"user","expiresAt":%q}`,time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
+ }))
+ defer profile.Close()
+ gate:=&NewsGoAuthGate{ProfileURL:profile.URL,Client:profile.Client()}
+ app:=gate.Protect(http.HandlerFunc((&State{reader:"https://scrapergo.themauris.org"}).serveThumbnail))
+ var output bytes.Buffer
+ old:=log.Writer();log.SetOutput(&output);defer log.SetOutput(old)
+ req:=httptest.NewRequest("GET","/api/thumbnail?url=https%3A%2F%2Fexample.com%2Fprivate-story",nil)
+ req.Header.Set("Authorization","Bearer "+token)
+ rec:=httptest.NewRecorder()
+ app.ServeHTTP(rec,req)
+ if rec.Code!=http.StatusBadGateway{t.Fatalf("got %d",rec.Code)}
+ id:=rec.Header().Get("X-NewsGo-Request-ID")
+ if id==""{t.Fatal("missing request ID")}
+ logText:=output.String()
+ for _,marker:=range []string{"THUMBNAIL handler id="+id+" status=502","THUMBNAIL boundary id="+id+" status=502"} {
+  if !strings.Contains(logText,marker){t.Errorf("missing correlated trace: %s",marker)}
+ }
+ for _,secret:=range []string{token,"example.com","private-story"}{
+  if strings.Contains(logText,secret){t.Fatal("sensitive request data in log")}
+ }
 }

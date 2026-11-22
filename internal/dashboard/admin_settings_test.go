@@ -9,6 +9,7 @@ import (
  "path/filepath"
  "strings"
  "testing"
+ "time"
 )
 
 func adminCall(t *testing.T, store *SettingsStore, method string, authorized bool, payload any) *httptest.ResponseRecorder {
@@ -77,4 +78,63 @@ func TestLegacyExitAndCredentialLoginAbsent(t *testing.T){
  for _,legacy:=range []string{"newsgo.sync.token.v1","syncCredentialKey","connectSync(","/api/sync"}{
   if strings.Contains(personalJS,legacy){t.Fatalf("legacy client code remains: %q",legacy)}
  }
+}
+
+func TestThumbnailAdminSettingsPersistAndLegacyDefault(t *testing.T) {
+ old:=currentThumbnailSettings()
+ defer activeThumbnailSettings.Store(old)
+ dir:=t.TempDir()
+ store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
+ candidate:=defaultServerSettings()
+ candidate.Thumbnail=ThumbnailSettings{Concurrency:4,QueueWaitSeconds:8,UpstreamTimeoutSeconds:15}
+ if w:=adminCall(t,store,http.MethodPut,true,candidate);w.Code!=http.StatusOK{t.Fatalf("save=%d %s",w.Code,w.Body.String())}
+ restarted,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err!=nil{t.Fatal(err)}
+ if got:=currentThumbnailSettings();got!=candidate.Thumbnail{t.Fatalf("thumbnail settings lost: %+v",got)}
+ bad:=restarted.CurrentServerSettings()
+ bad.Thumbnail.Concurrency=17
+ if got:=adminCall(t,restarted,http.MethodPut,true,bad).Code;got!=http.StatusBadRequest{t.Fatalf("invalid concurrency allowed: %d",got)}
+ // A previous-version saved document has no thumbnail field.
+ legacy:=defaultServerSettings()
+ raw,err:=json.Marshal(legacy);if err!=nil{t.Fatal(err)}
+ var oldFormat map[string]json.RawMessage
+ if err=json.Unmarshal(raw,&oldFormat);err!=nil{t.Fatal(err)}
+ delete(oldFormat,"thumbnail")
+ if err=atomicJSON(filepath.Join(dir,"server-settings.json"),oldFormat);err!=nil{t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err!=nil{t.Fatal(err)}
+ if got:=currentThumbnailSettings();got!=defaultThumbnailSettings(){t.Fatalf("legacy settings not defaulted: %+v",got)}
+ // An explicitly present but invalid zero section must not be silently defaulted.
+ invalid:=defaultServerSettings()
+ invalid.Thumbnail=ThumbnailSettings{}
+ if err=atomicJSON(filepath.Join(dir,"server-settings.json"),invalid);err!=nil{t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err==nil{t.Fatal("explicitly invalid thumbnail settings accepted")}
+ if _,err=os.Stat(filepath.Join(dir,"classification-cache.json"));!os.IsNotExist(err){t.Fatal("legacy load unexpectedly modified cache")}
+}
+
+func TestThumbnailAdminLayoutAndDiagnosticsContract(t *testing.T) {
+ html:=page.Tree.Root.String()
+ for _,item:=range []string{"admin-thumb-concurrency","admin-thumb-queue","admin-thumb-timeout","thumbnail-performance-panel","thumbnail-performance"}{
+  if !strings.Contains(html,item){t.Errorf("missing thumbnail field %s",item)}
+ }
+ for _,item:=range []string{"thumbnailAdminFields","thumbnailServerTiming(response)","Queue wait mean / p95","Upstream mean / p95","thumbnailCanceledCount"}{
+  if !strings.Contains(personalJS,item){t.Errorf("missing thumbnail behavior %s",item)}
+ }
+}
+
+func TestThumbnailOnlyAdminSaveDoesNotClearClassificationCache(t *testing.T) {
+ store,err:=NewSettingsStore(t.TempDir());if err!=nil{t.Fatal(err)}
+ key:="https://scrapergo.themauris.org|https://example.org/thumbnail-tuning"
+ newsClassificationCache.Lock()
+ oldEntries,oldPath:=newsClassificationCache.entries,newsClassificationCache.path
+ newsClassificationCache.entries=map[string]newsClassificationEntry{key:{value:"article",expiry:time.Now().Add(time.Minute)}}
+ newsClassificationCache.path=""
+ newsClassificationCache.Unlock()
+ defer func(){newsClassificationCache.Lock();newsClassificationCache.entries=oldEntries;newsClassificationCache.path=oldPath;newsClassificationCache.Unlock()}()
+ candidate:=defaultServerSettings()
+ candidate.Thumbnail.Concurrency=4
+ if w:=adminCall(t,store,http.MethodPut,true,candidate);w.Code!=http.StatusOK{t.Fatalf("thumbnail save=%d %s",w.Code,w.Body.String())}
+ newsClassificationCache.Lock()
+ _,ok:=newsClassificationCache.entries[key]
+ newsClassificationCache.Unlock()
+ if !ok {t.Fatal("thumbnail-only settings change erased classification cache")}
 }
