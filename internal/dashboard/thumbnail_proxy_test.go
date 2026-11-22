@@ -77,3 +77,40 @@ func TestThumbnailURLUsesProtectedNewsGoRoute(t *testing.T) {
  if err!=nil||parsed.Query().Get("url")!=testThumbnailArticle||parsed.Query().Get("width")!="256"{t.Fatalf("bad URL: %q",got)}
  if scraperThumbnailURL("https://scrapergo.themauris.org","file:///etc/passwd")!=""{t.Error("unsafe URL accepted")}
 }
+
+func TestThumbnailLoopbackBackendIsolation(t *testing.T) {
+ t.Setenv("SUITE_NEWSGO_SCRAPERGO_CLASSIFY_TOKEN",testThumbnailToken)
+ const publicReader="https://scrapergo.themauris.org"
+ payload:=[]byte{137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0}
+ upstream:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if r.URL.Path!="/api/thumbnail" {t.Errorf("unexpected service path: %q",r.URL.Path)}
+  if r.Header.Get("Authorization")!="Service "+testThumbnailToken {t.Error("shared service credential absent")}
+  w.Header().Set("Content-Type","image/png")
+  _,_=w.Write(payload)
+ }))
+ defer upstream.Close()
+ state:=&State{reader:publicReader}
+ if err:=state.SetThumbnailBackend(upstream.URL);err!=nil {t.Fatal(err)}
+ if state.reader!=publicReader {t.Fatalf("public reader changed: %q",state.reader)}
+ w:=httptest.NewRecorder()
+ state.serveThumbnail(w,httptest.NewRequest(http.MethodGet,"/api/thumbnail?url="+url.QueryEscape(testThumbnailArticle),nil))
+ if w.Code!=http.StatusOK {t.Fatalf("loopback status %d: %s",w.Code,w.Body.String())}
+ if !strings.HasPrefix(scraperThumbnailURL(state.reader,testThumbnailArticle),"/api/thumbnail?") {t.Fatal("public reader thumbnail route changed")}
+}
+
+func TestThumbnailLoopbackRejectsUnsafeDestinations(t *testing.T) {
+ state:=&State{reader:"https://scrapergo.themauris.org"}
+ for _,raw:=range []string{
+  "https://127.0.0.1:8083","http://localhost:8083",
+  "http://192.168.1.1:8083","http://127.0.0.1",
+  "http://127.0.0.1:8083/other","http://127.0.0.1:8083?x=y",
+  "http://user:password@127.0.0.1:8083",
+  "http://127.0.0.1:8083#fragment",
+  "http://scrapergo.themauris.org",
+ } {
+  if err:=state.SetThumbnailBackend(raw);err==nil {t.Errorf("accepted unsafe thumbnail backend %q",raw)}
+  if state.thumbnailBackend!="" {t.Errorf("invalid backend retained after %q",raw)}
+ }
+ if err:=state.SetThumbnailBackend("http://127.0.0.1:8083");err!=nil {t.Fatal(err)}
+ if err:=state.SetThumbnailBackend("");err!=nil || state.thumbnailBackend!="" {t.Fatal("disable backend failed")}
+}
