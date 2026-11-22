@@ -78,3 +78,36 @@ func TestLegacyExitAndCredentialLoginAbsent(t *testing.T){
   if strings.Contains(personalJS,legacy){t.Fatalf("legacy client code remains: %q",legacy)}
  }
 }
+
+func TestThumbnailAdminSettingsPersistAndLegacyDefault(t *testing.T) {
+ old:=currentThumbnailSettings()
+ defer activeThumbnailSettings.Store(old)
+ dir:=t.TempDir()
+ store,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
+ candidate:=defaultServerSettings()
+ candidate.Thumbnail=ThumbnailSettings{Concurrency:4,QueueWaitSeconds:8,UpstreamTimeoutSeconds:15}
+ if w:=adminCall(t,store,http.MethodPut,true,candidate);w.Code!=http.StatusOK{t.Fatalf("save=%d %s",w.Code,w.Body.String())}
+ restarted,err:=NewSettingsStore(dir);if err!=nil{t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err!=nil{t.Fatal(err)}
+ if got:=currentThumbnailSettings();got!=candidate.Thumbnail{t.Fatalf("thumbnail settings lost: %+v",got)}
+ bad:=restarted.CurrentServerSettings()
+ bad.Thumbnail.Concurrency=17
+ if got:=adminCall(t,restarted,http.MethodPut,true,bad).Code;got!=http.StatusBadRequest{t.Fatalf("invalid concurrency allowed: %d",got)}
+ // A previous-version saved document has no thumbnail field.
+ legacy:=defaultServerSettings()
+ legacy.Thumbnail=ThumbnailSettings{}
+ if err=atomicJSON(filepath.Join(dir,"server-settings.json"),legacy);err!=nil{t.Fatal(err)}
+ if err=restarted.ActivateServerSettings();err!=nil{t.Fatal(err)}
+ if got:=currentThumbnailSettings();got!=defaultThumbnailSettings(){t.Fatalf("legacy settings not defaulted: %+v",got)}
+ if _,err=os.Stat(filepath.Join(dir,"classification-cache.json"));!os.IsNotExist(err){t.Fatal("legacy load unexpectedly modified cache")}
+}
+
+func TestThumbnailAdminLayoutAndDiagnosticsContract(t *testing.T) {
+ html:=page.Tree.Root.String()
+ for _,item:=range []string{"admin-thumb-concurrency","admin-thumb-queue","admin-thumb-timeout","thumbnail-performance-panel","thumbnail-performance"}{
+  if !strings.Contains(html,item){t.Errorf("missing thumbnail field %s",item)}
+ }
+ for _,item:=range []string{"thumbnailAdminFields","thumbnailServerTiming(response)","Queue wait mean / p95","Upstream mean / p95","thumbnailCanceledCount"}{
+  if !strings.Contains(personalJS,item){t.Errorf("missing thumbnail behavior %s",item)}
+ }
+}
