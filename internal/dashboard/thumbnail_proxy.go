@@ -10,6 +10,7 @@ import (
  "os"
  "regexp"
  "strconv"
+ "sync"
  "strings"
  "time"
 )
@@ -50,7 +51,48 @@ func (s *State) SetClassificationBackend(raw string) error {
 
 const maxThumbnailBytes int64 = 3 << 20
 
-var thumbnailProxySlots = make(chan struct{}, 6)
+// A shared admission gate honors newly saved limits without replacing
+// semaphores while requests are in flight.
+var thumbnailProxyGate = struct {
+ sync.Mutex
+ active int
+ peak int
+ changed chan struct{}
+}{changed:make(chan struct{})}
+
+func thumbnailAcquire(ctx context.Context, wait time.Duration) (time.Duration,error) {
+ start:=time.Now()
+ timer:=time.NewTimer(wait)
+ defer timer.Stop()
+ for {
+  thumbnailProxyGate.Lock()
+  if thumbnailProxyGate.active<currentThumbnailSettings().Concurrency {
+   thumbnailProxyGate.active++
+   if thumbnailProxyGate.active>thumbnailProxyGate.peak {thumbnailProxyGate.peak=thumbnailProxyGate.active}
+   thumbnailProxyGate.Unlock()
+   return time.Since(start),nil
+  }
+  changed:=thumbnailProxyGate.changed
+  thumbnailProxyGate.Unlock()
+  select {
+  case <-changed:
+  case <-ctx.Done():return time.Since(start),ctx.Err()
+  case <-timer.C:return time.Since(start),context.DeadlineExceeded
+  }
+ }
+}
+func thumbnailRelease() {
+ thumbnailProxyGate.Lock()
+ thumbnailProxyGate.active--
+ close(thumbnailProxyGate.changed)
+ thumbnailProxyGate.changed=make(chan struct{})
+ thumbnailProxyGate.Unlock()
+}
+func thumbnailActivePeak() (int,int) {
+ thumbnailProxyGate.Lock()
+ defer thumbnailProxyGate.Unlock()
+ return thumbnailProxyGate.active,thumbnailProxyGate.peak
+}
 
 // serveThumbnail is a verified-NewsGo-user endpoint (protected by the outer
 // Homepage auth gate). It never exposes a ScraperGo service credential to JS.
@@ -92,50 +134,67 @@ func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
   return
  }
  endpoint:=strings.TrimRight(backend,"/")+"/api/thumbnail?"+url.Values{"url":{article},"width":{"256"}}.Encode()
- ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second)
+ // The admission deadline is independent of the upstream fetch budget.
+ limits:=currentThumbnailSettings()
+ queueDuration,admitErr:=thumbnailAcquire(r.Context(),time.Duration(limits.QueueWaitSeconds)*time.Second)
+ queueMS:=strconv.FormatInt(queueDuration.Milliseconds(),10)
+ w.Header().Set("X-Thumbnail-Queue-Ms",queueMS)
+ w.Header().Set("X-Thumbnail-Active-Limit",strconv.Itoa(limits.Concurrency))
+ if admitErr!=nil {
+  if errors.Is(admitErr,context.Canceled) || r.Context().Err()!=nil {return}
+  w.Header().Set("X-Thumbnail-Outcome","queue_timeout")
+  http.Error(w,"Thumbnail queue timeout",http.StatusGatewayTimeout)
+  return
+ }
+ defer thumbnailRelease()
+ ctx,cancel:=context.WithTimeout(r.Context(),time.Duration(limits.UpstreamTimeoutSeconds)*time.Second)
  defer cancel()
+ upstreamStarted:=time.Now()
+ fail:=func(code int,reason string) {
+  w.Header().Set("X-Thumbnail-Upstream-Ms",strconv.FormatInt(time.Since(upstreamStarted).Milliseconds(),10))
+  w.Header().Set("X-Thumbnail-Outcome",reason)
+  http.Error(w,"Thumbnail unavailable",code)
+ }
  request,err:=http.NewRequestWithContext(ctx,http.MethodGet,endpoint,nil)
- if err!=nil {http.Error(w,"Thumbnail unavailable",http.StatusBadGateway);return}
+ if err!=nil {fail(http.StatusBadGateway,"request_error");return}
  request.Header.Set("Authorization","Service "+token)
  request.Header.Set("Accept","image/avif,image/webp,image/png,image/jpeg,image/gif")
- client:=&http.Client{Timeout:12*time.Second,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}}
- select {
- case thumbnailProxySlots<-struct{}{}:defer func(){<-thumbnailProxySlots}()
- case <-ctx.Done():return
- }
+ client:=&http.Client{Timeout:time.Duration(limits.UpstreamTimeoutSeconds)*time.Second,CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse}}
  response,err:=client.Do(request)
  if err!=nil {
-  if errors.Is(err,context.Canceled) {return}
-  http.Error(w,"Thumbnail unavailable",http.StatusBadGateway)
+  if errors.Is(err,context.Canceled) && r.Context().Err()!=nil {return}
+  if errors.Is(err,context.DeadlineExceeded) || errors.Is(ctx.Err(),context.DeadlineExceeded) {fail(http.StatusGatewayTimeout,"upstream_timeout")}else{fail(http.StatusBadGateway,"transport_error")}
   return
  }
  defer response.Body.Close()
  if response.StatusCode!=http.StatusOK {
-  http.Error(w,"Thumbnail unavailable",http.StatusBadGateway)
+  fail(http.StatusBadGateway,"upstream_http_"+strconv.Itoa(response.StatusCode))
   return
  }
  contentType:=strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"),";")[0]))
  switch contentType {
  case "image/avif","image/webp","image/png","image/jpeg","image/gif":
  default:
-  http.Error(w,"Unsupported image type",http.StatusBadGateway)
+  fail(http.StatusBadGateway,"unsupported_type")
   return
  }
  if response.ContentLength>maxThumbnailBytes {
-  http.Error(w,"Thumbnail too large",http.StatusBadGateway)
+  fail(http.StatusBadGateway,"oversize")
   return
  }
  data,err:=io.ReadAll(io.LimitReader(response.Body,maxThumbnailBytes+1))
- if err!=nil || int64(len(data))>maxThumbnailBytes {
-  http.Error(w,"Thumbnail too large",http.StatusBadGateway)
+ if err!=nil {
+  if errors.Is(err,context.DeadlineExceeded)||errors.Is(ctx.Err(),context.DeadlineExceeded){fail(http.StatusGatewayTimeout,"upstream_timeout")}else{fail(http.StatusBadGateway,"read_error")}
   return
  }
- // Header declarations alone do not establish that the body is image data.
+ if int64(len(data))>maxThumbnailBytes {fail(http.StatusBadGateway,"oversize");return}
  sniff:=http.DetectContentType(data)
  if sniff!="image/jpeg" && sniff!="image/png" && sniff!="image/gif" && sniff!="image/webp" && contentType!="image/avif" {
-  http.Error(w,"Invalid image response",http.StatusBadGateway)
+  fail(http.StatusBadGateway,"invalid_image")
   return
  }
+ w.Header().Set("X-Thumbnail-Upstream-Ms",strconv.FormatInt(time.Since(upstreamStarted).Milliseconds(),10))
+ w.Header().Set("X-Thumbnail-Outcome","loaded")
  w.Header().Set("Content-Type",contentType)
  w.Header().Set("Content-Length",strconv.Itoa(len(data)))
  _,_=w.Write(data)
