@@ -127,3 +127,29 @@ func TestDiagnosticsTextExportAvailableWithoutExposingSensitiveData(t *testing.T
  }
  if strings.Contains(download,"fetch(") || strings.Contains(download,"adminRequest("){t.Fatal("download must not make a network request")}
 }
+
+func TestProgressiveThumbnailBatchBrowserContract(t *testing.T){
+ for _,needle:=range []string{
+  "async function loadThumbnailBatches(items,generation)",
+  "items.slice(offset,offset+20)",
+  "authorizedNewsgoFetch('/api/thumbnail/batch'",
+  "response.headers.get('X-Thumbnail-Batch')!=='v1'",
+  "response.body.getReader()",
+  "new TextDecoder()",
+  "deliver(JSON.parse(line))",
+  "thumbnailBatchGeneration++",
+  "controller.abort()",
+  "URL.revokeObjectURL(src)",
+  "thumbnailBatchItems.push({img,article:a.url,imageURL:a.image,started:imageStart})",
+  "void loadThumbnailBatches(thumbnailBatchItems,batchGeneration)",
+  "Browser thumbnail batch requests",
+  "if(!rssMetadataOnly)thumbnailBatchItems.push",
+  "record.status!==200",
+  "outcome:'browser_batch_transport_failure'",
+ } {
+  if !strings.Contains(personalJS,needle) {t.Errorf("missing progressive batching browser contract: %q",needle)}
+ }
+ if strings.Contains(personalJS,"if(!rssMetadataOnly)void loadProtectedThumbnail(img") {
+  t.Fatal("normal thumbnail path still requests all images individually")
+ }
+}
