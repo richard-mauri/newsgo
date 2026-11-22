@@ -23,6 +23,7 @@ type State struct {
 	sources   []feeds.Source // Discovery catalog only, never fetched automatically.
 	reader    string
 	thumbnailBackend string // Optional fixed loopback target for server-only thumbnail requests.
+ classificationBackend string // Optional fixed loopback target for classification calls.
 	activity *ActivityReporter
 	settingsStore *SettingsStore
  homepageProfileURL string // private test override; production uses the fixed Homepage endpoint
