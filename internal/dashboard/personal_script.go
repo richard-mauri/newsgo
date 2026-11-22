@@ -1446,6 +1446,57 @@ el('rss-metadata-only').checked=rssMetadataOnly;
 el('rss-metadata-only').addEventListener('change',event=>{rssMetadataOnly=event.target.checked;stageReaderSetting(rssOnlyPreferenceKey,String(rssMetadataOnly));});
 el('manage-settings').addEventListener('click',()=>{showView('settings');if(mayAdminister())loadAdmin()});
 el('close-settings').addEventListener('click',()=>confirmAdminLeave(()=>showView('news')));
+// Export only known, aggregate, locally rendered diagnostics. Never serialize
+// entire page HTML, feed/article URLs, raw feed bodies, account data or tokens.
+function diagnosticsTextReport(){
+ updateDiagnostics();
+ const snapshot=(id)=>{const node=el(id);return node?Array.from(node.children).map(child=>
+  (child.textContent||'').trim().replace(/\\s+/g,' ')).filter(Boolean):[]};
+ const timestamp=new Date().toISOString();
+ const lines=[
+  'NEWSGO DIAGNOSTICS',
+  'Generated (UTC): '+timestamp,
+  'Scope: latest completed read in this browser (no request history)',
+  'Thumbnail outcomes may change after the read completes.',
+  '',
+  'LATEST READ',
+  ...(latestReadStats?snapshot('diagnostics-summary'):['No completed read yet.']),
+  '',
+  'TIMING',
+  ...(latestTiming?snapshot('diagnostics-timing'):['No completed read timing yet.']),
+  '',
+  'THUMBNAIL PERFORMANCE',
+  ...(latestReadStats?snapshot('thumbnail-performance'):['No completed thumbnail report yet.']),
+  '',
+  'THUMBNAIL SETTINGS',
+  ...(currentThumbnailSettings&&mayAdminister()?[
+   'Concurrency limit: '+currentThumbnailSettings.concurrency,
+   'Maximum queue wait (seconds): '+currentThumbnailSettings.queueWaitSeconds,
+   'Upstream timeout (seconds): '+currentThumbnailSettings.upstreamTimeoutSeconds
+  ]:['Administrator settings not available in this browser view.']),
+  '',
+  'INTERPRETATION',
+  'Only proxy_* outcomes with a NewsGo marker are attributed to the NewsGo thumbnail handler.',
+  'unattributed_http_* means no NewsGo marker was observed; the origin is unknown.',
+  'Queue and upstream timings summarize only responses with valid server measurements.',
+  'Browser load/error timing includes both successful and failed thumbnails.',
+  '',
+  'PRIVACY',
+  'No authentication tokens, cookies, article/feed URLs, account data, or raw feed bodies are included.'
+ ];
+ return lines.join('\\n')+'\\n';
+}
+function downloadDiagnostics(){
+ const report=diagnosticsTextReport();
+ const date=new Date().toISOString().replace(/[-:]/g,'').replace(/\\..*$/,'').replace('T','-');
+ const blob=new Blob([report],{type:'text/plain;charset=utf-8'});
+ const objectURL=URL.createObjectURL(blob);
+ const link=document.createElement('a');
+ link.href=objectURL;link.download='newsgo-diagnostics-'+date+'.txt';
+ document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(objectURL),1000);
+}
+el('download-diagnostics').addEventListener('click',downloadDiagnostics);
 el('manage-diagnostics').addEventListener('click',()=>{showView('diagnostics');updateDiagnostics()});
 el('close-diagnostics').addEventListener('click',()=>showView('news'));
 el('admin-reload').addEventListener('click',()=>confirmAdminLeave(loadAdmin));
