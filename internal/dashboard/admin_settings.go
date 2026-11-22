@@ -177,6 +177,10 @@ func (s *SettingsStore) ServeAdminSettings(w http.ResponseWriter, r *http.Reques
 	activeImageSettings.Store(candidate.Image)
  activeArticleSettings.Store(candidate.Articles)
  activeThumbnailSettings.Store(candidate.Thumbnail)
- clearNewsClassificationCache()
+ // Tuning only the thumbnail gate must not evict existing classifications.
+ // Preserve historical invalidation for image/article setting changes.
+ if candidate.Articles!=current.Articles || candidate.Image!=current.Image {
+  clearNewsClassificationCache()
+ }
 	_ = json.NewEncoder(w).Encode(candidate)
 }
