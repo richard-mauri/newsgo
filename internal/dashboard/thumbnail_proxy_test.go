@@ -17,7 +17,7 @@ func TestThumbnailProxyRequiresSeparateCredentialAndValidRequest(t *testing.T) {
  for _,tc:=range []struct{method,article,width string; want int}{
   {"GET",testThumbnailArticle,"256",http.StatusServiceUnavailable},
   {"POST",testThumbnailArticle,"256",http.StatusMethodNotAllowed},
-  {"GET","http://127.0.0.1/private","256",http.StatusServiceUnavailable},
+  {"GET","http://127.0.0.1/private","256",http.StatusBadRequest},
   {"GET","ftp://example.com/a","256",http.StatusBadRequest},
   {"GET",testThumbnailArticle,"999",http.StatusBadRequest},
  }{
