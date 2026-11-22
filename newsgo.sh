@@ -68,9 +68,11 @@ ps -axo pid=,command= | while read -r pid command; do
     fi
 done
 
-# Bind locally; the public hostname is routed through NewsGo's own tunnel.
+# Public ScraperGo links/classification retain HTTPS; only thumbnails use loopback.
+# Both NewsGo and ScraperGo run on this Mac. Keep the existing shared token.
 nohup "$APP" -listen 127.0.0.1:8084 \
     -scrapergo https://scrapergo.themauris.org \
+    -thumbnail-backend http://127.0.0.1:8083 \
     > "$APP_DIR/newsgo.log" 2>&1 < /dev/null &
 
 nohup "$CLOUDFLARED" tunnel run \
