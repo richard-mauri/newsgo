@@ -98,6 +98,11 @@ func thumbnailActivePeak() (int,int) {
 // Homepage auth gate). It never exposes a ScraperGo service credential to JS.
 // ScraperGo grants this shared NewsGo machine credential only scoped API routes.
 func (s *State) serveThumbnail(w http.ResponseWriter, r *http.Request) {
+ // Mark every response produced by this thumbnail handler, including errors.
+ // Absence of this marker in Safari is intentionally *unattributed*: an edge,
+ // auth gate or other intermediary may have generated or altered the response.
+ // No request URLs, identities or credentials are included in these headers.
+ w.Header().Set("X-NewsGo-Thumbnail-Proxy","v1")
  w.Header().Set("Cache-Control", "no-store")
  w.Header().Set("X-Content-Type-Options", "nosniff")
  if r.Method != http.MethodGet {
